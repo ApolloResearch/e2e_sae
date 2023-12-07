@@ -36,13 +36,13 @@ jobs:
         pip install ".[dev]"
     - name: Check with Black
       run: |
-        black --check --diff --line-length 100 mypkg scripts tests
+        black --check --diff --line-length 100 sparsify scripts tests
     - name: Check with isort
       run: |
-        isort --check --thirdparty wandb --profile black mypkg scripts tests
+        isort --check --thirdparty wandb --profile black sparsify scripts tests
     - name: Check with mypy
       run: |
-        mypy --ignore-missing-imports mypkg scripts
+        mypy --ignore-missing-imports sparsify scripts
     - name: Run tests
       run: |
         pytest tests

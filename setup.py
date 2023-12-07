@@ -8,13 +8,13 @@ else:
     requirements = []
 
 setup(
-    name="mypkg",
+    name="sparsify",
     version="0.0.1",
-    description="Sample repository using Apollo best engineering practices",
+    description="Repo for sparsifying networks end-to-end",
     long_description=Path("README.md").read_text("utf-8"),
     author="Apollo Research",
-    author_email="dan@apolloresearch.ai",
-    url="https://github.com/ApolloResearch/sample",
+    author_email="lee@apolloresearch.ai",
+    url="https://github.com/ApolloResearch/sparsify",
     packages=find_packages(),
     install_requires=requirements,
     extras_require={

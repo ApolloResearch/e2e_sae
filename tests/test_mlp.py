@@ -3,8 +3,8 @@ from typing import Tuple
 import pytest
 from torch import nn
 
-from mypkg.models import MLP
-from mypkg.models.mlp import Layer
+from sparsify.models import MLP
+from sparsify.models.mlp import Layer
 
 
 @pytest.mark.parametrize(
