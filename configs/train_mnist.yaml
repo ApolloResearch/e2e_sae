@@ -1,0 +1,13 @@
+seed: 0
+model:
+  hidden_sizes:
+    - 100
+train:
+  learning_rate: 0.001
+  batch_size: 64
+  epochs: 15
+  save_dir: null
+  save_every_n_epochs: null
+wandb:
+  project: mlp-mnist
+  entity: dbra

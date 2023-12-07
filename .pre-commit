@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+# If any command fails, exit immediately with that command's exit status
+set -eo pipefail
+
+# Find all changed python files for this commit
+CHANGED_PYTHON_FILES=$(git diff --name-only --cached --diff-filter=ACMR | grep '\.py$' || true)
+
+# Exclude python files in "test" directory
+NON_TEST_PYTHON_FILES=$(echo "$CHANGED_PYTHON_FILES" | grep -v 'tests/' || true)
+
+if [[ -n "$CHANGED_PYTHON_FILES" ]]
+then
+    black --check --diff --line-length 100 $CHANGED_PYTHON_FILES
+    isort --check --thirdparty wandb --profile black $CHANGED_PYTHON_FILES
+    if [[ -n "$NON_TEST_PYTHON_FILES" ]]
+    then
+        mypy --ignore-missing-imports $NON_TEST_PYTHON_FILES
+    fi
+    pytest
+fi

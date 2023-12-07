@@ -1,0 +1,42 @@
+{
+    "editor.minimap.enabled": false,
+    "editor.inlineSuggest.enabled": true,
+    "editor.wordWrap": "on",
+    "diffEditor.ignoreTrimWhitespace": false,
+    "files.trimTrailingWhitespace": true,
+    "editor.formatOnSaveMode": "file",
+    "editor.formatOnSave": true,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+    },
+    "black-formatter.args": [
+        "--line-length",
+        "100"
+    ],
+    "isort.args": [
+        "--profile",
+        "black",
+        "--project",
+        "mypkg",
+        "--thirdparty",
+        "wandb",
+    ],
+    "editor.codeActionsOnSave": {
+        "source.organizeImports": true
+    },
+    "github.copilot.enable": {
+        "*": true,
+        "yaml": true,
+        "plaintext": false,
+        "markdown": true
+    },
+    "jupyter.runStartupCommands": [
+        "%load_ext autoreload",
+        "%autoreload 2"
+    ],
+    "notebook.output.textLineLimit": 3000, // Prevent long output from being truncated
+    "jupyter.interactiveWindow.creationMode": "perFile",
+    "notebook.formatOnSave.enabled": true,
+    "rewrap.autoWrap.enabled": true,
+    "rewrap.wrappingColumn": 100,
+}
