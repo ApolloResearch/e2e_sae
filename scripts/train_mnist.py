@@ -77,6 +77,15 @@ def train(config: Config) -> None:
         root=Path(__file__).parent.parent / ".data", train=True, download=True, transform=transform
     )
     train_loader = DataLoader(train_data, batch_size=config.train.batch_size, shuffle=True)
+    test_data = datasets.MNIST(
+        root=Path(__file__).parent.parent / ".data", train=False, download=True, transform=transform
+    )
+    test_loader = DataLoader(test_data, batch_size=config.train.batch_size, shuffle=False)
+    valid_data = datasets.MNIST(
+        root=Path(__file__).parent.parent / ".data", train=False, download=True, transform=transform
+    )
+    valid_loader = DataLoader(valid_data, batch_size=config.train.batch_size, shuffle=False)
+
 
     # Initialize the MLP model
     model = MLP(config.model.hidden_sizes, input_size=784, output_size=10)
@@ -87,7 +96,7 @@ def train(config: Config) -> None:
     optimizer = torch.optim.Adam(model.parameters(), lr=config.train.learning_rate)
 
     if config.wandb:
-        run_name = f"lr-{config.train.learning_rate}_bs-{config.train.batch_size}"
+        run_name = f"orig-train-lr-{config.train.learning_rate}_bs-{config.train.batch_size}-{str(config.model.hidden_sizes)}"
         wandb.init(
             name=run_name,
             project=config.wandb.project,
@@ -111,25 +120,69 @@ def train(config: Config) -> None:
             outputs = model(images)
             loss = criterion(outputs, labels)
 
+            # Calculate accuracy
+            _, argmax = torch.max(outputs, 1)
+            accuracy = (labels == argmax.squeeze()).float().mean()
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            if (i + 1) % 100 == 0:
+            if (i + 1) % config.train.epochs // 10 == 0:
                 logger.info(
-                    "Epoch [%d/%d], Step [%d/%d], Loss: %f",
+                    "Epoch [%d/%d], Step [%d/%d], Loss: %f, Accuracy: %f",
                     epoch + 1,
                     config.train.epochs,
                     i + 1,
                     len(train_loader),
                     loss.item(),
+                    accuracy.item(),
                 )
 
                 if config.wandb:
                     wandb.log({"train/loss": loss.item(), "train/samples": samples}, step=samples)
 
+        # Validate the model
+        model.eval()
+        with torch.no_grad():
+            correct = 0
+            total = 0
+            for images, labels in valid_loader:
+                images, labels = images.to(device), labels.to(device)
+                images = images.view(images.shape[0], -1)
+                outputs = model(images)
+                _, argmax = torch.max(outputs, 1)
+                total += labels.size(0)
+                correct += (labels == argmax.squeeze()).sum().item()
+
+            accuracy = correct / total
+            logger.info("Accuracy of the network on the 10000 test images: %f %%", 100 * accuracy)
+
+            if config.wandb:
+                wandb.log({"valid/accuracy": accuracy}, step=samples)
+
         if config.train.save_every_n_epochs and (epoch + 1) % config.train.save_every_n_epochs == 0:
             save_model(json.loads(config.model_dump_json()), save_dir, model, epoch)
+
+    # Test the model
+    model.eval()
+    with torch.no_grad():
+        correct = 0
+        total = 0
+        for images, labels in test_loader:
+            images, labels = images.to(device), labels.to(device)
+            images = images.view(images.shape[0], -1)
+            outputs = model(images)
+            _, argmax = torch.max(outputs, 1)
+            total += labels.size(0)
+            correct += (labels == argmax.squeeze()).sum().item()
+
+        accuracy = correct / total
+        logger.info("Accuracy of the network on the 10000 test images: %f %%", 100 * accuracy)
+
+        if config.wandb:
+            wandb.log({"test/accuracy": accuracy}, step=samples)
+    
 
     if not (save_dir / f"model_epoch_{epoch + 1}.pt").exists():
         save_model(json.loads(config.model_dump_json()), save_dir, model, epoch)

@@ -2,7 +2,7 @@
 Defines a generic MLP.
 """
 from typing import List, Optional
-
+from sparsify.models.sparsifiers import SAE
 import torch
 from torch import nn
 
@@ -28,7 +28,7 @@ class Layer(nn.Module):
         super().__init__()
         self.linear = nn.Linear(in_features, out_features, bias=bias)
         if has_activation_fn:
-            self.activation = nn.ReLU()
+            self.activation = nn.GELU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.linear(x)
@@ -82,3 +82,63 @@ class MLP(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
+    
+
+class MLPMod(nn.Module):
+    """
+    This class defines an MLP with a variable number of hidden layers.
+
+    All layers use a linear transformation followed by RELU, except for the final layer which
+    uses a linear transformation followed by no activation function.
+
+    Args:
+        hidden_sizes: A list of integers specifying the sizes of the hidden layers.
+        input_size: The size of each input sample.
+        output_size: The size of each output sample.
+        bias: Whether to add a bias term to the linear transformations. Default is True.
+    """
+
+    def __init__(
+        self,
+        hidden_sizes: Optional[List[int]],
+        input_size: int,
+        output_size: int,
+        bias: bool = True,
+    ):
+        super().__init__()
+
+        if hidden_sizes is None:
+            hidden_sizes = []
+
+        # Size of each layer (including input and output)
+        sizes = [input_size] + hidden_sizes + [output_size]
+
+        self.layers = nn.ModuleDict()
+        self.saes = nn.ModuleDict()
+        for i in range(len(sizes) - 1):
+            has_activation_fn = i < len(sizes) - 2
+            # Add layers with custom keys
+            self.layers[f'{i}'] = Layer(
+                in_features=sizes[i],
+                out_features=sizes[i + 1],
+                has_activation_fn=has_activation_fn,
+                bias=bias,
+            )
+            if has_activation_fn:
+                sae = SAE(input_size=sizes[i + 1],
+                          n_dict_components=int(sizes[i + 1] * 2))
+                self.saes[f'{i}'] = sae
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        outs = {}
+        cs = {}
+        saes_outs = {}
+        for i in range(len(self.layers)):
+            x = self.layers[f'{i}'](x)
+            outs[f'{i}'] = x
+            if f'{i}' in self.saes:
+                x, c = self.saes[f'{i}'](x)
+                cs[f'{i}'] = c
+                saes_outs[f'{i}'] = x
+        return outs, cs, saes_outs
