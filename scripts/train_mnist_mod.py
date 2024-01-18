@@ -8,7 +8,7 @@ Usage:
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, OrderedDict
 from collections import OrderedDict
 
 import fire
@@ -36,9 +36,13 @@ class TrainConfig(BaseModel):
     learning_rate: float
     batch_size: int
     epochs: int
-    sparsity_lambda: float
-    model_name: str
     save_dir: Optional[Path]
+    model_name: str
+    type_of_sparsifier: str
+    sparsity_lambda: float
+    dict_eles_to_input_ratio: float
+    sparsifier_inp_out_recon_loss_scale: float
+    k: int
     save_every_n_epochs: Optional[int]
 
 
@@ -101,7 +105,7 @@ def train(config: Config) -> None:
 
     # Add hooks to the model so we can get all intermediate activations
     # First, define a function to be called when the forward pass reaches a layer
-    def get_activation(name, activations):
+    def get_activation(name, activations: OrderedDict):
         def hook(model, input, output):
             activations[name] = output.detach()
         return hook
@@ -112,9 +116,16 @@ def train(config: Config) -> None:
         layer.register_forward_hook(get_activation(name, activations))
 
     # Get the SAEs from the model_mod and put them in the statedict of model_trained
-    model_mod = MLPMod(config.model.hidden_sizes, input_size=784, output_size=10)
+    model_mod = MLPMod(
+        config.model.hidden_sizes, 
+        input_size=784, 
+        output_size=10, 
+        type_of_sparsifier=config.train.type_of_sparsifier,
+        k=config.train.k,
+        dict_eles_to_input_ratio=config.train.dict_eles_to_input_ratio,
+    )
     for k, v in model_mod.state_dict().items():
-        if k.startswith("saes"):
+        if k.startswith("sparsifiers"):
             model_trained_statedict[k] = v
 
     model_mod.load_state_dict(model_trained_statedict)
@@ -123,7 +134,7 @@ def train(config: Config) -> None:
     # Define the loss and optimizer
     criterion = nn.MSELoss()
     # Note: only pass the SAE parameters to the optimizer
-    optimizer = torch.optim.Adam(model_mod.saes.parameters(), lr=config.train.learning_rate)
+    optimizer = torch.optim.Adam(model_mod.sparsifiers.parameters(), lr=config.train.learning_rate)
 
     if config.wandb:
         run_name = f"sparse-lambda-{config.train.sparsity_lambda}-lr-{config.train.learning_rate}_bs-{config.train.batch_size}-{str(config.model.hidden_sizes)}"
@@ -148,7 +159,7 @@ def train(config: Config) -> None:
             images = images.view(images.shape[0], -1)
 
             orig_outputs = model(images) # Consider passing orig outputs as input, so that you can interpolate.
-            mod_acts, cs, saes_outs = model_mod(images)
+            mod_acts, cs, sparsifiers_outs = model_mod(images)
             # Get final item of dict
             mod_out = mod_acts[list(mod_acts.keys())[-1]]
 
@@ -157,17 +168,17 @@ def train(config: Config) -> None:
             assert len(activations) == len(mod_acts), "Number of activations and modified activations must be the same"
 
             # Create dictionaries for the different losses so we can log in wand later
-            sae_orig_losses = {}
+            sp_orig_losses = {}
             new_orig_losses = {}
-            sae_new_losses = {}
+            sp_new_losses = {}
             sparsity_losses = {}
             zeros_counts = {}
 
             for l in range(len(activations)):
                 if l < len(activations) - 1:
                     # sae-orig reconstruction loss
-                    sae_orig_losses[str(l)] = criterion(saes_outs[str(l)], activations[str(l)])
-                    loss += sae_orig_losses[str(l)]
+                    sp_orig_losses[str(l)] = criterion(sparsifiers_outs[str(l)], activations[str(l)])
+                    loss += sp_orig_losses[str(l)]
 
                 # new-orig reconstruction loss
                 new_orig_losses[str(l)] = criterion(mod_acts[str(l)], activations[str(l)])
@@ -175,17 +186,22 @@ def train(config: Config) -> None:
 
                 # sae-new reconstruction loss
                 if l < len(activations) - 1:
-                    sae_new_losses[str(l)] = criterion(saes_outs[str(l)], mod_acts[str(l)])
-                    loss += sae_new_losses[str(l)] * 0.1
+                    if config.train.type_of_sparsifier == 'sae':
+                        sp_new_losses[str(l)] = criterion(sparsifiers_outs[str(l)], mod_acts[str(l)])
+                    elif config.train.type_of_sparsifier == 'codebook':
+                        # Auxiliary recon loss described in Tamkin et al. (2023) p. 3
+                        sp_new_losses[str(l)] = criterion(sparsifiers_outs[str(l)], mod_acts[str(l)].detach())
+                    loss += sp_new_losses[str(l)] * config.train.sparsifier_inp_out_recon_loss_scale
             
             # Add sparsity loss
-            for l in range(len(cs)):
-                sparsity_losses[str(l)] = torch.mean(torch.abs(cs[str(l)]))
-                loss += sparsity_losses[str(l)] * config.train.sparsity_lambda
+            if config.train.type_of_sparsifier == 'sae':
+                for l in range(len(cs)):
+                    sparsity_losses[str(l)] = torch.mean(torch.abs(cs[str(l)]))
+                    loss += sparsity_losses[str(l)] * config.train.sparsity_lambda
 
-            # Calculate fraction of zero entries in the saes per batch
-            for l in range(len(cs)):
-                zeros_counts[str(l)] = torch.sum(cs[str(l)] == 0) / cs[str(l)].numel()
+                # Calculate fraction of zero entries in the saes per batch
+                for l in range(len(cs)):
+                    zeros_counts[str(l)] = torch.sum(cs[str(l)] == 0) / cs[str(l)].numel()
 
             # Calculate accuracy
             _, argmax = torch.max(mod_out, 1)
@@ -210,11 +226,11 @@ def train(config: Config) -> None:
                 if config.wandb:
                     wandb.log({"train/loss": loss.item(), "train/samples": samples}, step=samples)
                     wandb.log({"train/accuracy": accuracy.item(), "train/samples": samples}, step=samples)
-                    for k, v in sae_orig_losses.items():
+                    for k, v in sp_orig_losses.items():
                         wandb.log({f"train/loss-sae-orig-{k}": v.item(), "train/samples": samples}, step=samples)
                     for k, v in new_orig_losses.items():
                         wandb.log({f"train/loss-new-orig-{k}": v.item(), "train/samples": samples}, step=samples)
-                    for k, v in sae_new_losses.items():
+                    for k, v in sp_new_losses.items():
                         wandb.log({f"train/loss-sae-new-{k}": v.item(), "train/samples": samples}, step=samples)
                     for k, v in sparsity_losses.items():
                         wandb.log({f"train/loss-sparsity-loss-{k}": v.item(), "train/samples": samples}, step=samples)
@@ -229,7 +245,7 @@ def train(config: Config) -> None:
             for images, labels in test_loader:
                 images, labels = images.to(device), labels.to(device)
                 images = images.view(images.shape[0], -1)
-                mod_acts, cs, saes_outs = model_mod(images)
+                mod_acts, cs, sparsifiers_outs = model_mod(images)
                 mod_out = mod_acts[list(mod_acts.keys())[-1]]
                 _, argmax = torch.max(mod_out, 1)
                 total += labels.size(0)

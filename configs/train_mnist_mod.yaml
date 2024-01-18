@@ -9,7 +9,11 @@ train:
   epochs: 50
   save_dir: sparsify/models
   model_name: orig-train-lr-0.001_bs-1024-[100, 100]_2024-01-14_18-00-27
+  type_of_sparsifier: sae
   sparsity_lambda: 50.0
+  dict_eles_to_input_ratio: 10.0
+  sparsifier_inp_out_recon_loss_scale: 0.1
+  k: 128
   save_every_n_epochs: null
 wandb:
   project: mlp-mnist-sae

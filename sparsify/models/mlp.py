@@ -2,7 +2,7 @@
 Defines a generic MLP.
 """
 from typing import List, Optional
-from sparsify.models.sparsifiers import SAE
+from sparsify.models.sparsifiers import SAE, Codebook
 import torch
 from torch import nn
 
@@ -104,6 +104,9 @@ class MLPMod(nn.Module):
         input_size: int,
         output_size: int,
         bias: bool = True,
+        type_of_sparsifier: str = 'sae',
+        dict_eles_to_input_ratio: int = 2,
+        k: int = 0,
     ):
         super().__init__()
 
@@ -114,7 +117,8 @@ class MLPMod(nn.Module):
         sizes = [input_size] + hidden_sizes + [output_size]
 
         self.layers = nn.ModuleDict()
-        self.saes = nn.ModuleDict()
+        self.sparsifiers = nn.ModuleDict()
+        self.dict_eles_to_input_ratio = dict_eles_to_input_ratio
         for i in range(len(sizes) - 1):
             has_activation_fn = i < len(sizes) - 2
             # Add layers with custom keys
@@ -125,20 +129,25 @@ class MLPMod(nn.Module):
                 bias=bias,
             )
             if has_activation_fn:
-                sae = SAE(input_size=sizes[i + 1],
-                          n_dict_components=int(sizes[i + 1] * 2))
-                self.saes[f'{i}'] = sae
+                if type_of_sparsifier == 'sae':
+                    sparsifier = SAE(input_size=sizes[i + 1],
+                            n_dict_components=int(sizes[i + 1] * self.dict_eles_to_input_ratio))
+                elif type_of_sparsifier == 'codebook':
+                    assert k > 0, 'k must be greater than 0'
+                    sparsifier = Codebook(input_size=sizes[i + 1],
+                            n_dict_components=int(sizes[i + 1] * dict_eles_to_input_ratio), k=k)
+                self.sparsifiers[f'{i}'] = sparsifier
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         outs = {}
         cs = {}
-        saes_outs = {}
+        sparsifiers_outs = {}
         for i in range(len(self.layers)):
             x = self.layers[f'{i}'](x)
             outs[f'{i}'] = x
-            if f'{i}' in self.saes:
-                x, c = self.saes[f'{i}'](x)
+            if f'{i}' in self.sparsifiers:
+                x, c = self.sparsifiers[f'{i}'](x)
                 cs[f'{i}'] = c
-                saes_outs[f'{i}'] = x
-        return outs, cs, saes_outs
+                sparsifiers_outs[f'{i}'] = x
+        return outs, cs, sparsifiers_outs
