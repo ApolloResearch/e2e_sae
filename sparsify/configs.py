@@ -1,42 +1,112 @@
 """Config loading and saving.
 
-Takes care of configs for training MLPs on MNIST and then training the 
-Modified Models. 
+Configs for various model types and their training. 
+
+Hierarchy of configs:
+- SparsifierConfig
+- ModelConfig
+    - BaseModelConfig
+        - BaseModelMLPConfig
+        - BaseModelTransformerConfig
+    - SparsifiedModelConfig
+    - TranscoderedModelConfig
+    - NeuralNetworkSkeletonConfig
+- TrainConfig
+    - TrainBaseModelConfig
+    - TrainSparsifiedModelConfig
+    - TrainTranscodersConfig
+    - TrainMetaSAEsConfig
+    - TrainLayerwiseSAEsConfig
+- WandbConfig
+- Config
 
 """
 from pathlib import Path
 from typing import List, Optional
 import yaml
-from pydantic import BaseModel
+import pydantic.BaseModel as PydanticBaseModel 
+# Atypical import: BaseModel is a pydantic class whereas 'BaseModel' in 
+# e.g. 'BaseModelMLPConfig' is a neural network. They're unrelated.
 
+class ModelConfig(PydanticBaseModel):
+    pass
 
-class ModelConfig(BaseModel):
+class BaseModelConfig(ModelConfig):
+    pass
+
+class BaseModelMLPConfig(BaseModelConfig):
     hidden_sizes: Optional[List[int]]
+    model_name: str
 
+class BaseModelTransformerConfig(BaseModelConfig):
+    raise NotImplementedError
 
-class TrainConfig(BaseModel):
+class SparsifierConfig(PydanticBaseModel):
+    type_of_sparsifier: str
+    dict_eles_to_input_ratio: float
+    k: int
+
+class SparsifiedModelConfig(ModelConfig):
+    sparsifiers: SparsifierConfig
+    base_model: BaseModelConfig
+
+class TranscoderedModelConfig(ModelConfig):
+    transcoders: SparsifierConfig
+    sparsifiers: SparsifierConfig
+    base_model: BaseModelConfig
+
+class NeuralNetworkSkeletonConfig(ModelConfig):
+    transcoders: SparsifierConfig
+
+class TrainConfig(PydanticBaseModel):
     learning_rate: float
     batch_size: int
     epochs: int
-    save_dir: Optional[Path]
-    model_name: str
-    type_of_sparsifier: str
-    sparsity_lambda: float
-    dict_eles_to_input_ratio: float
-    sparsifier_inp_out_recon_loss_scale: float
-    k: int
     save_every_n_epochs: Optional[int]
 
+class TrainBaseModelConfig(TrainConfig):
+    save_dir: Optional[Path]
+    base_model: BaseModelConfig
+    # Consider adding training run name
 
-class WandbConfig(BaseModel):
+class TrainSparsifiedModelConfig(TrainConfig):
+    save_dir: Optional[Path]
+    feat_sparsity_lambda: float
+    weight_sparsity_lambda: float
+    sparsifier_inp_out_recon_loss_scale: float
+    sparsifiers: SparsifierConfig
+    base_model: BaseModelConfig
+
+class TrainTranscodersConfig(TrainConfig):
+    save_dir: Optional[Path]
+    feat_sparsity_lambda: float
+    weight_sparsity_lambda: float
+    transcoders: SparsifierConfig
+    sparsifiers: SparsifierConfig
+    base_model: BaseModelConfig
+
+class TrainMetaSAEsConfig(TrainConfig):
+    save_dir: Optional[Path]
+    feat_sparsity_lambda: float
+    weight_sparsity_lambda: float
+    meta_saes: SparsifierConfig
+    skeleton: NeuralNetworkSkeletonConfig
+
+class TrainLayerwiseSAEsConfig(TrainConfig):
+    save_dir: Optional[Path]
+    feat_sparsity_lambda: float
+    weight_sparsity_lambda: float
+    sparsifiers: SparsifierConfig
+    base_model: BaseModelConfig
+
+class WandbConfig(PydanticBaseModel):
     project: str
     entity: str
 
-
-class Config(BaseModel):
+class Config(PydanticBaseModel):
     seed: int
-    model: ModelConfig
-    train: TrainConfig
+    model: Optional[BaseModelConfig]
+    train: Optional[TrainConfig]
     wandb: Optional[WandbConfig]
 
 
