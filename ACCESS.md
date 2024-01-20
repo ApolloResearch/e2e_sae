@@ -1,7 +1,7 @@
-# Disclosure Level - Public
+# Disclosure Level - Private
 
 # Persons/Groups with access
 
-- The world
+- Apollo Research staff, contractors.
 
 See Privacy Levels [here](https://www.apolloresearch.ai/blog/security)
