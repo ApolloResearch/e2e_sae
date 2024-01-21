@@ -4,7 +4,7 @@ import pytest
 from torch import nn
 
 from sparsify.models import MLP
-from sparsify.models.mlp import Layer
+from sparsify.models.models import Layer
 
 
 @pytest.mark.parametrize(

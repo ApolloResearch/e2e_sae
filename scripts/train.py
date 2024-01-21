@@ -23,9 +23,10 @@ from tqdm import tqdm
 
 from sparsify.log import logger
 from sparsify.models import MLP
-from sparsify.models.mlp import MLPMod
+from sparsify.models.models import SparsifiedMLP
+from sparsify.data import load_data_to_device
 from sparsify.utils import save_model
-from sparsify.custom_load import map_state_dict_names_mlp
+from sparsify.model_loading import get_models
 from sparsify.configs import load_config, Config
 
 
@@ -38,6 +39,7 @@ def get_activation(name, activations: OrderedDict):
 
 
 def load_data(config: Config) -> (DataLoader, DataLoader):
+
     transform = transforms.ToTensor()
     train_data = datasets.MNIST(
         root=Path(__file__).parent.parent / ".data", train=True, download=True, transform=transform
@@ -49,41 +51,6 @@ def load_data(config: Config) -> (DataLoader, DataLoader):
     test_loader = DataLoader(test_data, batch_size=config.train.batch_size, shuffle=False)
     return train_loader, test_loader
 
-
-def get_models(config: Config, device) -> (MLP, MLPMod, OrderedDict):
-
-    # Define model path to load
-    model_path = Path(__file__).parent.parent / "models" / config.train.model_name 
-    model_path = max(model_path.glob("*.pt"), key=lambda x: int(x.stem.split("_")[-1]))
-
-    # Initialize the MLP model
-    model = MLP(config.model.hidden_sizes, input_size=784, output_size=10)
-    model = model.to(device)
-    model_trained_statedict = torch.load(model_path)
-    model.load_state_dict(model_trained_statedict)
-    model.eval()
-
-    # Add hooks to the model so we can get all intermediate activations
-    activations = OrderedDict()
-    for name, layer in model.layers.named_children():
-        layer.register_forward_hook(get_activation(name, activations))
-
-    # Get the SAEs from the model_mod and put them in the statedict of model_trained
-    model_mod = MLPMod(
-        config.model.hidden_sizes, 
-        input_size=784, 
-        output_size=10, 
-        type_of_sparsifier=config.train.type_of_sparsifier,
-        k=config.train.k,
-        dict_eles_to_input_ratio=config.train.dict_eles_to_input_ratio,
-    )
-    for k, v in model_mod.state_dict().items():
-        if k.startswith("sparsifiers"):
-            model_trained_statedict[k] = v
-
-    model_mod.load_state_dict(model_trained_statedict)
-    model_mod = model_mod.to(device)
-    return model, model_mod, activations
 
 
 def train(config: Config) -> None:
@@ -98,16 +65,16 @@ def train(config: Config) -> None:
     # Load the MNIST dataset
     train_loader, test_loader = load_data(config)
 
-    if not config.train.save_dir:
-        config.train.save_dir = Path(__file__).parent.parent / ".checkpoints" / "mnist_mod"
-
     # Initialize the MLP model and modified model
-    model, model_mod, activations = get_models(config, device)
+    base_model, sparsified_model = get_models(config)
+
+    # TODO here you're going to have to start differentiating between the 
+    #  different types of training with regard to loss, optimized parameters, etc.
 
     # Define the loss and optimizer
     criterion = nn.MSELoss()
     # Note: only pass the SAE parameters to the optimizer
-    optimizer = torch.optim.Adam(model_mod.sparsifiers.parameters(), lr=config.train.learning_rate)
+    optimizer = torch.optim.Adam(sparsified_model.sparsifiers.parameters(), lr=config.train.learning_rate)
 
     run_name = f"sparse-lambda-{config.train.sparsity_lambda}-lr-{config.train.learning_rate}_bs-{config.train.batch_size}-{str(config.model.hidden_sizes)}"
     if config.wandb:
@@ -123,7 +90,7 @@ def train(config: Config) -> None:
     samples = 0
     # Training loop
     for epoch in tqdm(range(config.train.epochs), total=config.train.epochs, desc="Epochs"):
-        for i, (images, labels) in enumerate(train_loader):
+        for i, data in enumerate(train_loader):
             images, labels = images.to(device), labels.to(device)
 
             samples += images.shape[0]

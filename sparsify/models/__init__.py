@@ -1,1 +1,1 @@
-from .mlp import MLP
+from .models import MLP, SparsifiedMLP

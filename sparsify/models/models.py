@@ -5,6 +5,7 @@ from typing import List, Optional
 from sparsify.models.sparsifiers import SAE, Codebook
 import torch
 from torch import nn
+from sparsify.configs import Config
 
 
 class Layer(nn.Module):
@@ -53,12 +54,14 @@ class MLP(nn.Module):
 
     def __init__(
         self,
-        hidden_sizes: Optional[List[int]],
-        input_size: int,
-        output_size: int,
-        bias: bool = True,
+        config: Config,
     ):
         super().__init__()
+
+        hidden_sizes = config.base_model.hidden_sizes
+        input_size = config.base_model.input_size
+        output_size = config.base_model.output_size
+        bias = True
 
         if hidden_sizes is None:
             hidden_sizes = []
@@ -84,7 +87,7 @@ class MLP(nn.Module):
         return self.layers(x)
     
 
-class MLPMod(nn.Module):
+class SparsifiedMLP(nn.Module):
     """
     This class defines an MLP with a variable number of hidden layers.
 
@@ -100,15 +103,18 @@ class MLPMod(nn.Module):
 
     def __init__(
         self,
-        hidden_sizes: Optional[List[int]],
-        input_size: int,
-        output_size: int,
-        bias: bool = True,
-        type_of_sparsifier: str = 'sae',
-        dict_eles_to_input_ratio: int = 2,
-        k: int = 0,
+        config: Config,
     ):
         super().__init__()
+
+        hidden_sizes = config.base_model.hidden_sizes
+        input_size = config.base_model.input_size
+        output_size = config.base_model.output_size
+        bias = True
+        type_of_sparsifier = config.sparsifiers.type
+        dict_eles_to_input_ratio = config.sparsifiers.dict_eles_to_input_ratio
+        if type_of_sparsifier == 'codebook':
+            k = config.sparsifiers.k
 
         if hidden_sizes is None:
             hidden_sizes = []

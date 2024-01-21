@@ -23,9 +23,9 @@ from tqdm import tqdm
 
 from sparsify.log import logger
 from sparsify.models import MLP
-from sparsify.models.mlp import MLPMod
+from sparsify.models.models import MLPMod
 from sparsify.utils import save_model
-from sparsify.custom_load import map_state_dict_names_mlp
+from sparsify.model_loading import map_state_dict_names_mlp
 
 
 class ModelConfig(BaseModel):
