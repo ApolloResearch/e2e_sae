@@ -1,0 +1,23 @@
+seed: 0
+model: null
+pretrained_model_type: "EleutherAI/pythia-14m"
+data:
+  dataset: "pile-10k"
+train:
+  num_epochs: 1
+  batch_size: 8
+  lr: 0.1
+  seed: 0
+  momentum: 0.0
+  max_grad_norm: null
+  weight_decay: null
+  optimizer_name: "Adam"
+  device: null
+  warmup_steps: 0
+  save_every: null
+  save_dir: null
+  wandb: False
+  wandb_project_name: tf-sae
+  wandb_entity: lee_sharkey
+  print_every: 50
+  max_steps: 1000
