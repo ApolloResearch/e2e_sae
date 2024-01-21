@@ -58,15 +58,22 @@ class NeuralNetworkSkeletonConfig(ModelConfig):
     transcoders: SparsifierConfig
 
 class TrainConfig(PydanticBaseModel):
-    learning_rate: float
+    lr: float
+    momentum: float = 0.0
+    max_grad_norm: Optional[float] = None
     batch_size: int
-    epochs: int
+    num_epochs: int
+    optimizer_name: str = "Adam"
     sparsity_p_value: Optional[float]
     feat_sparsity_lambda: Optional[float]
     weight_sparsity_lambda: Optional[float]
+    weight_decay: Optional[float] = None
+    warmup_steps: int = 0
     sparsifier_inp_out_recon_loss_scale: Optional[float]
     save_every_n_epochs: Optional[int]
     save_dir: Optional[Path] # Recommend varying this by train_type
+    max_steps: Optional[int] = None
+
 
 class WandbConfig(PydanticBaseModel):
     project: str
@@ -77,7 +84,7 @@ class DataConfig(PydanticBaseModel):
     dataset_path: Path
 
 class Config(PydanticBaseModel):
-    seed: int
+    seed: int = 0
     train_type: str
     train: Optional[TrainConfig]
     wandb: Optional[WandbConfig]
