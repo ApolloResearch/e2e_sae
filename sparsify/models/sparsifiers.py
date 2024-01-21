@@ -124,3 +124,22 @@ class DecomposedMatrix(nn.Module):
         x_hat = x_hat + self.b
 
         return x_hat, c
+    
+class SimpleMatrix(nn.Module):
+    """Just a simple linear layer. It will return c as None.
+    
+    This won't really be used for feature extraction, but it may be used
+    for transcoders where the sparsification will primarily be on the
+    weights.
+    """
+    def __init__(self, input_size, n_dict_components):
+        super(SimpleMatrix, self).__init__()
+        self.W = nn.Parameter(torch.randn(input_size, input_size))
+        self.b = nn.Parameter(torch.zeros(input_size))
+        nn.init.orthogonal_(self.W)
+        self.input_size = input_size
+
+    def forward(self, x):
+        x_hat = torch.mm(x, self.W)
+        x_hat = x_hat + self.b
+        return x_hat, None
