@@ -17,15 +17,14 @@ import wandb
 import yaml
 from pydantic import BaseModel
 from torch import nn
-from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
+
 from tqdm import tqdm
 
 from sparsify.log import logger
 from sparsify.models import MLP
 from sparsify.models.models import SparsifiedMLP
-from sparsify.data import load_data_to_device
-from sparsify.utils import save_model
+from sparsify.data import load_data_to_device, get_data, data_preprocessing, get_num_minibatch_elements
+from sparsify.utils import save_trainable_params
 from sparsify.model_loading import get_models
 from sparsify.configs import load_config, Config
 
@@ -38,18 +37,6 @@ def get_activation(name, activations: OrderedDict):
     return hook
 
 
-def load_data(config: Config) -> (DataLoader, DataLoader):
-
-    transform = transforms.ToTensor()
-    train_data = datasets.MNIST(
-        root=Path(__file__).parent.parent / ".data", train=True, download=True, transform=transform
-    )
-    train_loader = DataLoader(train_data, batch_size=config.train.batch_size, shuffle=True)
-    test_data = datasets.MNIST(
-        root=Path(__file__).parent.parent / ".data", train=False, download=True, transform=transform
-    )
-    test_loader = DataLoader(test_data, batch_size=config.train.batch_size, shuffle=False)
-    return train_loader, test_loader
 
 
 
@@ -63,18 +50,19 @@ def train(config: Config) -> None:
     logger.info("Using device: %s", device)
 
     # Load the MNIST dataset
-    train_loader, test_loader = load_data(config)
+    train_loader, test_loader = get_data(config)
 
     # Initialize the MLP model and modified model
     base_model, sparsified_model = get_models(config)
+    
+    # TODO determine which model is in train mode
+    trainable_parameters = get_trainable_parameters(config, base_model, sparsified_model)
+    inference_model = base_model if sparsified_model is None else sparsified_model # TODO future: make this into a function so it can deal with trancoders and meta_sae
 
     # TODO here you're going to have to start differentiating between the 
     #  different types of training with regard to loss, optimized parameters, etc.
 
-    # Define the loss and optimizer
-    criterion = nn.MSELoss()
-    # Note: only pass the SAE parameters to the optimizer
-    optimizer = torch.optim.Adam(sparsified_model.sparsifiers.parameters(), lr=config.train.learning_rate)
+
 
     run_name = f"sparse-lambda-{config.train.sparsity_lambda}-lr-{config.train.learning_rate}_bs-{config.train.batch_size}-{str(config.model.hidden_sizes)}"
     if config.wandb:
@@ -87,126 +75,84 @@ def train(config: Config) -> None:
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     save_dir = config.train.save_dir / f"{run_name}_{timestamp}"
 
+    # Define the loss and optimizer # TODO i think in tflens this will be in the model
+    criterion = nn.MSELoss()
+
+    if config.optimizer_name in ["Adam", "AdamW"]:
+        # Weight decay in Adam is implemented badly, so use AdamW instead (see PyTorch AdamW docs)
+        if config.weight_decay is not None:
+            optimizer = torch.optim.AdamW(
+                trainable_parameters,
+                lr=config.train.lr,
+                weight_decay=config.weight_decay,
+            )
+        else:
+            optimizer = torch.optim.Adam(
+                trainable_parameters,
+                lr=config.lr,
+            )
+    else:
+        raise NotImplementedError(f"Optimizer not implemented: {config.optimizer_name}")
+
+    scheduler = None
+    if config.warmup_steps > 0:
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer,
+            lr_lambda=lambda step: min(1.0, step / config.warmup_steps),
+        )
+
     samples = 0
     # Training loop
-    for epoch in tqdm(range(config.train.epochs), total=config.train.epochs, desc="Epochs"):
-        for i, data in enumerate(train_loader):
-            images, labels = images.to(device), labels.to(device)
+    for epoch in tqdm(range(config.train.num_epochs), total=config.train.num_epochs, desc="Epochs"):
+        for step, data in enumerate(train_loader):
+            data = load_data_to_device(data, device)
+            data = data_preprocessing(data, config)
+            samples += get_num_minibatch_elements(data)
 
-            samples += images.shape[0]
-            # Flatten the images
-            images = images.view(images.shape[0], -1)
-
-            orig_outputs = model(images) # Consider passing orig outputs as input, so that you can interpolate.
-            mod_acts, cs, sparsifiers_outs = model_mod(images)
-            # Get final item of dict
-            mod_out = mod_acts[list(mod_acts.keys())[-1]]
-
-            # Get loss that compares each item of the hooked activations with the corresponding item of the outputs
-            loss = 0.0
-            assert len(activations) == len(mod_acts), "Number of activations and modified activations must be the same"
-
-            # Create dictionaries for the different losses so we can log in wand later
-            sp_orig_losses = {}
-            new_orig_losses = {}
-            sp_new_losses = {}
-            sparsity_losses = {}
-            zeros_counts = {}
-            zeros_fracs = {}
-
-            for l in range(len(activations)):
-                if l < len(activations) - 1:
-                    # sae-orig reconstruction loss
-                    sp_orig_losses[str(l)] = criterion(sparsifiers_outs[str(l)], activations[str(l)])
-                    loss += sp_orig_losses[str(l)]
-
-                # new-orig reconstruction loss
-                new_orig_losses[str(l)] = criterion(mod_acts[str(l)], activations[str(l)])
-                loss += new_orig_losses[str(l)]
-
-                # sae-new reconstruction loss
-                if l < len(activations) - 1:
-                    if config.train.type_of_sparsifier == 'sae':
-                        sp_new_losses[str(l)] = criterion(sparsifiers_outs[str(l)], mod_acts[str(l)])
-                    elif config.train.type_of_sparsifier == 'codebook':
-                        # Auxiliary recon loss described in Tamkin et al. (2023) p. 3
-                        sp_new_losses[str(l)] = criterion(sparsifiers_outs[str(l)], mod_acts[str(l)].detach())
-                    loss += sp_new_losses[str(l)] * config.train.sparsifier_inp_out_recon_loss_scale
-            
-            # Add L_p norm loss
-            if config.train.type_of_sparsifier == 'sae':
-                for l in range(len(cs)):
-                    sparsity_losses[str(l)] = torch.norm(cs[str(l)], p=0.6, dim=1).mean()
-                    loss += config.train.sparsity_lambda * sparsity_losses[str(l)]
-                    
-
-                # Calculate counts and fractions of zero entries in the saes per batch
-                for l in range(len(cs)):
-                    zeros_counts[str(l)] = torch.sum(cs[str(l)] == 0)
-                    zeros_fracs[str(l)] = torch.sum(cs[str(l)] == 0) / cs[str(l)].numel()
-
-            # Calculate accuracy
-            _, argmax = torch.max(mod_out, 1)
-
-            accuracy = (labels == argmax.squeeze()).float().mean()
-
-            optimizer.zero_grad()
+            loss = inference_model(data, return_type="loss") # TODO define a new return type? for the different kinds of models with intermediate activations
             loss.backward()
+            if config.max_grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(trainable_parameters, config.max_grad_norm)
             optimizer.step()
-
-            if i  % 10 == 0:
-                logger.info(
-                    "Epoch [%d/%d], Step [%d/%d], Loss: %f, Accuracy: %f",
-                    epoch + 1,
-                    config.train.epochs,
-                    i + 1,
-                    len(train_loader),
-                    loss.item(),
-                    accuracy.item(),
-                )
-
-                if config.wandb:
-                    wandb.log({"train/loss": loss.item(), "train/samples": samples}, step=samples)
-                    wandb.log({"train/accuracy": accuracy.item(), "train/samples": samples}, step=samples)
-                    for k, v in sp_orig_losses.items():
-                        wandb.log({f"train/loss-sae-orig-{k}": v.item(), "train/samples": samples}, step=samples)
-                    for k, v in new_orig_losses.items():
-                        wandb.log({f"train/loss-new-orig-{k}": v.item(), "train/samples": samples}, step=samples)
-                    for k, v in sp_new_losses.items():
-                        wandb.log({f"train/loss-sae-new-{k}": v.item(), "train/samples": samples}, step=samples)
-                    for k, v in sparsity_losses.items():
-                        wandb.log({f"train/loss-sparsity-loss-{k}": v.item(), "train/samples": samples}, step=samples)
-                    for k, v in zeros_counts.items():
-                        wandb.log({f"train/zero-counts-{k}": v.item(), "train/samples": samples}, step=samples)
-                    for k, v in zeros_fracs.items():
-                        wandb.log({f"train/fraction-zeros-{k}": v.item(), "train/samples": samples}, step=samples)
-
-        # Validate the model
-        model_mod.eval()
-        with torch.no_grad():
-            correct = 0
-            total = 0
-            for images, labels in test_loader:
-                images, labels = images.to(device), labels.to(device)
-                images = images.view(images.shape[0], -1)
-                mod_acts, cs, sparsifiers_outs = model_mod(images)
-                mod_out = mod_acts[list(mod_acts.keys())[-1]]
-                _, argmax = torch.max(mod_out, 1)
-                total += labels.size(0)
-                correct += (labels == argmax.squeeze()).sum().item()
-
-            accuracy = correct / total
-            logger.info("Accuracy of the network on the 10000 test images: %f %%", 100 * accuracy)
+            if config.warmup_steps > 0:
+                assert scheduler is not None
+                scheduler.step()
+            optimizer.zero_grad()
 
             if config.wandb:
-                wandb.log({"valid/accuracy": accuracy}, step=samples)
+                wandb.log(
+                    {"train_loss": loss.item(), "samples": samples, "epoch": epoch}
+                )
+
+            if config.print_every is not None and step % config.print_every == 0:
+                print(f"Epoch {epoch} Samples {samples} Step {step} Loss {loss.item()}")
+
+            if (
+                config.save_every is not None
+                and step % config.save_every == 0
+                and config.save_dir is not None
+            ):
+                # TODO you'll need a more complex saving function so you only save trainable parameters
+                #  in a sensible place
+                torch.save(inference_model.state_dict(), f"{config.save_dir}/model_{step}.pt")
+
+            if config.max_steps is not None and step >= config.max_steps:
+                break
 
     # Comment out because we're not saving mod models right now
     #     if config.train.save_every_n_epochs and (epoch + 1) % config.train.save_every_n_epochs == 0:
     #         save_model(json.loads(config.model_dump_json()), save_dir, model, epoch) # TODO Figure out how to save only saes
 
     if not (save_dir / f"sparse_model_epoch_{epoch + 1}.pt").exists():
-        save_model(json.loads(config.model_dump_json()), save_dir, model_mod, epoch, sparse=True) # TODO Figure out how to save only saes
+        save_trainable_params(json.loads(config.model_dump_json()), save_dir, trainable_parameters, epoch, sparse=True) # TODO Figure out how to save only saes
+
+
+def get_trainable_parameters(config, base_model, sparsified_model):
+    """Returns a list of trainable parameters for the optimizer"""
+    if sparsified_model is None:
+        return base_model.parameters()
+    elif sparsified_model is not None:
+        return sparsified_model.sparsifiers.parameters()
 
 
 def main(config_path_str: str) -> None:

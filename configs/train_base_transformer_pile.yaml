@@ -1,0 +1,80 @@
+seed: 0
+train_type: 'base_model'
+train:
+  lr: 0.001
+  batch_size: 1024
+  num_epochs: 1
+  sparsity_p_value: 1.0
+  feat_sparsity_lambda: 0.005
+  weight_sparsity_lambda: 0.0
+  sparsifier_inp_out_recon_loss_scale: 0.0
+  save_every_n_epochs: null
+  save_dir: sparsify/models
+wandb:
+  project: sparsify-pile-10k
+  entity: lee_sharkey
+data:
+  dataset: 'pile-10k'
+  dataset_path: sparsify/data
+load_base_model_path: null
+load_sparsifier_path: null
+load_transcoder_path: null
+load_skeleton_path: null
+base_model_type: 'transformer'
+base_model:
+  n_layers: 2
+  d_model: 16
+  n_ctx: 32
+  d_head: 4
+  model_name: "dev_custom"
+  n_heads: -1
+  d_mlp: null
+  act_fn: null
+  d_vocab: -1
+  eps: 1e-5
+  use_attn_result: False
+  use_attn_scale: True
+  use_split_qkv_input: False
+  use_hook_mlp_in: False
+  use_attn_in: False
+  use_local_attn: False
+  original_architecture: null
+  from_checkpoint: False
+  checkpoint_index: null
+  checkpoint_label_type: null
+  checkpoint_value: null
+  tokenizer_name: null
+  window_size: null
+  attn_types: null
+  init_mode: "gpt2"
+  normalization_type: "LN"
+  device: null
+  n_devices: 1
+  attention_dir: "causal"
+  attn_only: False
+  seed: 0
+  initializer_range: -1.0
+  init_weights: True
+  scale_attn_by_inverse_layer_idx: False
+  positional_embedding_type: "standard"
+  final_rms: False
+  d_vocab_out: -1
+  parallel_attn_mlp: False
+  rotary_dim: null
+  n_params: null
+  use_hook_tokens: False
+  gated_mlp: False
+  default_prepend_bos: True
+  dtype: torch.float32
+  tokenizer_prepends_bos: null
+  post_embedding_ln: False
+  trust_remote_code: False
+  rotary_adjacent_pairs: False
+sparsifiers:
+  type: 'sae'
+  dict_eles_to_input_ratio: 2.0
+  use_bias: true
+  k: null
+transcoder: null
+skeleton: null
+

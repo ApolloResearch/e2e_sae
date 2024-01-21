@@ -21,6 +21,8 @@ from typing import List, Optional, Dict, Type
 import yaml
 from pydantic import BaseModel as PydanticBaseModel 
 from pydantic import validator
+from transformer_lens import HookedTransformerConfig
+
 # Atypical import: BaseModel is a pydantic class whereas 'BaseModel' in 
 # e.g. 'BaseModelMLPConfig' is a neural network. They're unrelated.
 
@@ -28,16 +30,15 @@ class ModelConfig(PydanticBaseModel):
     pass
 
 class BaseModelConfig(ModelConfig):
-    type: str
-    
+    pass
+
 class BaseModelMLPConfig(BaseModelConfig):
-    type: str
     input_size: int
     hidden_sizes: Optional[List[int]]
     output_size: int
 
-class BaseModelTransformerConfig(BaseModelConfig):
-    pass
+# class BaseModelTransformerConfig(BaseModelConfig):
+#     pass
 
 class SparsifierConfig(PydanticBaseModel):
     type: str
@@ -96,6 +97,8 @@ class Config(PydanticBaseModel):
     load_meta_sae_path: Optional[Path] = None
 
     base_model: Optional[BaseModelConfig] = None
+    base_model_type: Optional[str] = None
+    base_model_pretrained_name: Optional[str] = None
     sparsifiers: Optional[SparsifierConfig] = None
     transcoders: Optional[SparsifierConfig] = None
     meta_sae: Optional[SparsifierConfig] = None
@@ -109,11 +112,12 @@ def load_config(config_path: Path) -> Config:
     with open(config_path, "r") as f:
         top_level_config_dict = yaml.safe_load(f)
 
+    # Use factory function to create base_model instance
+    base_model_config = model_config_factory(top_level_config_dict)
+
     # Instantiate the top-level config
     top_level_config = Config(**top_level_config_dict)
-
-    # Use factory function to create base_model instance
-    top_level_config.base_model = model_config_factory(top_level_config_dict['base_model'])
+    top_level_config.base_model = base_model_config
 
     # Ensure that the train_type has valid model configs
     validate_train_type(top_level_config)
@@ -173,7 +177,7 @@ def loading_models_from_path_or_config(top_level_config):
 
     return top_level_config
 
-def model_config_factory(config_dict: Dict) -> BaseModelConfig:
+def model_config_factory(config: Config) -> BaseModelConfig:
     """
     Factory function to create an instance of the correct BaseModelConfig subclass 
     based on the 'type' field in the provided configuration dictionary.
@@ -188,20 +192,19 @@ def model_config_factory(config_dict: Dict) -> BaseModelConfig:
     # Mapping of type values to corresponding model config classes
     model_type_to_class: Dict[str, Type[BaseModelConfig]] = {
         'mlp': BaseModelMLPConfig,
-        'transformer': BaseModelTransformerConfig
+        'transformer': HookedTransformerConfig
     }
 
-    # Extract the type from the config dict
-    model_type = config_dict.get('type')
+    # Extract the type from the config dict and remove the type item
+    model_type = config['base_model_type']
 
     # Get the appropriate class for the given type
     model_class = model_type_to_class.get(model_type)
-
     if model_class is None:
         raise ValueError(f"Unknown model type: {model_type}")
 
     # Create an instance of the model class with the config dictionary
-    return model_class(**config_dict)
+    return model_class(**config['base_model'])
 
 def load_specific_config(config_class: PydanticBaseModel, config_path: Path) -> PydanticBaseModel:
     """Load a specific config from a YAML file into the specified Pydantic model."""

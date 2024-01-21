@@ -4,7 +4,7 @@ from torch import nn
 from sparsify.models import MLP, SparsifiedMLP
 from sparsify.models.sparsifiers import SAE, Codebook, DecomposedMatrix
 from sparsify.configs import Config, get_yaml_at_path, SparsifiedModelConfig
-
+from transformer_lens import HookedTransformer, HookedTransformerConfig
 
 def get_base_model(config: Config):
     """Get the base model."""
@@ -26,7 +26,21 @@ def get_base_model(config: Config):
             pass
 
     elif config.base_model.type == 'transformer':
-        raise NotImplementedError
+        check_only_one = (config.base_model_pretrained_name is not None) + (config.base_model_pretrained_path is not None) + (config.base_model is not None) == 1
+        assert check_only_one, "Must specify only one of 'base_model_pretrained_name', 'base_model_pretrained_path', or 'base_model' in the top-level config."
+
+        if config.base_model_pretrained_name:
+            base_model = HookedTransformer.from_pretrained(config.base_model_pretrained_name)
+        elif config.base_model_pretrained_path:
+            base_model_config = get_yaml_at_path(config.load_base_model_path)
+            config.base_model = base_model_config
+            base_model_config = HookedTransformerConfig(**config.base_model)
+            base_model = HookedTransformer(HookedTransformerConfig)
+        elif config.base_model:
+            base_model_config = HookedTransformerConfig(**config.base_model)
+            base_model = HookedTransformer(HookedTransformerConfig)
+        else:
+            raise ValueError("Must specify either 'base_model_pretrained_name', 'base_model_pretrained_path', or 'base_model' in the top-level config.")    
     
     return base_model
 

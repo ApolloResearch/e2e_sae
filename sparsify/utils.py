@@ -8,7 +8,7 @@ from torch import nn
 from sparsify.log import logger
 
 
-def save_model(config_dict: Dict[str, Any], save_dir: Path, model: nn.Module, epoch: int, sparse: bool) -> None:
+def save_trainable_params(config_dict: Dict[str, Any], save_dir: Path, model: nn.Module, epoch: int, sparse: bool) -> None:
     # If the save_dir doesn't exist, create it and save the config
     if not save_dir.exists():
         save_dir.mkdir(parents=True)
@@ -16,6 +16,8 @@ def save_model(config_dict: Dict[str, Any], save_dir: Path, model: nn.Module, ep
         with open(save_dir / "config.yaml", "w") as f:
             yaml.dump(config_dict, f)
     logger.info("Saving model to %s", save_dir)
+    # Get name of trainable parameters
+    
     if not sparse:
         torch.save(model.state_dict(), save_dir / f"model_epoch_{epoch + 1}.pt")
     else:
