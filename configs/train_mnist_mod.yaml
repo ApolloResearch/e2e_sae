@@ -3,6 +3,7 @@ model:
   hidden_sizes:
     - 100
     - 100
+train_type: 'sparsified_model'
 train:
   learning_rate: 0.001
   batch_size: 1024
@@ -18,3 +19,7 @@ train:
 wandb:
   project: mlp-mnist-sae
   entity: lee_sharkey
+load_base_model_path: null
+load_sparsifier_path: null
+load_transcoder_path: null
+load_skeleton_path: null

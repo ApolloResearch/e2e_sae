@@ -1,14 +1,37 @@
 seed: 0
-model:
-  hidden_sizes:
-    - 100
-    - 100
+train_type: 'base_model'
 train:
   learning_rate: 0.001
   batch_size: 1024
-  epochs: 30
-  save_dir: sparsify/models
+  epochs: 1
+  sparsity_p_value: 1.0
+  feat_sparsity_lambda: 0.005
+  weight_sparsity_lambda: 0.0
+  sparsifier_inp_out_recon_loss_scale: 0.0
   save_every_n_epochs: null
+  save_dir: sparsify/models
 wandb:
   project: mlp-mnist-sae
   entity: lee_sharkey
+data:
+  dataset: 'mnist'
+  data_dir: sparsify/data
+load_base_model_path: null
+load_sparsifier_path: null
+load_transcoder_path: null
+load_skeleton_path: null
+base_model:
+  type: 'mlp'
+  input_size: 784
+  hidden_sizes:
+    - 100
+    - 100
+  output_size: 10
+sparsifiers:
+  type: 'sae'
+  dict_eles_to_input_ratio: 2.0
+  use_bias: true
+  k: null
+transcoder: null
+skeleton: null
+
