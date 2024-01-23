@@ -4,3 +4,4 @@ pydantic~=2.0
 wandb~=0.15.4
 fire~=0.5.0
 tqdm~=4.65.0
+jaxtyping~=0.2.25

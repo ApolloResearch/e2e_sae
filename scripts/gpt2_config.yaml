@@ -1,0 +1,8 @@
+tlens_model_name: gpt2-small
+input_size: 768
+n_dict_components: 10
+sae_orig: true
+sae_sparsity: true
+train:
+  batch_size: 3
+  lr: 1e-3
