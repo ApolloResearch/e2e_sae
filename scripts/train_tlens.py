@@ -46,18 +46,21 @@ class SAETransformer(nn.Module):
 
         if len(args) == 1:
             self.tlens_model.to(device_or_dtype=args[0])
+        elif len(args) == 2:
+            self.tlens_model.to(device_or_dtype=args[0])
+            self.tlens_model.to(device_or_dtype=args[1])
         elif len(kwargs) == 1:
             if "device" or "dtype" in kwargs:
                 arg = kwargs["device"] if "device" in kwargs else kwargs["dtype"]
                 self.tlens_model.to(device_or_dtype=arg)
             else:
                 raise ValueError("Invalid keyword argument.")
-        else:
-            assert len(args) == 2, "Invalid number of arguments."
-            # Assert that we have a device and dtype
+        elif len(kwargs) == 2:
             assert "device" in kwargs and "dtype" in kwargs, "Invalid keyword arguments."
             self.tlens_model.to(device_or_dtype=kwargs["device"])
             self.tlens_model.to(device_or_dtype=kwargs["dtype"])
+        else:
+            raise ValueError("Invalid arguments.")
 
         self.saes.to(*args, **kwargs)
         return self
