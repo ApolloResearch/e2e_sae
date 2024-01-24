@@ -15,7 +15,7 @@ setup(
     author="Apollo Research",
     author_email="lee@apolloresearch.ai",
     url="https://github.com/ApolloResearch/sparsify",
-    packages=find_packages(),
+    packages=find_packages(include=["sparsify", "sparsify.*"]),
     install_requires=requirements,
     extras_require={
         "dev": [

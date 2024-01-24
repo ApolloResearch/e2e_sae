@@ -8,8 +8,8 @@
             "name": "train gpt2",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/scripts/train_tlens.py",
-            "args": "${workspaceFolder}/scripts/gpt2_config.yaml",
+            "program": "${workspaceFolder}/scripts/train_tlens_saes/run_train_tlens_saes.py",
+            "args": "${workspaceFolder}/scripts/train_tlens_saes/gpt2.yaml",
             "console": "integratedTerminal",
             "justMyCode": true
         },
@@ -17,8 +17,8 @@
             "name": "train_custom",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/scripts/train_tlens.py",
-            "args": "${workspaceFolder}/scripts/config_devy.yaml",
+            "program": "${workspaceFolder}/scripts/train_tlens_saes/run_train_tlens_saes.py",
+            "args": "${workspaceFolder}/scripts/train_tlens_saes/custom_model.yaml",
             "console": "integratedTerminal",
             "justMyCode": true
         }

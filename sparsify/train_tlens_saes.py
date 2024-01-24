@@ -1,15 +1,16 @@
+from functools import partial
 from typing import Any, Literal, Optional
 
 import fire
 import torch
 from jaxtyping import Float
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
-from torch import Tensor, nn
+from torch import Tensor
 from transformer_lens import HookedTransformer, HookedTransformerConfig, evals
+from transformer_lens.hook_points import HookPoint
 
-from sparsify.hook_fns import sae_acts_pre_forward_hook_fn
-from sparsify.hook_manager import Hook, HookedModel
 from sparsify.models.sparsifiers import SAE
+from sparsify.models.transformers import SAETransformer
 from sparsify.utils import load_config
 
 StrDtype = Literal["float32", "float64", "bfloat16"]
@@ -34,9 +35,9 @@ class HookedTransformerPreConfig(BaseModel):
 
     @field_validator("dtype", mode="before")
     @classmethod
-    def dtype_to_torch_dtype(cls, v: str) -> torch.dtype:
-        if v not in TORCH_DTYPES:
-            raise ValueError(f"Invalid dtype {v}.")
+    def dtype_to_torch_dtype(cls, v: Optional[StrDtype]) -> Optional[torch.dtype]:
+        if v is None:
+            return None
         return TORCH_DTYPES[v]
 
 
@@ -49,6 +50,7 @@ class Config(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     tlens_model_name: Optional[str] = None
     tlens_config: Optional[HookedTransformerPreConfig] = None
+    sae_position_name: str
     input_size: int
     n_dict_components: int
     sae_orig: bool
@@ -58,53 +60,23 @@ class Config(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def check_only_one_model_definition(cls, values: dict[str, Any]) -> dict[str, Any]:
-        assert (values["tlens_model_name"] is None) + (
-            values["tlens_config"] is None
+        assert (values.get("tlens_model_name") is not None) + (
+            values.get("tlens_config") is not None
         ) == 1, "Must specify exactly one of tlens_model_name or tlens_config."
         return values
 
 
-class SAETransformer(nn.Module):
-    def __init__(self, tflens_model: HookedTransformer, config: Config):
-        super().__init__()
-        self.tlens_model = tflens_model
-        self.saes = nn.ModuleDict()
-        for i in range(self.tlens_model.cfg.n_layers):
-            self.saes[str(i)] = SAE(
-                input_size=config.input_size, n_dict_components=config.n_dict_components
-            )
-        # TODO: find a better way to specify positions
-        self.sae_position_name = "hook_resid_post"
-
-    def forward(self, x: Tensor) -> Tensor:
-        return self.tlens_model(x)
-
-    def to(self, *args, **kwargs) -> "SAETransformer":
-        """TODO: Fix this. Tlens implementation of to makes this annoying"""
-
-        if len(args) == 1:
-            self.tlens_model.to(device_or_dtype=args[0])
-        elif len(args) == 2:
-            self.tlens_model.to(device_or_dtype=args[0])
-            self.tlens_model.to(device_or_dtype=args[1])
-        elif len(kwargs) == 1:
-            if "device" or "dtype" in kwargs:
-                arg = kwargs["device"] if "device" in kwargs else kwargs["dtype"]
-                self.tlens_model.to(device_or_dtype=arg)
-            else:
-                raise ValueError("Invalid keyword argument.")
-        elif len(kwargs) == 2:
-            assert "device" in kwargs and "dtype" in kwargs, "Invalid keyword arguments."
-            self.tlens_model.to(device_or_dtype=kwargs["device"])
-            self.tlens_model.to(device_or_dtype=kwargs["dtype"])
-        else:
-            raise ValueError("Invalid arguments.")
-
-        self.saes.to(*args, **kwargs)
-        return self
+def sae_hook(
+    value: Float[torch.Tensor, "... d_head"], hook: HookPoint, sae: SAE, hook_acts: dict[str, Any]
+) -> Float[torch.Tensor, "... d_head"]:
+    """Runs the SAE on the input and stores the output and c in hook_acts."""
+    output, c = sae(value)
+    hook_acts["output"] = output
+    hook_acts["c"] = c
+    return output
 
 
-def get_loss(
+def calc_loss(
     orig_acts: dict[str, Tensor],
     sae_acts: dict[str, dict[str, Tensor]],
     sae_orig: bool,
@@ -138,38 +110,32 @@ def get_loss(
     return loss
 
 
-def train(config: Config, hooked_model: HookedModel, device: torch.device) -> None:
-    assert isinstance(hooked_model.model, SAETransformer)
-    tokenizer = hooked_model.model.tlens_model.tokenizer
+def train(config: Config, model: SAETransformer, device: torch.device) -> None:
+    tokenizer = model.tlens_model.tokenizer
+    assert tokenizer is not None, "Tokenizer must be defined for training."
     train_loader = evals.make_pile_data_loader(tokenizer, batch_size=config.train.batch_size)
 
-    optimizer = torch.optim.Adam(hooked_model.model.saes.parameters(), lr=config.train.lr)
+    optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
+    sae_acts = {layer: {} for layer in model.saes.keys()}
 
-    orig_resid_names = lambda name: hooked_model.model.sae_position_name in name
+    orig_resid_names = lambda name: model.sae_position_name in name
     for batch in train_loader:
         tokens = batch["tokens"].to(device=device)
         # Run model without SAEs
         with torch.inference_mode():
-            _, orig_acts = hooked_model.model.tlens_model.run_with_cache(
-                tokens, names_filter=orig_resid_names
-            )
+            _, orig_acts = model.tlens_model.run_with_cache(tokens, names_filter=orig_resid_names)
 
         # Run model with SAEs
-        hooks = [
-            Hook(
-                name=f"blocks.{i}.{hooked_model.model.sae_position_name}",
-                data_key=["output", "c"],
-                fn=sae_acts_pre_forward_hook_fn,
-                module_name=f"tlens_model.blocks.{i}.{hooked_model.model.sae_position_name}",
-                fn_kwargs={"sae": hooked_model.model.saes[f"{i}"]},
-            )
-            for i in range(hooked_model.model.tlens_model.cfg.n_layers)
+        sae_acts = {hook_name: {} for hook_name in orig_acts}
+        fwd_hooks = [
+            (hook_name, partial(sae_hook, sae=model.saes[str(i)], hook_acts=sae_acts[hook_name]))
+            for i, hook_name in enumerate(orig_acts)
         ]
-        hooked_model(tokens, hooks=hooks)
+        model.tlens_model.run_with_hooks(tokens, fwd_hooks=fwd_hooks)
 
-        loss = get_loss(
+        loss = calc_loss(
             orig_acts=orig_acts,
-            sae_acts=hooked_model.hooked_data,
+            sae_acts=sae_acts,
             sae_orig=config.sae_orig,
             sae_sparsity=config.sae_sparsity,
         )
@@ -187,9 +153,9 @@ def main(config_path_str: str) -> None:
     else:
         hooked_transformer_config = HookedTransformerConfig(**config.tlens_config.model_dump())
         tlens_model = HookedTransformer(hooked_transformer_config)
+
     model = SAETransformer(tlens_model, config).to(device=device)
-    hooked_model = HookedModel(model)
-    train(config, hooked_model, device=device)
+    train(config, model, device=device)
 
 
 if __name__ == "__main__":

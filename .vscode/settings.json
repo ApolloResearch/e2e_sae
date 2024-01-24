@@ -22,7 +22,7 @@
         "wandb",
     ],
     "editor.codeActionsOnSave": {
-        "source.organizeImports": true
+        "source.organizeImports": "explicit"
     },
     "github.copilot.enable": {
         "*": true,
