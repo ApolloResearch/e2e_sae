@@ -13,5 +13,14 @@
             "console": "integratedTerminal",
             "justMyCode": true
         },
+        {
+            "name": "train_custom",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/train_tlens.py",
+            "args": "${workspaceFolder}/scripts/config_devy.yaml",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
     ]
 }
