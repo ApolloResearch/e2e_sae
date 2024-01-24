@@ -1,4 +1,4 @@
-tlens_model_name: gpt2-small
+tlens_model_name: pythia-14m
 tlens_config: null
 input_size: 768
 n_dict_components: 10
