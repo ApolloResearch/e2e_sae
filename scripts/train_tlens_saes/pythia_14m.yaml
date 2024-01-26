@@ -1,10 +1,11 @@
 tlens_model_name: pythia-14m
 tlens_config: null
-sae_position_name: hook_resid_post
-input_size: 768
-n_dict_components: 10
-sae_orig: true
-sae_sparsity: true
+saes:
+  dict_size_to_input_ratio: 2.0
+  sae_position_name: hook_resid_post
 train:
   batch_size: 3
   lr: 1e-3
+wandb:
+  project: sparsify
+  entity: lee
