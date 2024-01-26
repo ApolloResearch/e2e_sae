@@ -4,8 +4,14 @@ saes:
   dict_size_to_input_ratio: 2.0
   sae_position_name: hook_resid_post
 train:
+  seed: 0
+  num_epochs: 2
   batch_size: 3
   lr: 1e-3
+  act_sparsity_lambda: 0.001
+  sparsity_p_norm: 1.0
+  warmup_steps: 0
+  max_grad_norm: 10.0
 wandb:
   project: sparsify
   entity: lee

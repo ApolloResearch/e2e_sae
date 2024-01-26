@@ -4,6 +4,7 @@ Takes care of configs for training MLPs on MNIST and then training the
 Modified Models.
 
 """
+
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -46,10 +47,16 @@ class HookedTransformerPreConfig(BaseModel):
 
 
 class TrainConfig(BaseModel):
+    seed: int = 0
+    num_epochs: int
     batch_size: int
     lr: float
+    scheduler: Optional[str] = None
+    warmup_steps: int = 0
+    max_grad_norm: Optional[float] = None
     act_sparsity_lambda: Optional[float] = 0.0
     w_sparsity_lambda: Optional[float] = 0.0
+    sparsity_p_norm: float = 1.0
     loss_include_sae_orig: bool = True
     loss_include_sae_sparsity: bool = True
 
@@ -67,7 +74,7 @@ class Config(BaseModel):
     tlens_config: Optional[HookedTransformerPreConfig] = None
     train: TrainConfig
     saes: SparsifiersConfig
-    wandb: Optional[WandbConfig]
+    wandb: Optional[WandbConfig] = None
 
     @model_validator(mode="before")
     @classmethod
