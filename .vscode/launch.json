@@ -21,6 +21,15 @@
             "args": "${workspaceFolder}/scripts/train_tlens_saes/custom_model.yaml",
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "train_pythia",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/train_tlens_saes/run_train_tlens_saes.py",
+            "args": "${workspaceFolder}/scripts/train_tlens_saes/pythia_14m.yaml",
+            "console": "integratedTerminal",
+            "justMyCode": true
         }
     ]
 }
