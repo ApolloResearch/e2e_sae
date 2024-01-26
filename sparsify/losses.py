@@ -60,13 +60,13 @@ def calc_loss(
             loss += loss_sparsity
 
         # Record L_0 norm of the cs
-        # l_0_norm = torch.norm(sae_act["c"], 
-        #                                p=0, 
-        #                                dim=-1).mean()
-        # loss_dict[f"sparsity/L_0/{name}"] = l_0_norm
+        l_0_norm = torch.norm(sae_act["c"], 
+                                       p=0, 
+                                       dim=-1).mean()
+        loss_dict[f"sparsity/L_0/{name}"] = l_0_norm
 
-        # # Record fraction of zeros in the cs
-        # frac_zeros = (sae_act["c"] == 0).sum() / sae_act["c"].numel()
-        # loss_dict[f"sparsity/frac_zeros/{name}"] = frac_zeros
+        # Record fraction of zeros in the cs
+        frac_zeros = (sae_act["c"] == 0).sum() / sae_act["c"].numel()
+        loss_dict[f"sparsity/frac_zeros/{name}"] = frac_zeros
 
     return loss, loss_dict

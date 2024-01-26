@@ -49,7 +49,7 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
     train_loader = evals.make_pile_data_loader(tokenizer, batch_size=config.train.batch_size)
 
     sae_acts = {layer: {} for layer in model.saes.keys()}
-    performance_criterion = torch.nn.CrossEntropyLoss()
+
     samples = 0
     orig_resid_names = lambda name: model.sae_position_name in name
     for epoch in tqdm(range(1, config.train.num_epochs + 1)):
@@ -58,7 +58,7 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
 
             # Run model without SAEs
             with torch.inference_mode():
-                orig_logits, orig_acts = model.tlens_model.run_with_cache(tokens, names_filter=orig_resid_names, return_type='logits') # (B, T, d_model), dict[str, Tensor]
+                orig_logits, orig_acts = model.tlens_model.run_with_cache(tokens, names_filter=orig_resid_names) # (B, T, d_model), dict[str, Tensor]
 
             # Run model with SAEs
             sae_acts = {hook_name: {} for hook_name in orig_acts} 
@@ -66,18 +66,7 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                 (hook_name, partial(sae_hook, sae=model.saes[str(i)], hook_acts=sae_acts[hook_name]))
                 for i, hook_name in enumerate(orig_acts)
             ]
-            new_logits = model.tlens_model.run_with_hooks(tokens, fwd_hooks=fwd_hooks, return_type='logits') # (B, T, d_model)
-
-            # Measure performance on this batch (Not directly optimized)
-            # orig_model_performance_loss = lm_cross_entropy_loss(orig_logits, tokens, per_token=False)
-            # orig_model_performance_acc = lm_accuracy(orig_logits, tokens, per_token=False)
-            # sae_model_performance_loss = lm_cross_entropy_loss(new_logits, tokens, per_token=False)
-            # sae_model_performance_acc = lm_accuracy(new_logits, tokens, per_token=False)            
-            # kl_div = torch.nn.functional.kl_div(
-            #     torch.nn.functional.log_softmax(new_logits.view(-1, new_logits.shape[-1]), dim=-1),
-            #     torch.nn.functional.softmax(orig_logits.view(-1, orig_logits.shape[-1]), dim=-1),
-            #     reduction="batchmean",
-            # ) # Unsure if this is correct
+            new_logits = model.tlens_model.run_with_hooks(tokens, fwd_hooks=fwd_hooks) # (B, T, d_model)
 
             loss, loss_dict = calc_loss(  # Directly optimized
                 config=config, 
@@ -110,13 +99,28 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                 if config.train.max_grad_norm is not None:
                     wandb.log({"grad_norm": grad_norm.item(), "samples": samples, "epoch": epoch})
 
-                # wandb.log({"performance/orig_model_performance_loss": orig_model_performance_loss.item(), "samples": samples, "epoch": epoch})
-                # wandb.log({"performance/orig_model_performance_acc": orig_model_performance_acc.item(), "samples": samples, "epoch": epoch})
-                # wandb.log({"performance/sae_model_performance_loss": sae_model_performance_loss.item(), "samples": samples, "epoch": epoch})
-                # wandb.log({"performance/sae_model_performance_acc": sae_model_performance_acc.item(), "samples": samples, "epoch": epoch})
-                # wandb.log({"performance/difference_loss": (orig_model_performance_loss - sae_model_performance_loss).item(), "samples": samples, "epoch": epoch})
-                # wandb.log({"performance/difference_acc": (orig_model_performance_acc - sae_model_performance_acc).item(), "samples": samples, "epoch": epoch})
-                # wandb.log({"performance/kl_div": kl_div.item(), "samples": samples, "epoch": epoch})
+                if step == 0 or step % 5 == 0:
+                    orig_model_performance_loss = lm_cross_entropy_loss(orig_logits, tokens, per_token=False)
+                    orig_model_performance_acc = lm_accuracy(orig_logits, tokens, per_token=False)
+                    sae_model_performance_loss = lm_cross_entropy_loss(new_logits, tokens, per_token=False)
+                    sae_model_performance_acc = lm_accuracy(new_logits, tokens, per_token=False)    
+                    flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
+                    flat_new_logits = new_logits.view(-1, new_logits.shape[-1])        
+                    kl_div = torch.nn.functional.kl_div(
+                        torch.nn.functional.log_softmax(flat_new_logits, dim=-1),
+                        torch.nn.functional.softmax(flat_orig_logits, dim=-1),
+                        reduction="batchmean",
+                    ) # Unsure if this is correct
+
+                    wandb.log({"performance/orig_model_performance_loss": orig_model_performance_loss.item(), "samples": samples, "epoch": epoch})
+                    wandb.log({"performance/orig_model_performance_acc": orig_model_performance_acc.item(), "samples": samples, "epoch": epoch})
+                    wandb.log({"performance/sae_model_performance_loss": sae_model_performance_loss.item(), "samples": samples, "epoch": epoch})
+                    wandb.log({"performance/sae_model_performance_acc": sae_model_performance_acc.item(), "samples": samples, "epoch": epoch})
+                    wandb.log({"performance/difference_loss": (orig_model_performance_loss - sae_model_performance_loss).item(), "samples": samples, "epoch": epoch})
+                    wandb.log({"performance/difference_acc": (orig_model_performance_acc - sae_model_performance_acc).item(), "samples": samples, "epoch": epoch})
+                    wandb.log({"performance/kl_div": kl_div.item(), "samples": samples, "epoch": epoch})
+
+                    
             
             # TODO sae saving
 
@@ -126,6 +130,8 @@ def main(config_path_str: str) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config = load_config(config_path_str, config_model=Config)
 
+    seed = config.train.seed
+    torch.manual_seed(seed)
     if config.tlens_model_name is not None:
         tlens_model = HookedTransformer.from_pretrained(config.tlens_model_name)
     else:
