@@ -57,7 +57,9 @@ class TrainConfig(BaseModel):
     act_sparsity_lambda: Optional[float] = 0.0
     w_sparsity_lambda: Optional[float] = 0.0
     sparsity_p_norm: float = 1.0
-    loss_include_sae_orig: bool = True
+    loss_include_sae_inp_orig: bool = True
+    loss_include_sae_out_orig: bool = True
+    loss_include_sae_inp_sae_out: bool = True
     loss_include_sae_sparsity: bool = True
 
 
