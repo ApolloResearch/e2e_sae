@@ -50,6 +50,7 @@ class TrainConfig(BaseModel):
     seed: int = 0
     num_epochs: int
     batch_size: int
+    effective_batch_size: Optional[int] = None
     lr: float
     scheduler: Optional[str] = None
     warmup_steps: int = 0
@@ -84,6 +85,12 @@ class Config(BaseModel):
         assert (values.get("tlens_model_name") is not None) + (
             values.get("tlens_config") is not None
         ) == 1, "Must specify exactly one of tlens_model_name or tlens_config."
+        return values
+    
+    @model_validator(mode="before")
+    @classmethod
+    def check_effective_batch_size(cls, values: dict[str, Any]) -> dict[str, Any]:
+        assert values["train"]["effective_batch_size"] % values["train"]["batch_size"] == 0, "effective_batch_size must be a multiple of batch_size."
         return values
 
 

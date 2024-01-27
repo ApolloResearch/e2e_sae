@@ -11,6 +11,8 @@ def calc_loss(
     config: Config,
     orig_acts: dict[str, Tensor],
     sae_acts: dict[str, dict[str, Tensor]],
+    orig_logits: Tensor,
+    new_logits: Tensor,
 ) -> Float[Tensor, ""]:
     """Compute loss between orig_acts and sae_acts.
 
@@ -32,6 +34,11 @@ def calc_loss(
     loss_dict = {}
 
     # TODO Future: Maintain a record of batch-element-wise losses
+
+    # Calculate difference of logits
+    loss_logits = torch.nn.functional.mse_loss(new_logits, orig_logits.clone().detach())  # TODO explore KL and other losses
+    loss_dict["loss/logits"] = loss_logits
+    loss += loss_logits
 
     for name, orig_act in orig_acts.items():
         # Convert from inference tensor. TODO: Make more memory efficient

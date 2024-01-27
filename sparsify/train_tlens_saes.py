@@ -51,8 +51,13 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
     sae_acts = {layer: {} for layer in model.saes.keys()}
 
     samples = 0
+    grad_updates = 0
+    n_gradient_accumulation_steps = config.train.effective_batch_size // config.train.batch_size
     orig_resid_names = lambda name: model.sae_position_name in name
     for epoch in tqdm(range(1, config.train.num_epochs + 1)):
+        # Now do gradient accumulation
+
+
         for step, batch in tqdm(enumerate(train_loader)):
             tokens = batch["tokens"].to(device=device) # (B, T)
 
@@ -72,32 +77,39 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                 config=config, 
                 orig_acts=orig_acts,
                 sae_acts=sae_acts,
+                orig_logits=orig_logits,
+                new_logits=new_logits,
             )
-            optimizer.zero_grad()
+
+            loss = loss / n_gradient_accumulation_steps
+
             loss.backward()
             if config.train.max_grad_norm is not None:
                 grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.train.max_grad_norm)
 
+            if (step + 1) % n_gradient_accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+                grad_updates += 1
 
-            optimizer.step()
-
-            if config.train.warmup_steps > 0:
-                assert scheduler is not None
-                scheduler.step()
+                if config.train.warmup_steps > 0:
+                    assert scheduler is not None
+                    scheduler.step()
+                    
             samples += tokens.shape[0]
 
             if step == 0 or step % 5 == 0:
-                print(f"Epoch {epoch} Samples {samples} Step {step} Loss {loss.item()}")
+                print(f"Epoch {epoch} Samples {samples} Step {step} GradUpdates {grad_updates} Loss {loss.item()}")
 
             if config.wandb:
                 wandb.log(
-                    {"train_loss": loss.item(), "samples": samples, "epoch": epoch}
+                    {"train_loss": loss.item(), "samples": samples, "epoch": epoch, "grad_updates": grad_updates}
                 )
                 for loss_name, loss_value in loss_dict.items():
-                    wandb.log({loss_name: loss_value.item(), "samples": samples, "epoch": epoch})
+                    wandb.log({loss_name: loss_value.item(), "samples": samples, "epoch": epoch, "grad_updates": grad_updates})
                 
                 if config.train.max_grad_norm is not None:
-                    wandb.log({"grad_norm": grad_norm.item(), "samples": samples, "epoch": epoch})
+                    wandb.log({"grad_norm": grad_norm.item(), "samples": samples, "epoch": epoch, "grad_updates": grad_updates})
 
                 if step == 0 or step % 5 == 0:
                     orig_model_performance_loss = lm_cross_entropy_loss(orig_logits, tokens, per_token=False)
@@ -106,19 +118,19 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                     sae_model_performance_acc = lm_accuracy(new_logits, tokens, per_token=False)    
                     flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
                     flat_new_logits = new_logits.view(-1, new_logits.shape[-1])        
-                    kl_div = torch.nn.functional.kl_div(
-                        torch.nn.functional.log_softmax(flat_new_logits, dim=-1),
-                        torch.nn.functional.softmax(flat_orig_logits, dim=-1),
-                        reduction="batchmean",
-                    ) # Unsure if this is correct
+                    # kl_div = torch.nn.functional.kl_div(
+                    #     torch.nn.functional.log_softmax(flat_new_logits, dim=-1),
+                    #     torch.nn.functional.softmax(flat_orig_logits, dim=-1),
+                    #     reduction="batchmean",
+                    # ) # Unsure if this is correct. Also it's expensive in terms of memory.
 
-                    wandb.log({"performance/orig_model_performance_loss": orig_model_performance_loss.item(), "samples": samples, "epoch": epoch})
-                    wandb.log({"performance/orig_model_performance_acc": orig_model_performance_acc.item(), "samples": samples, "epoch": epoch})
-                    wandb.log({"performance/sae_model_performance_loss": sae_model_performance_loss.item(), "samples": samples, "epoch": epoch})
-                    wandb.log({"performance/sae_model_performance_acc": sae_model_performance_acc.item(), "samples": samples, "epoch": epoch})
-                    wandb.log({"performance/difference_loss": (orig_model_performance_loss - sae_model_performance_loss).item(), "samples": samples, "epoch": epoch})
-                    wandb.log({"performance/difference_acc": (orig_model_performance_acc - sae_model_performance_acc).item(), "samples": samples, "epoch": epoch})
-                    wandb.log({"performance/kl_div": kl_div.item(), "samples": samples, "epoch": epoch})
+                    wandb.log({"performance/orig_model_performance_loss": orig_model_performance_loss.item(), "samples": samples, "epoch": epoch, "grad_updates": grad_updates})
+                    wandb.log({"performance/orig_model_performance_acc": orig_model_performance_acc.item(), "samples": samples, "epoch": epoch, "grad_updates": grad_updates})
+                    wandb.log({"performance/sae_model_performance_loss": sae_model_performance_loss.item(), "samples": samples, "epoch": epoch, "grad_updates": grad_updates})
+                    wandb.log({"performance/sae_model_performance_acc": sae_model_performance_acc.item(), "samples": samples, "epoch": epoch, "grad_updates": grad_updates})
+                    wandb.log({"performance/difference_loss": (orig_model_performance_loss - sae_model_performance_loss).item(), "samples": samples, "epoch": epoch, "grad_updates": grad_updates})
+                    wandb.log({"performance/difference_acc": (orig_model_performance_acc - sae_model_performance_acc).item(), "samples": samples, "epoch": epoch, "grad_updates": grad_updates})
+                    # wandb.log({"performance/kl_div": kl_div.item(), "samples": samples, "epoch": epoch})
 
                     
             
