@@ -48,6 +48,7 @@ class HookedTransformerPreConfig(BaseModel):
 
 class TrainConfig(BaseModel):
     seed: int = 0
+    dataset: str
     num_epochs: int
     batch_size: int
     effective_batch_size: Optional[int] = None

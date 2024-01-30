@@ -1,23 +1,23 @@
-tlens_model_name: pythia-14m
+tlens_model_name: tiny-stories-1M
 tlens_config: null
 saes:
   dict_size_to_input_ratio: 2.0
   sae_position_name: hook_resid_post
 train:
   seed: 0
-  dataset: pile10k
-  num_epochs: 300
+  dataset: tinystories
+  num_epochs: 30
   batch_size: 8
-  effective_batch_size: 256
+  effective_batch_size: 128
   lr: 1e-3
-  act_sparsity_lambda: 0.0
+  act_sparsity_lambda: 0.001
   sparsity_p_norm: 0.7
   warmup_steps: 0
   max_grad_norm: 1.0
-  loss_include_sae_inp_orig: True
-  loss_include_sae_out_orig: True
+  loss_include_sae_inp_orig: False
+  loss_include_sae_out_orig: False
   loss_include_sae_inp_sae_out: False
-  loss_include_sae_sparsity: True
+  loss_include_sae_sparsity: False
 wandb:
   project: sparsify
   entity: lee
