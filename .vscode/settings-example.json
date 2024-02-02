@@ -5,8 +5,7 @@
             "source.fixAll": "explicit",
             "source.organizeImports": "explicit"
         },
-        "editor.defaultFormatter": "charliermarsh.ruff",
-        // Turn off all pylance features except for semantic highlighting
+        "editor.defaultFormatter": "charliermarsh.ruff"
     },
     "github.copilot.enable": {
         "*": true

@@ -5,20 +5,29 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "train gpt2",
-            "type": "python",
+            "name": "train gpt2 sae",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/scripts/train_tlens_saes/run_train_tlens_saes.py",
-            "args": "${workspaceFolder}/scripts/train_tlens_saes/gpt2.yaml",
+            "program": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py",
+            "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/gpt2.yaml",
             "console": "integratedTerminal",
             "justMyCode": true
         },
         {
-            "name": "train_custom",
-            "type": "python",
+            "name": "train pythia-14m sae",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/scripts/train_tlens_saes/run_train_tlens_saes.py",
-            "args": "${workspaceFolder}/scripts/train_tlens_saes/custom_model.yaml",
+            "program": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py",
+            "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/pythia_14m.yaml",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "train custom lm sae",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py",
+            "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/custom_model.yaml",
             "console": "integratedTerminal",
             "justMyCode": true
         }

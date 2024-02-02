@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, Type, TypeVar, Union
+from typing import Any, TypeVar
 
 import torch
 import yaml
@@ -12,7 +12,7 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def save_model(
-    config_dict: Dict[str, Any], save_dir: Path, model: nn.Module, epoch: int, sparse: bool
+    config_dict: dict[str, Any], save_dir: Path, model: nn.Module, epoch: int, sparse: bool
 ) -> None:
     # If the save_dir doesn't exist, create it and save the config
     if not save_dir.exists():
@@ -27,7 +27,7 @@ def save_model(
         torch.save(model.state_dict(), save_dir / f"sparse_model_epoch_{epoch + 1}.pt")
 
 
-def load_config(config_path_or_obj: Union[Path, str, T], config_model: Type[T]) -> T:
+def load_config(config_path_or_obj: Path | str | T, config_model: type[T]) -> T:
     """Load the config of class `config_model`, either from YAML file or existing config object.
 
     Args:
@@ -48,6 +48,6 @@ def load_config(config_path_or_obj: Union[Path, str, T], config_model: Type[T]) 
         config_path_or_obj.suffix == ".yaml"
     ), f"Config file {config_path_or_obj} must be a YAML file."
     assert Path(config_path_or_obj).exists(), f"Config file {config_path_or_obj} does not exist."
-    with open(config_path_or_obj, "r") as f:
+    with open(config_path_or_obj) as f:
         config_dict = yaml.safe_load(f)
     return config_model(**config_dict)

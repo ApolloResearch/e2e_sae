@@ -1,6 +1,11 @@
 from collections import OrderedDict
 
-def map_state_dict_names_mlp(state_dict: OrderedDict) -> OrderedDict:
+import torch
+
+
+def map_state_dict_names_mlp(
+    state_dict: OrderedDict[str, torch.Tensor],
+) -> OrderedDict[str, torch.Tensor]:
     """Map the MLP state dict names to the MLPMod state dict names."""
     new_state_dict = OrderedDict()
     for name, param in state_dict.items():

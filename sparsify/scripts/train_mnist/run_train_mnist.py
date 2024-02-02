@@ -3,12 +3,11 @@
 This script takes ~40 seconds to run for 3 layers and 15 epochs on a CPU.
 
 Usage:
-    python scripts/train_mnist.py <path/to/config.yaml>
+    python run_train_mnist.py <path/to/config.yaml>
 """
-import json
+
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
 import fire
 import torch
@@ -21,20 +20,20 @@ from torchvision import datasets, transforms
 from tqdm import tqdm
 
 from sparsify.log import logger
-from sparsify.models import MLP
+from sparsify.models.mlp import MLP
 from sparsify.utils import save_model
 
 
 class ModelConfig(BaseModel):
-    hidden_sizes: Optional[List[int]]
+    hidden_sizes: list[int] | None
 
 
 class TrainConfig(BaseModel):
     learning_rate: float
     batch_size: int
     epochs: int
-    save_dir: Optional[Path]
-    save_every_n_epochs: Optional[int]
+    save_dir: Path | None
+    save_every_n_epochs: int | None
 
 
 class WandbConfig(BaseModel):
@@ -46,14 +45,14 @@ class Config(BaseModel):
     seed: int
     model: ModelConfig
     train: TrainConfig
-    wandb: Optional[WandbConfig]
+    wandb: WandbConfig | None
 
 
 def load_config(config_path: Path) -> Config:
     """Load the config from a YAML file into a Pydantic model."""
     assert config_path.suffix == ".yaml", f"Config file {config_path} must be a YAML file."
     assert Path(config_path).exists(), f"Config file {config_path} does not exist."
-    with open(config_path, "r") as f:
+    with open(config_path) as f:
         config_dict = yaml.safe_load(f)
     config = Config(**config_dict)
     return config
@@ -72,20 +71,14 @@ def train(config: Config) -> None:
         config.train.save_dir = Path(__file__).parent.parent / ".checkpoints" / "mnist"
 
     # Load the MNIST dataset
+    root = str(Path(__file__).parent.parent / ".data")
     transform = transforms.ToTensor()
-    train_data = datasets.MNIST(
-        root=Path(__file__).parent.parent / ".data", train=True, download=True, transform=transform
-    )
+    train_data = datasets.MNIST(root=root, train=True, download=True, transform=transform)
     train_loader = DataLoader(train_data, batch_size=config.train.batch_size, shuffle=True)
-    test_data = datasets.MNIST(
-        root=Path(__file__).parent.parent / ".data", train=False, download=True, transform=transform
-    )
+    test_data = datasets.MNIST(root=root, train=False, download=True, transform=transform)
     test_loader = DataLoader(test_data, batch_size=config.train.batch_size, shuffle=False)
-    valid_data = datasets.MNIST(
-        root=Path(__file__).parent.parent / ".data", train=False, download=True, transform=transform
-    )
+    valid_data = datasets.MNIST(root=root, train=False, download=True, transform=transform)
     valid_loader = DataLoader(valid_data, batch_size=config.train.batch_size, shuffle=False)
-
 
     # Initialize the MLP model
     model = MLP(config.model.hidden_sizes, input_size=784, output_size=10)
@@ -95,8 +88,11 @@ def train(config: Config) -> None:
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.train.learning_rate)
 
+    run_name = (
+        f"orig-train-lr-{config.train.learning_rate}_bs-{config.train.batch_size}"
+        f"-{str(config.model.hidden_sizes)}"
+    )
     if config.wandb:
-        run_name = f"orig-train-lr-{config.train.learning_rate}_bs-{config.train.batch_size}-{str(config.model.hidden_sizes)}"
         wandb.init(
             name=run_name,
             project=config.wandb.project,
@@ -162,7 +158,13 @@ def train(config: Config) -> None:
                 wandb.log({"valid/accuracy": accuracy}, step=samples)
 
         if config.train.save_every_n_epochs and (epoch + 1) % config.train.save_every_n_epochs == 0:
-            save_model(json.loads(config.model_dump_json()), save_dir, model, epoch)
+            save_model(
+                config_dict=config.model_dump(),
+                save_dir=save_dir,
+                model=model,
+                epoch=epoch,
+                sparse=False,
+            )
 
     # Test the model
     model.eval()
@@ -182,10 +184,15 @@ def train(config: Config) -> None:
 
         if config.wandb:
             wandb.log({"test/accuracy": accuracy}, step=samples)
-    
 
-    if not (save_dir / f"model_epoch_{epoch + 1}.pt").exists():
-        save_model(json.loads(config.model_dump_json()), save_dir, model, epoch)
+    if not (save_dir / f"model_epoch_{config.train.epochs - 1}.pt").exists():
+        save_model(
+            config_dict=config.model_dump(),
+            save_dir=save_dir,
+            model=model,
+            epoch=config.train.epochs - 1,
+            sparse=False,
+        )
 
 
 def main(config_path_str: str) -> None:

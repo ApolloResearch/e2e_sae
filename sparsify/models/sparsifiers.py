@@ -11,7 +11,7 @@ class SAE(nn.Module):
     Sparse AutoEncoder
     """
 
-    def __init__(self, input_size, n_dict_components):
+    def __init__(self, input_size: int, n_dict_components: int):
         super().__init__()
 
         self.encoder = nn.Sequential(nn.Linear(input_size, n_dict_components), nn.ReLU())
@@ -22,7 +22,7 @@ class SAE(nn.Module):
         # Initialize the decoder weights orthogonally
         nn.init.orthogonal_(self.decoder.weight)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         c = self.encoder(x)
 
         # Apply unit norm constraint to the decoder weights
@@ -46,8 +46,8 @@ class Codebook(nn.Module):
     the top k codebook features. There is no encoder, just the dictionary of codebook features.
     """
 
-    def __init__(self, input_size, n_dict_components, k):
-        super(Codebook, self).__init__()
+    def __init__(self, input_size: int, n_dict_components: int, k: int):
+        super().__init__()
 
         self.codebook = nn.Parameter(
             torch.randn(n_dict_components, input_size)
@@ -56,7 +56,7 @@ class Codebook(nn.Module):
         self.input_size = input_size
         self.k = k
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, None]:
         # Compute cosine similarity between input and codebook features
         cos_sim = nn.functional.cosine_similarity(
             x.unsqueeze(1), self.codebook, dim=2

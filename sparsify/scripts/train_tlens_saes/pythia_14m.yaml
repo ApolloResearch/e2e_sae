@@ -1,7 +1,7 @@
 tlens_model_name: pythia-14m
 tlens_config: null
 sae_position_name: hook_resid_post
-input_size: 768
+input_size: 128
 n_dict_components: 10
 sae_orig: true
 sae_sparsity: true

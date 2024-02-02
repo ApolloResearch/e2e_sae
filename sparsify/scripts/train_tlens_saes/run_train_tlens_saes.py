@@ -1,5 +1,12 @@
+"""Script for training SAEs on top of a transformerlens model.
+
+Usage:
+    python run_train_tlens_saes.py <path/to/config.yaml>
+"""
+
+from collections.abc import Callable
 from functools import partial
-from typing import Any, Literal, Optional
+from typing import Any, cast
 
 import fire
 import torch
@@ -11,14 +18,8 @@ from transformer_lens.hook_points import HookPoint
 
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
+from sparsify.types import TORCH_DTYPES, StrDtype
 from sparsify.utils import load_config
-
-StrDtype = Literal["float32", "float64", "bfloat16"]
-TORCH_DTYPES: dict[StrDtype, torch.dtype] = {
-    "float32": torch.float32,
-    "float64": torch.float64,
-    "bfloat16": torch.bfloat16,
-}
 
 
 class HookedTransformerPreConfig(BaseModel):
@@ -31,11 +32,11 @@ class HookedTransformerPreConfig(BaseModel):
     d_head: int
     d_vocab: int
     act_fn: str
-    dtype: Optional[torch.dtype]
+    dtype: torch.dtype | None
 
     @field_validator("dtype", mode="before")
     @classmethod
-    def dtype_to_torch_dtype(cls, v: Optional[StrDtype]) -> Optional[torch.dtype]:
+    def dtype_to_torch_dtype(cls, v: StrDtype | None) -> torch.dtype | None:
         if v is None:
             return None
         return TORCH_DTYPES[v]
@@ -48,8 +49,8 @@ class TrainConfig(BaseModel):
 
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    tlens_model_name: Optional[str] = None
-    tlens_config: Optional[HookedTransformerPreConfig] = None
+    tlens_model_name: str | None = None
+    tlens_config: HookedTransformerPreConfig | None = None
     sae_position_name: str
     input_size: int
     n_dict_components: int
@@ -81,6 +82,7 @@ def calc_loss(
     sae_acts: dict[str, dict[str, Tensor]],
     sae_orig: bool,
     sae_sparsity: bool,
+    device: torch.device,
 ) -> Float[Tensor, ""]:
     """Compute loss between orig_acts and sae_acts.
 
@@ -90,6 +92,7 @@ def calc_loss(
             Second level keys are "output" and "c".
         sae_orig: Whether to use original activations in loss.
         sae_sparsity: Whether to use sparsity in loss.
+        device: Device to use for loss computation.
 
     Returns:
         loss: Scalar tensor representing the loss.
@@ -98,15 +101,15 @@ def calc_loss(
         f"Keys of orig_acts and sae_acts must match, got {orig_acts.keys()} and "
         f"{sae_acts.keys()}"
     )
-    loss: Float[Tensor, ""] = 0.0
+    loss: Float[Tensor, ""] = torch.zeros(1, requires_grad=True, device=device)
     for name, orig_act in orig_acts.items():
         # Convert from inference tensor. TODO: Make more memory efficient
         orig_act = orig_act.clone()
         sae_act = sae_acts[name]
         if sae_orig:
-            loss += torch.nn.functional.mse_loss(orig_act, sae_act["output"])
+            loss = loss + torch.nn.functional.mse_loss(orig_act, sae_act["output"])
         if sae_sparsity:
-            loss += torch.norm(sae_act["c"], p=0.6, dim=-1).mean()
+            loss = loss + torch.norm(sae_act["c"], p=0.6, dim=-1).mean()
     return loss
 
 
@@ -116,28 +119,36 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
     train_loader = evals.make_pile_data_loader(tokenizer, batch_size=config.train.batch_size)
 
     optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
-    sae_acts = {layer: {} for layer in model.saes.keys()}
+    sae_acts = {layer: {} for layer in model.saes}
 
-    orig_resid_names = lambda name: model.sae_position_name in name
+    def orig_resid_names(name: str) -> bool:
+        return model.sae_position_name in name
+
     for batch in train_loader:
         tokens = batch["tokens"].to(device=device)
         # Run model without SAEs
         with torch.inference_mode():
-            _, orig_acts = model.tlens_model.run_with_cache(tokens, names_filter=orig_resid_names)
+            orig_acts = model.tlens_model.run_with_cache(tokens, names_filter=orig_resid_names)[
+                1
+            ].cache_dict
 
         # Run model with SAEs
         sae_acts = {hook_name: {} for hook_name in orig_acts}
-        fwd_hooks = [
-            (hook_name, partial(sae_hook, sae=model.saes[str(i)], hook_acts=sae_acts[hook_name]))
+        fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
+            (
+                hook_name,
+                partial(sae_hook, sae=cast(SAE, model.saes[str(i)]), hook_acts=sae_acts[hook_name]),
+            )
             for i, hook_name in enumerate(orig_acts)
         ]
-        model.tlens_model.run_with_hooks(tokens, fwd_hooks=fwd_hooks)
+        model.tlens_model.run_with_hooks(tokens, fwd_hooks=fwd_hooks)  # type: ignore
 
         loss = calc_loss(
             orig_acts=orig_acts,
             sae_acts=sae_acts,
             sae_orig=config.sae_orig,
             sae_sparsity=config.sae_sparsity,
+            device=device,
         )
         optimizer.zero_grad()
         loss.backward()
@@ -151,6 +162,7 @@ def main(config_path_str: str) -> None:
     if config.tlens_model_name is not None:
         tlens_model = HookedTransformer.from_pretrained(config.tlens_model_name)
     else:
+        assert config.tlens_config is not None, "tlens_config and tlens_model_name are both None."
         hooked_transformer_config = HookedTransformerConfig(**config.tlens_config.model_dump())
         tlens_model = HookedTransformer(hooked_transformer_config)
 

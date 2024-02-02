@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from torch import Tensor, nn
 from transformer_lens import HookedTransformer
@@ -6,7 +6,7 @@ from transformer_lens import HookedTransformer
 from sparsify.models.sparsifiers import SAE
 
 if TYPE_CHECKING:
-    from sparsify.train_tlens_saes import Config
+    from sparsify.scripts.train_tlens_saes.run_train_tlens_saes import Config
 
 
 class SAETransformer(nn.Module):
@@ -24,7 +24,11 @@ class SAETransformer(nn.Module):
     def forward(self, x: Tensor) -> Tensor:
         return self.tlens_model(x)
 
-    def to(self, *args, **kwargs) -> "SAETransformer":
+    def to(
+        self,
+        *args: Any,
+        **kwargs: Any,
+    ) -> "SAETransformer":
         """TODO: Fix this. Tlens implementation of to makes this annoying"""
 
         if len(args) == 1:
@@ -33,7 +37,7 @@ class SAETransformer(nn.Module):
             self.tlens_model.to(device_or_dtype=args[0])
             self.tlens_model.to(device_or_dtype=args[1])
         elif len(kwargs) == 1:
-            if "device" or "dtype" in kwargs:
+            if "device" in kwargs or "dtype" in kwargs:
                 arg = kwargs["device"] if "device" in kwargs else kwargs["dtype"]
                 self.tlens_model.to(device_or_dtype=arg)
             else:

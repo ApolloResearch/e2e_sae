@@ -1,3 +1,4 @@
+.vscode/settings.json
 wandb/
 .data/
 .checkpoints/

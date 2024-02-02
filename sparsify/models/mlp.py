@@ -1,10 +1,11 @@
 """
 Defines a generic MLP.
 """
-from typing import List, Optional
-from sparsify.models.sparsifiers import SAE, Codebook
+
 import torch
 from torch import nn
+
+from sparsify.models.sparsifiers import SAE, Codebook
 
 
 class Layer(nn.Module):
@@ -53,7 +54,7 @@ class MLP(nn.Module):
 
     def __init__(
         self,
-        hidden_sizes: Optional[List[int]],
+        hidden_sizes: list[int] | None,
         input_size: int,
         output_size: int,
         bias: bool = True,
@@ -82,7 +83,7 @@ class MLP(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.layers(x)
-    
+
 
 class MLPMod(nn.Module):
     """
@@ -100,12 +101,12 @@ class MLPMod(nn.Module):
 
     def __init__(
         self,
-        hidden_sizes: Optional[List[int]],
+        hidden_sizes: list[int] | None,
         input_size: int,
         output_size: int,
         bias: bool = True,
-        type_of_sparsifier: str = 'sae',
-        dict_eles_to_input_ratio: int = 2,
+        type_of_sparsifier: str = "sae",
+        dict_eles_to_input_ratio: float = 2,
         k: int = 0,
     ):
         super().__init__()
@@ -122,32 +123,40 @@ class MLPMod(nn.Module):
         for i in range(len(sizes) - 1):
             has_activation_fn = i < len(sizes) - 2
             # Add layers with custom keys
-            self.layers[f'{i}'] = Layer(
+            self.layers[f"{i}"] = Layer(
                 in_features=sizes[i],
                 out_features=sizes[i + 1],
                 has_activation_fn=has_activation_fn,
                 bias=bias,
             )
             if has_activation_fn:
-                if type_of_sparsifier == 'sae':
-                    sparsifier = SAE(input_size=sizes[i + 1],
-                            n_dict_components=int(sizes[i + 1] * self.dict_eles_to_input_ratio))
-                elif type_of_sparsifier == 'codebook':
-                    assert k > 0, 'k must be greater than 0'
-                    sparsifier = Codebook(input_size=sizes[i + 1],
-                            n_dict_components=int(sizes[i + 1] * dict_eles_to_input_ratio), k=k)
-                self.sparsifiers[f'{i}'] = sparsifier
+                if type_of_sparsifier == "sae":
+                    sparsifier = SAE(
+                        input_size=sizes[i + 1],
+                        n_dict_components=int(sizes[i + 1] * self.dict_eles_to_input_ratio),
+                    )
+                elif type_of_sparsifier == "codebook":
+                    assert k > 0, "k must be greater than 0"
+                    sparsifier = Codebook(
+                        input_size=sizes[i + 1],
+                        n_dict_components=int(sizes[i + 1] * dict_eles_to_input_ratio),
+                        k=k,
+                    )
+                else:
+                    raise ValueError("type_of_sparsifier must be either 'sae' or 'codebook'")
+                self.sparsifiers[f"{i}"] = sparsifier
 
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self, x: torch.Tensor
+    ) -> tuple[dict[str, torch.Tensor], dict[str, torch.Tensor], dict[str, torch.Tensor]]:
         outs = {}
         cs = {}
         sparsifiers_outs = {}
         for i in range(len(self.layers)):
-            x = self.layers[f'{i}'](x)
-            outs[f'{i}'] = x
-            if f'{i}' in self.sparsifiers:
-                x, c = self.sparsifiers[f'{i}'](x)
-                cs[f'{i}'] = c
-                sparsifiers_outs[f'{i}'] = x
+            x = self.layers[f"{i}"](x)
+            outs[f"{i}"] = x
+            if f"{i}" in self.sparsifiers:
+                x, c = self.sparsifiers[f"{i}"](x)
+                cs[f"{i}"] = c
+                sparsifiers_outs[f"{i}"] = x
         return outs, cs, sparsifiers_outs
