@@ -12,7 +12,6 @@ from pathlib import Path
 import fire
 import torch
 import wandb
-import yaml
 from pydantic import BaseModel
 from torch import nn
 from torch.utils.data import DataLoader
@@ -21,7 +20,7 @@ from tqdm import tqdm
 
 from sparsify.log import logger
 from sparsify.models.mlp import MLP
-from sparsify.utils import save_model
+from sparsify.utils import load_config, save_model
 
 
 class ModelConfig(BaseModel):
@@ -46,16 +45,6 @@ class Config(BaseModel):
     model: ModelConfig
     train: TrainConfig
     wandb: WandbConfig | None
-
-
-def load_config(config_path: Path) -> Config:
-    """Load the config from a YAML file into a Pydantic model."""
-    assert config_path.suffix == ".yaml", f"Config file {config_path} must be a YAML file."
-    assert Path(config_path).exists(), f"Config file {config_path} does not exist."
-    with open(config_path) as f:
-        config_dict = yaml.safe_load(f)
-    config = Config(**config_dict)
-    return config
 
 
 def train(config: Config) -> None:
@@ -197,7 +186,7 @@ def train(config: Config) -> None:
 
 def main(config_path_str: str) -> None:
     config_path = Path(config_path_str)
-    config = load_config(config_path)
+    config = load_config(config_path, config_model=Config)
     train(config)
 
 

@@ -14,15 +14,45 @@ import fire
 import torch
 import wandb
 from jaxtyping import Float
+from pydantic import BaseModel
 from torch import Tensor, nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
 
-from sparsify.configs import Config, load_config
 from sparsify.log import logger
 from sparsify.models.mlp import MLP, MLPMod
-from sparsify.utils import save_model
+from sparsify.utils import load_config, save_model
+
+
+class ModelConfig(BaseModel):
+    hidden_sizes: list[int] | None
+
+
+class TrainConfig(BaseModel):
+    learning_rate: float
+    batch_size: int
+    epochs: int
+    save_dir: Path | None
+    model_name: str
+    type_of_sparsifier: str
+    sparsity_lambda: float
+    dict_eles_to_input_ratio: float
+    sparsifier_inp_out_recon_loss_scale: float
+    k: int
+    save_every_n_epochs: int | None
+
+
+class WandbConfig(BaseModel):
+    project: str
+    entity: str
+
+
+class Config(BaseModel):
+    seed: int
+    model: ModelConfig
+    train: TrainConfig
+    wandb: WandbConfig | None
 
 
 def get_activation(
@@ -293,7 +323,7 @@ def train(config: Config) -> None:
 
 def main(config_path_str: str) -> None:
     config_path = Path(config_path_str)  # TODO make separate config for model_mod
-    config = load_config(config_path)
+    config = load_config(config_path, config_model=Config)
     train(config)
 
 

@@ -9,13 +9,13 @@ from pathlib import Path
 
 import fire
 import torch
-import yaml
 from pydantic import BaseModel
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 from sparsify.log import logger
 from sparsify.models.mlp import MLPMod
+from sparsify.utils import load_config
 
 
 class ModelConfig(BaseModel):
@@ -32,16 +32,6 @@ class Config(BaseModel):
     seed: int
     model: ModelConfig
     infer: InferenceConfig
-
-
-def load_config(config_path: Path) -> Config:
-    """Load the config from a YAML file into a Pydantic model."""
-    assert config_path.suffix == ".yaml", f"Config file {config_path} must be a YAML file."
-    assert Path(config_path).exists(), f"Config file {config_path} does not exist."
-    with open(config_path) as f:
-        config_dict = yaml.safe_load(f)
-    config = Config(**config_dict)
-    return config
 
 
 def max_act(config: Config) -> None:
@@ -115,8 +105,6 @@ def max_act(config: Config) -> None:
     for key in dead_dict:
         dead_dict[key] = dead_dict[key] / num_dataset_samples
 
-    print("boop")
-
     # Plot a histogram of the dead dictionary elements for each autoencoder
     # import matplotlib.pyplot as plt
     # fig, axs = plt.subplots(1, len(dead_dict.keys()))
@@ -129,7 +117,7 @@ def max_act(config: Config) -> None:
 
 def main(config_path_str: str) -> None:
     config_path = Path(config_path_str)  # TODO make separate config for model_mod
-    config = load_config(config_path)
+    config = load_config(config_path, config_model=Config)
     max_act(config)
 
 
