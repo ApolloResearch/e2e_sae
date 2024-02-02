@@ -7,8 +7,14 @@ from pydantic import BaseModel
 from torch import nn
 
 from sparsify.log import logger
+from sparsify.settings import REPO_ROOT
 
 T = TypeVar("T", bound=BaseModel)
+
+
+def to_root_path(path: str | Path):
+    """Converts relative paths to absolute ones, assuming they are relative to the rib root."""
+    return Path(path) if Path(path).is_absolute() else Path(REPO_ROOT / path)
 
 
 def save_model(

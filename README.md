@@ -42,6 +42,9 @@ make test-all  # Run all tests
 
 ## Usage
 
+Weights and Biases is used to track experiments. Place your api key and entity name in `.env`. An
+example is provided in `.env.example`.
+
 ### MNIST
 
 The repo provides an example of an experiment which trains an MLP on MNIST. To run the experiment,

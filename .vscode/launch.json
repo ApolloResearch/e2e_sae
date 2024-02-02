@@ -32,6 +32,15 @@
             "justMyCode": true
         },
         {
+            "name": "train mnist sae",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sparsify/scripts/mlp_saes/train_mnist_saes.py",
+            "args": "${workspaceFolder}/sparsify/scripts/mlp_saes/train_mnist_mod.yaml",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "name": "Python: Attach",
             "type": "debugpy",
             "request": "attach",

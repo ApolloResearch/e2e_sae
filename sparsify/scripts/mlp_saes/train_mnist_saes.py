@@ -12,6 +12,8 @@ from pathlib import Path
 import fire
 import torch
 import wandb
+import yaml
+from dotenv import dotenv_values
 from jaxtyping import Float
 from pydantic import BaseModel, ConfigDict
 from torch import Tensor, nn
@@ -22,13 +24,8 @@ from tqdm import tqdm
 from sparsify.log import logger
 from sparsify.models.mlp import MLP, MLPMod
 from sparsify.settings import REPO_ROOT
+from sparsify.types import RootPath
 from sparsify.utils import load_config, save_model
-
-
-class ModelConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    name: str
-    hidden_sizes: list[int] | None
 
 
 class TrainConfig(BaseModel):
@@ -36,7 +33,7 @@ class TrainConfig(BaseModel):
     learning_rate: float
     batch_size: int
     epochs: int
-    save_dir: Path | None
+    save_dir: RootPath | None = Path(__file__).parent / "out"
     type_of_sparsifier: str
     sparsity_lambda: float
     dict_eles_to_input_ratio: float
@@ -45,18 +42,12 @@ class TrainConfig(BaseModel):
     save_every_n_epochs: int | None
 
 
-class WandbConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    project: str
-    entity: str
-
-
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     seed: int
-    model: ModelConfig
+    saved_model_dir: RootPath
     train: TrainConfig
-    wandb: WandbConfig | None
+    wandb_project: str | None  # If None, don't log to Weights & Biases
 
 
 def get_activation(
@@ -86,14 +77,17 @@ def load_data(config: Config) -> tuple[DataLoader[datasets.MNIST], DataLoader[da
 def get_models(
     config: Config, device: str | torch.device
 ) -> tuple[MLP, MLPMod, OrderedDict[str, torch.Tensor]]:
-    # Define model path to load
-    model_path = REPO_ROOT / "models" / config.model.name
-    model_path = max(model_path.glob("*.pt"), key=lambda x: int(x.stem.split("_")[-1]))
+    # Load the hidden_sizes form the trained model
+    with open(config.saved_model_dir / "config.yaml") as f:
+        hidden_sizes = yaml.safe_load(f)["model"]["hidden_sizes"]
 
+    latest_model_path = max(
+        config.saved_model_dir.glob("*.pt"), key=lambda x: int(x.stem.split("_")[-1])
+    )
     # Initialize the MLP model
-    model = MLP(config.model.hidden_sizes, input_size=784, output_size=10)
+    model = MLP(hidden_sizes, input_size=784, output_size=10)
     model = model.to(device)
-    model_trained_statedict = torch.load(model_path)
+    model_trained_statedict = torch.load(latest_model_path)
     model.load_state_dict(model_trained_statedict)
     model.eval()
 
@@ -104,7 +98,7 @@ def get_models(
 
     # Get the SAEs from the model_mod and put them in the statedict of model_trained
     model_mod = MLPMod(
-        config.model.hidden_sizes,
+        hidden_sizes=hidden_sizes,
         input_size=784,
         output_size=10,
         type_of_sparsifier=config.train.type_of_sparsifier,
@@ -142,21 +136,18 @@ def train(config: Config) -> None:
 
     run_name = (
         f"sparse-lambda-{config.train.sparsity_lambda}-lr-{config.train.learning_rate}"
-        f"_bs-{config.train.batch_size}-{str(config.model.hidden_sizes)}"
+        f"_bs-{config.train.batch_size}"
     )
-    if config.wandb:
+    if config.wandb_project:
         wandb.init(
             name=run_name,
-            project=config.wandb.project,
-            entity=config.wandb.entity,
+            project=config.wandb_project,
+            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
             config=config.model_dump(),
         )
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    if config.train.save_dir is not None:
-        save_dir = config.train.save_dir / f"{run_name}_{timestamp}"
-    else:
-        save_dir = REPO_ROOT / ".checkpoints" / "mnist" / f"{run_name}_{timestamp}"
+    save_dir = config.train.save_dir / f"{run_name}_{timestamp}" if config.train.save_dir else None
 
     samples = 0
     # Training loop
@@ -194,13 +185,13 @@ def train(config: Config) -> None:
                     sp_orig_losses[str(layer)] = criterion(
                         sparsifiers_outs[str(layer)], activations[str(layer)]
                     )
-                    loss += sp_orig_losses[str(layer)]
+                    loss = loss + sp_orig_losses[str(layer)]
 
                 # new-orig reconstruction loss
                 new_orig_losses[str(layer)] = criterion(
                     mod_acts[str(layer)], activations[str(layer)]
                 )
-                loss += new_orig_losses[str(layer)]
+                loss = loss + new_orig_losses[str(layer)]
 
                 # sae-new reconstruction loss
                 if layer < len(activations) - 1:
@@ -213,7 +204,7 @@ def train(config: Config) -> None:
                         sp_new_losses[str(layer)] = criterion(
                             sparsifiers_outs[str(layer)], mod_acts[str(layer)].detach()
                         )
-                    loss += (
+                    loss = loss + (
                         sp_new_losses[str(layer)] * config.train.sparsifier_inp_out_recon_loss_scale
                     )
 
@@ -221,7 +212,7 @@ def train(config: Config) -> None:
             if config.train.type_of_sparsifier == "sae":
                 for layer in range(len(cs)):
                     sparsity_losses[str(layer)] = torch.norm(cs[str(layer)], p=0.6, dim=1).mean()
-                    loss += config.train.sparsity_lambda * sparsity_losses[str(layer)]
+                    loss = loss + config.train.sparsity_lambda * sparsity_losses[str(layer)]
 
                 # Calculate counts and fractions of zero entries in the saes per batch
                 for layer in range(len(cs)):
@@ -250,7 +241,7 @@ def train(config: Config) -> None:
                     accuracy,
                 )
 
-                if config.wandb:
+                if config.wandb_project:
                     wandb.log({"train/loss": loss.item(), "train/samples": samples}, step=samples)
                     wandb.log({"train/accuracy": accuracy, "train/samples": samples}, step=samples)
                     for k, v in sp_orig_losses.items():
@@ -301,16 +292,16 @@ def train(config: Config) -> None:
             accuracy = correct / total
             logger.info("Accuracy of the network on the 10000 test images: %f %%", 100 * accuracy)
 
-            if config.wandb:
+            if config.wandb_project:
                 wandb.log({"valid/accuracy": accuracy}, step=samples)
 
         # Comment out because we're not saving mod models right now
-        # if config.train.save_every_n_epochs and \
+        # if save_dir and config.train.save_every_n_epochs and \
         #         (epoch + 1) % config.train.save_every_n_epochs == 0:
         #     # TODO Figure out how to save only saes
         #     save_model(config.model_dump(), save_dir, model, epoch)
 
-    if not (save_dir / f"sparse_model_epoch_{config.train.epochs - 1}").exists():
+    if save_dir and not (save_dir / f"sparse_model_epoch_{config.train.epochs - 1}").exists():
         save_model(
             config_dict=config.model_dump(),
             save_dir=save_dir,

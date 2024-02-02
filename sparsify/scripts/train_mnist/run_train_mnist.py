@@ -12,6 +12,7 @@ from pathlib import Path
 import fire
 import torch
 import wandb
+from dotenv import dotenv_values
 from pydantic import BaseModel, ConfigDict
 from torch import nn
 from torch.utils.data import DataLoader
@@ -21,6 +22,7 @@ from tqdm import tqdm
 from sparsify.log import logger
 from sparsify.models.mlp import MLP
 from sparsify.settings import REPO_ROOT
+from sparsify.types import RootPath
 from sparsify.utils import load_config, save_model
 
 
@@ -34,14 +36,8 @@ class TrainConfig(BaseModel):
     learning_rate: float
     batch_size: int
     epochs: int
-    save_dir: Path | None
+    save_dir: RootPath | None = Path(__file__).parent / "out"
     save_every_n_epochs: int | None
-
-
-class WandbConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    project: str
-    entity: str
 
 
 class Config(BaseModel):
@@ -49,7 +45,7 @@ class Config(BaseModel):
     seed: int
     model: ModelConfig
     train: TrainConfig
-    wandb: WandbConfig | None
+    wandb_project: str | None  # If None, don't log to Weights & Biases
 
 
 def train(config: Config) -> None:
@@ -60,9 +56,6 @@ def train(config: Config) -> None:
     torch.manual_seed(config.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info("Using device: %s", device)
-
-    if not config.train.save_dir:
-        config.train.save_dir = REPO_ROOT / ".checkpoints" / "mnist"
 
     # Load the MNIST dataset
     data_path = str(REPO_ROOT / ".data")
@@ -82,20 +75,24 @@ def train(config: Config) -> None:
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.train.learning_rate)
 
+    hidden_repr = (
+        "-".join(str(x) for x in config.model.hidden_sizes) if config.model.hidden_sizes else None
+    )
     run_name = (
         f"orig-train-lr-{config.train.learning_rate}_bs-{config.train.batch_size}"
-        f"-{str(config.model.hidden_sizes)}"
+        f"_hidden-{hidden_repr}"
     )
-    if config.wandb:
+    if config.wandb_project:
         wandb.init(
             name=run_name,
-            project=config.wandb.project,
-            entity=config.wandb.entity,
+            project=config.wandb_project,
+            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
             config=config.model_dump(),
         )
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    save_dir = config.train.save_dir / f"{run_name}_{timestamp}"
+
+    save_dir = config.train.save_dir / f"{run_name}_{timestamp}" if config.train.save_dir else None
 
     samples = 0
     # Training loop
@@ -129,7 +126,7 @@ def train(config: Config) -> None:
                     accuracy.item(),
                 )
 
-                if config.wandb:
+                if config.wandb_project:
                     wandb.log({"train/loss": loss.item(), "train/samples": samples}, step=samples)
 
         # Validate the model
@@ -148,10 +145,14 @@ def train(config: Config) -> None:
             accuracy = correct / total
             logger.info("Accuracy of the network on the 10000 test images: %f %%", 100 * accuracy)
 
-            if config.wandb:
+            if config.wandb_project:
                 wandb.log({"valid/accuracy": accuracy}, step=samples)
 
-        if config.train.save_every_n_epochs and (epoch + 1) % config.train.save_every_n_epochs == 0:
+        if (
+            save_dir
+            and config.train.save_every_n_epochs
+            and (epoch + 1) % config.train.save_every_n_epochs == 0
+        ):
             save_model(
                 config_dict=config.model_dump(),
                 save_dir=save_dir,
@@ -176,10 +177,10 @@ def train(config: Config) -> None:
         accuracy = correct / total
         logger.info("Accuracy of the network on the 10000 test images: %f %%", 100 * accuracy)
 
-        if config.wandb:
+        if config.wandb_project:
             wandb.log({"test/accuracy": accuracy}, step=samples)
 
-    if not (save_dir / f"model_epoch_{config.train.epochs - 1}.pt").exists():
+    if save_dir and not (save_dir / f"model_epoch_{config.train.epochs - 1}.pt").exists():
         save_model(
             config_dict=config.model_dump(),
             save_dir=save_dir,
