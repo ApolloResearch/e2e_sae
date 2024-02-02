@@ -4,7 +4,6 @@ Usage:
     python train_mnist_saes.py <path/to/config.yaml>
 """
 
-import json
 from collections import OrderedDict
 from collections.abc import Callable
 from datetime import datetime
@@ -14,7 +13,7 @@ import fire
 import torch
 import wandb
 from jaxtyping import Float
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from torch import Tensor, nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -22,19 +21,22 @@ from tqdm import tqdm
 
 from sparsify.log import logger
 from sparsify.models.mlp import MLP, MLPMod
+from sparsify.settings import REPO_ROOT
 from sparsify.utils import load_config, save_model
 
 
 class ModelConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    name: str
     hidden_sizes: list[int] | None
 
 
 class TrainConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     learning_rate: float
     batch_size: int
     epochs: int
     save_dir: Path | None
-    model_name: str
     type_of_sparsifier: str
     sparsity_lambda: float
     dict_eles_to_input_ratio: float
@@ -44,11 +46,13 @@ class TrainConfig(BaseModel):
 
 
 class WandbConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     project: str
     entity: str
 
 
 class Config(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     seed: int
     model: ModelConfig
     train: TrainConfig
@@ -69,17 +73,11 @@ def get_activation(
 def load_data(config: Config) -> tuple[DataLoader[datasets.MNIST], DataLoader[datasets.MNIST]]:
     transform = transforms.ToTensor()
     train_data = datasets.MNIST(
-        root=str(Path(__file__).parent.parent / ".data"),
-        train=True,
-        download=True,
-        transform=transform,
+        root=str(REPO_ROOT / ".data"), train=True, download=True, transform=transform
     )
     train_loader = DataLoader(train_data, batch_size=config.train.batch_size, shuffle=True)
     test_data = datasets.MNIST(
-        root=str(Path(__file__).parent.parent / ".data"),
-        train=False,
-        download=True,
-        transform=transform,
+        root=str(REPO_ROOT / ".data"), train=False, download=True, transform=transform
     )
     test_loader = DataLoader(test_data, batch_size=config.train.batch_size, shuffle=False)
     return train_loader, test_loader
@@ -89,7 +87,7 @@ def get_models(
     config: Config, device: str | torch.device
 ) -> tuple[MLP, MLPMod, OrderedDict[str, torch.Tensor]]:
     # Define model path to load
-    model_path = Path(__file__).parent.parent / "models" / config.train.model_name
+    model_path = REPO_ROOT / "models" / config.model.name
     model_path = max(model_path.glob("*.pt"), key=lambda x: int(x.stem.split("_")[-1]))
 
     # Initialize the MLP model
@@ -134,9 +132,6 @@ def train(config: Config) -> None:
     # Load the MNIST dataset
     train_loader, test_loader = load_data(config)
 
-    if not config.train.save_dir:
-        config.train.save_dir = Path(__file__).parent.parent / ".checkpoints" / "mnist_mod"
-
     # Initialize the MLP model and modified model
     model, model_mod, activations = get_models(config, device)
 
@@ -157,7 +152,11 @@ def train(config: Config) -> None:
             config=config.model_dump(),
         )
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    save_dir = config.train.save_dir / f"{run_name}_{timestamp}"
+
+    if config.train.save_dir is not None:
+        save_dir = config.train.save_dir / f"{run_name}_{timestamp}"
+    else:
+        save_dir = REPO_ROOT / ".checkpoints" / "mnist" / f"{run_name}_{timestamp}"
 
     samples = 0
     # Training loop
@@ -309,11 +308,11 @@ def train(config: Config) -> None:
         # if config.train.save_every_n_epochs and \
         #         (epoch + 1) % config.train.save_every_n_epochs == 0:
         #     # TODO Figure out how to save only saes
-        #     save_model(json.loads(config.model_dump_json()), save_dir, model, epoch)
+        #     save_model(config.model_dump(), save_dir, model, epoch)
 
     if not (save_dir / f"sparse_model_epoch_{config.train.epochs - 1}").exists():
         save_model(
-            config_dict=json.loads(config.model_dump_json()),
+            config_dict=config.model_dump(),
             save_dir=save_dir,
             model=model_mod,
             epoch=config.train.epochs - 1,

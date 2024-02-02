@@ -30,6 +30,15 @@
             "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/custom_model.yaml",
             "console": "integratedTerminal",
             "justMyCode": true
+        },
+        {
+            "name": "Python: Attach",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            }
         }
     ]
 }

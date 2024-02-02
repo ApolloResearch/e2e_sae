@@ -9,26 +9,30 @@ from pathlib import Path
 
 import fire
 import torch
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 from sparsify.log import logger
 from sparsify.models.mlp import MLPMod
+from sparsify.settings import REPO_ROOT
 from sparsify.utils import load_config
 
 
 class ModelConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     hidden_sizes: list[int] | None
 
 
 class InferenceConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     batch_size: int
     model_name: str
     save_dir: Path | None
 
 
 class Config(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     seed: int
     model: ModelConfig
     infer: InferenceConfig
@@ -43,22 +47,16 @@ def max_act(config: Config) -> None:
     # Load the MNIST dataset
     transform = transforms.ToTensor()
     train_data = datasets.MNIST(
-        root=str(Path(__file__).parent.parent / ".data"),
-        train=True,
-        download=True,
-        transform=transform,
+        root=str(REPO_ROOT / ".data"), train=True, download=True, transform=transform
     )
     DataLoader(train_data, batch_size=config.infer.batch_size, shuffle=True)
     test_data = datasets.MNIST(
-        root=str(Path(__file__).parent.parent / ".data"),
-        train=False,
-        download=True,
-        transform=transform,
+        root=str(REPO_ROOT / ".data"), train=False, download=True, transform=transform
     )
     test_loader = DataLoader(test_data, batch_size=config.infer.batch_size, shuffle=False)
 
     # Define model path to load
-    model_path = Path(__file__).parent.parent / "models" / config.infer.model_name
+    model_path = REPO_ROOT / "models" / config.infer.model_name
     model_path = max(model_path.glob("*.pt"), key=lambda x: int(x.stem.split("_")[-1]))
     model_mod = MLPMod(config.model.hidden_sizes, input_size=784, output_size=10)
     model_mod_state_dict = torch.load(model_path)
@@ -71,17 +69,17 @@ def max_act(config: Config) -> None:
     num_dataset_samples = len(test_loader.dataset)  # type: ignore
     # Get size of each autoencoder dictionary
     sae_sizes = {}
-    for key in model_mod.saes:
-        sae_sizes[key] = model_mod.saes[key].n_dict_components
+    for key in model_mod.sparsifiers:
+        sae_sizes[key] = model_mod.sparsifiers[key].n_dict_components
 
     # Make a dictionary for each autoencoder to store the cs for each dataset sample
     cs_dict = {}
-    for key in model_mod.saes:
+    for key in model_mod.sparsifiers:
         cs_dict[key] = torch.zeros(num_dataset_samples, sae_sizes[key])
 
     # Make a dictionary to count the dead cs for each autoencoder
     dead_dict = {}
-    for key in model_mod.saes:
+    for key in model_mod.sparsifiers:
         dead_dict[key] = torch.zeros(sae_sizes[key])
 
     samples = 0

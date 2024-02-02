@@ -12,7 +12,7 @@ from pathlib import Path
 import fire
 import torch
 import wandb
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -20,14 +20,17 @@ from tqdm import tqdm
 
 from sparsify.log import logger
 from sparsify.models.mlp import MLP
+from sparsify.settings import REPO_ROOT
 from sparsify.utils import load_config, save_model
 
 
 class ModelConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     hidden_sizes: list[int] | None
 
 
 class TrainConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     learning_rate: float
     batch_size: int
     epochs: int
@@ -36,11 +39,13 @@ class TrainConfig(BaseModel):
 
 
 class WandbConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     project: str
     entity: str
 
 
 class Config(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     seed: int
     model: ModelConfig
     train: TrainConfig
@@ -57,16 +62,16 @@ def train(config: Config) -> None:
     logger.info("Using device: %s", device)
 
     if not config.train.save_dir:
-        config.train.save_dir = Path(__file__).parent.parent / ".checkpoints" / "mnist"
+        config.train.save_dir = REPO_ROOT / ".checkpoints" / "mnist"
 
     # Load the MNIST dataset
-    root = str(Path(__file__).parent.parent / ".data")
+    data_path = str(REPO_ROOT / ".data")
     transform = transforms.ToTensor()
-    train_data = datasets.MNIST(root=root, train=True, download=True, transform=transform)
+    train_data = datasets.MNIST(root=data_path, train=True, download=True, transform=transform)
     train_loader = DataLoader(train_data, batch_size=config.train.batch_size, shuffle=True)
-    test_data = datasets.MNIST(root=root, train=False, download=True, transform=transform)
+    test_data = datasets.MNIST(root=data_path, train=False, download=True, transform=transform)
     test_loader = DataLoader(test_data, batch_size=config.train.batch_size, shuffle=False)
-    valid_data = datasets.MNIST(root=root, train=False, download=True, transform=transform)
+    valid_data = datasets.MNIST(root=data_path, train=False, download=True, transform=transform)
     valid_loader = DataLoader(valid_data, batch_size=config.train.batch_size, shuffle=False)
 
     # Initialize the MLP model
