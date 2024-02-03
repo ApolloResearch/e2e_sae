@@ -53,7 +53,7 @@ def test_mlp_layers(
 
         if i < len(model.layers) - 1:
             # Activation layers at indices before the last layer
-            assert isinstance(layer.activation, nn.ReLU)
+            assert isinstance(layer.activation, nn.GELU)
         else:
             # No activation function for the last layer
             assert not hasattr(layer, "activation")
