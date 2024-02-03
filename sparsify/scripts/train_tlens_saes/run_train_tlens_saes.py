@@ -5,21 +5,30 @@ Usage:
 """
 
 from collections.abc import Callable
+from datetime import datetime
 from functools import partial
-from typing import Any, cast
+from pathlib import Path
+from typing import Any, Self, cast
 
 import fire
 import torch
-from jaxtyping import Float
+import wandb
+from dotenv import dotenv_values
+from jaxtyping import Float, Int
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from torch import Tensor
+from tqdm import tqdm
 from transformer_lens import HookedTransformer, HookedTransformerConfig, evals
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.utils import lm_accuracy, lm_cross_entropy_loss
+from transformers import AutoTokenizer
 
+from sparsify.losses import calc_loss
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
-from sparsify.types import TORCH_DTYPES, StrDtype
-from sparsify.utils import load_config
+from sparsify.settings import REPO_ROOT
+from sparsify.types import TORCH_DTYPES, RootPath, StrDtype
+from sparsify.utils import load_config, set_seed
 
 
 class HookedTransformerPreConfig(BaseModel):
@@ -44,20 +53,48 @@ class HookedTransformerPreConfig(BaseModel):
 
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+    save_dir: RootPath | None = Path(__file__).parent / "out"
+    num_epochs: int
     batch_size: int
+    effective_batch_size: int | None = None
     lr: float
+    scheduler: str | None = None
+    warmup_steps: int = 0
+    max_grad_norm: float | None = None
+    act_sparsity_lambda: float | None = 0.0
+    w_sparsity_lambda: float | None = 0.0
+    sparsity_p_norm: float = 1.0
+    loss_include_sae_inp_orig: bool = True
+    loss_include_sae_out_orig: bool = True
+    loss_include_sae_inp_sae_out: bool = True
+    loss_include_sae_sparsity: bool = True
+
+    @model_validator(mode="after")
+    def check_effective_batch_size(self) -> Self:
+        if self.effective_batch_size is not None:
+            assert (
+                self.effective_batch_size % self.batch_size == 0
+            ), "effective_batch_size must be a multiple of batch_size."
+        return self
+
+
+class SparsifiersConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    type_of_sparsifier: str | None = "sae"
+    dict_size_to_input_ratio: float = 1.0
+    k: int | None = None
+    sae_position_name: str  # TODO will become List[str]
 
 
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+    seed: int = 0
     tlens_model_name: str | None = None
     tlens_config: HookedTransformerPreConfig | None = None
-    sae_position_name: str
-    input_size: int
-    n_dict_components: int
-    sae_orig: bool
-    sae_sparsity: bool
     train: TrainConfig
+    saes: SparsifiersConfig
+    wandb_project: str | None  # If None, don't log to Weights & Biases
+    tokenizer_name: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -72,93 +109,267 @@ def sae_hook(
     value: Float[torch.Tensor, "... d_head"], hook: HookPoint, sae: SAE, hook_acts: dict[str, Any]
 ) -> Float[torch.Tensor, "... d_head"]:
     """Runs the SAE on the input and stores the output and c in hook_acts."""
+    hook_acts["input"] = value.detach().clone()
     output, c = sae(value)
-    hook_acts["output"] = output
-    hook_acts["c"] = c
+    hook_acts["output"] = output.detach().clone()
+    hook_acts["c"] = c.detach().clone()
     return output
 
 
-def calc_loss(
-    orig_acts: dict[str, Tensor],
-    sae_acts: dict[str, dict[str, Tensor]],
-    sae_orig: bool,
-    sae_sparsity: bool,
-    device: torch.device,
-) -> Float[Tensor, ""]:
-    """Compute loss between orig_acts and sae_acts.
+# def calc_loss(
+#     orig_acts: dict[str, Tensor],
+#     sae_acts: dict[str, dict[str, Tensor]],
+#     sae_orig: bool,
+#     sae_sparsity: bool,
+#     device: torch.device,
+# ) -> Float[Tensor, ""]:
+#     """Compute loss between orig_acts and sae_acts.
 
-    Args:
-        orig_acts: Dictionary of original activations, keyed by tlens attribute
-        sae_acts: Dictionary of SAE activations. First level keys should match orig_acts.
-            Second level keys are "output" and "c".
-        sae_orig: Whether to use original activations in loss.
-        sae_sparsity: Whether to use sparsity in loss.
-        device: Device to use for loss computation.
+#     Args:
+#         orig_acts: Dictionary of original activations, keyed by tlens attribute
+#         sae_acts: Dictionary of SAE activations. First level keys should match orig_acts.
+#             Second level keys are "output" and "c".
+#         sae_orig: Whether to use original activations in loss.
+#         sae_sparsity: Whether to use sparsity in loss.
+#         device: Device to use for loss computation.
 
-    Returns:
-        loss: Scalar tensor representing the loss.
-    """
-    assert set(orig_acts.keys()) == set(sae_acts.keys()), (
-        f"Keys of orig_acts and sae_acts must match, got {orig_acts.keys()} and "
-        f"{sae_acts.keys()}"
-    )
-    loss: Float[Tensor, ""] = torch.zeros(1, requires_grad=True, device=device)
-    for name, orig_act in orig_acts.items():
-        # Convert from inference tensor. TODO: Make more memory efficient
-        orig_act = orig_act.clone()
-        sae_act = sae_acts[name]
-        if sae_orig:
-            loss = loss + torch.nn.functional.mse_loss(orig_act, sae_act["output"])
-        if sae_sparsity:
-            loss = loss + torch.norm(sae_act["c"], p=0.6, dim=-1).mean()
-    return loss
+#     Returns:
+#         loss: Scalar tensor representing the loss.
+#     """
+#     assert set(orig_acts.keys()) == set(sae_acts.keys()), (
+#         f"Keys of orig_acts and sae_acts must match, got {orig_acts.keys()} and "
+#         f"{sae_acts.keys()}"
+#     )
+#     loss: Float[Tensor, ""] = torch.zeros(1, requires_grad=True, device=device)
+#     for name, orig_act in orig_acts.items():
+#         # Convert from inference tensor. TODO: Make more memory efficient
+#         orig_act = orig_act.clone()
+#         sae_act = sae_acts[name]
+#         if sae_orig:
+#             loss = loss + torch.nn.functional.mse_loss(orig_act, sae_act["output"])
+#         if sae_sparsity:
+#             loss = loss + torch.norm(sae_act["c"], p=0.6, dim=-1).mean()
+#     return loss
 
 
 def train(config: Config, model: SAETransformer, device: torch.device) -> None:
-    tokenizer = model.tlens_model.tokenizer
-    assert tokenizer is not None, "Tokenizer must be defined for training."
+    model_name = config.tlens_model_name or "custom"
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_name = (
+        f"saes_{model_name}_lambda-{config.train.act_sparsity_lambda}"
+        f"_Lp{config.train.sparsity_p_norm}_lr-{config.train.lr}_{timestamp}"
+    )
+    if config.wandb_project:
+        wandb.init(
+            name=run_name,
+            project=config.wandb_project,
+            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
+            config=config.model_dump(),
+        )
+
+    # TODO make appropriate for transcoders and metaSAEs
+    optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
+
+    scheduler = None
+    if config.train.warmup_steps > 0:
+        scheduler = torch.optim.lr_scheduler.LambdaLR(
+            optimizer,
+            lr_lambda=lambda step: min(1.0, step / config.train.warmup_steps),
+        )
+
+    # Load tokenizer from transformers if not provided
+    if model.tlens_model.tokenizer is None:
+        assert config.tokenizer_name is not None, "Tokenizer must be defined for training."
+        tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name)
+    else:
+        tokenizer = model.tlens_model.tokenizer
+
     train_loader = evals.make_pile_data_loader(tokenizer, batch_size=config.train.batch_size)
 
-    optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
-    sae_acts = {layer: {} for layer in model.saes}
+    samples = 0
+    grad_updates = 0
+    grad_norm: float | None = None
+
+    if config.train.effective_batch_size is not None:
+        n_gradient_accumulation_steps = config.train.effective_batch_size // config.train.batch_size
+    else:
+        n_gradient_accumulation_steps = 1
 
     def orig_resid_names(name: str) -> bool:
         return model.sae_position_name in name
 
-    for batch in train_loader:
-        tokens = batch["tokens"].to(device=device)
-        # Run model without SAEs
-        with torch.inference_mode():
-            orig_acts = model.tlens_model.run_with_cache(tokens, names_filter=orig_resid_names)[
-                1
-            ].cache_dict
+    for epoch in tqdm(range(1, config.train.num_epochs + 1)):
+        # Now do gradient accumulation
 
-        # Run model with SAEs
-        sae_acts = {hook_name: {} for hook_name in orig_acts}
-        fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
-            (
-                hook_name,
-                partial(sae_hook, sae=cast(SAE, model.saes[str(i)]), hook_acts=sae_acts[hook_name]),
+        for step, batch in tqdm(enumerate(train_loader)):
+            tokens: Int[Tensor, "batch pos"] = batch["tokens"].to(device=device)
+            # Run model without SAEs
+            with torch.inference_mode():
+                orig_logits_obj, orig_acts = model.tlens_model.run_with_cache(
+                    tokens, names_filter=orig_resid_names, return_cache_object=False
+                )
+            orig_logits: Float[Tensor, "batch pos vocab"] = orig_logits_obj.logits
+
+            # Run model with SAEs
+            sae_acts = {hook_name: {} for hook_name in orig_acts}
+            fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
+                (
+                    hook_name,
+                    partial(
+                        sae_hook, sae=cast(SAE, model.saes[str(i)]), hook_acts=sae_acts[hook_name]
+                    ),
+                )
+                for i, hook_name in enumerate(orig_acts)
+            ]
+            new_logits: Float[Tensor, "batch pos vocab"] = model.tlens_model.run_with_hooks(
+                tokens,
+                fwd_hooks=fwd_hooks,  # type: ignore
             )
-            for i, hook_name in enumerate(orig_acts)
-        ]
-        model.tlens_model.run_with_hooks(tokens, fwd_hooks=fwd_hooks)  # type: ignore
+            # TODO: Pass in loss config to simplify this
+            loss, loss_dict = calc_loss(
+                orig_acts=orig_acts,
+                sae_acts=sae_acts,
+                orig_logits=orig_logits,
+                new_logits=new_logits,
+                sae_inp_orig=config.train.loss_include_sae_inp_orig,
+                sae_out_orig=config.train.loss_include_sae_out_orig,
+                sae_inp_sae_out=config.train.loss_include_sae_inp_sae_out,
+                sae_sparsity=config.train.loss_include_sae_sparsity,
+                sparsity_p_norm=config.train.sparsity_p_norm,
+                act_sparsity_lambda=config.train.act_sparsity_lambda,
+            )
 
-        loss = calc_loss(
-            orig_acts=orig_acts,
-            sae_acts=sae_acts,
-            sae_orig=config.sae_orig,
-            sae_sparsity=config.sae_sparsity,
-            device=device,
-        )
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            loss = loss / n_gradient_accumulation_steps
+            loss.backward()
+            if config.train.max_grad_norm is not None:
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), config.train.max_grad_norm
+                ).item()
+
+            if (step + 1) % n_gradient_accumulation_steps == 0:
+                optimizer.step()
+                optimizer.zero_grad()
+                grad_updates += 1
+
+                if config.train.warmup_steps > 0:
+                    assert scheduler is not None
+                    scheduler.step()
+
+            samples += tokens.shape[0]
+            if step == 0 or step % 5 == 0:
+                print(
+                    f"Epoch {epoch} Samples {samples} Step {step} GradUpdates {grad_updates} "
+                    f"Loss {loss.item()}"
+                )
+
+            if config.wandb_project:
+                wandb.log(
+                    {
+                        "train_loss": loss.item(),
+                        "samples": samples,
+                        "epoch": epoch,
+                        "grad_updates": grad_updates,
+                    }
+                )
+                for loss_name, loss_value in loss_dict.items():
+                    wandb.log(
+                        {
+                            loss_name: loss_value.item(),
+                            "samples": samples,
+                            "epoch": epoch,
+                            "grad_updates": grad_updates,
+                        }
+                    )
+
+                if config.train.max_grad_norm is not None:
+                    assert grad_norm is not None
+                    wandb.log(
+                        {
+                            "grad_norm": grad_norm,
+                            "samples": samples,
+                            "epoch": epoch,
+                            "grad_updates": grad_updates,
+                        }
+                    )
+
+                if step == 0 or step % 5 == 0:
+                    orig_model_performance_loss = lm_cross_entropy_loss(
+                        orig_logits, tokens, per_token=False
+                    )
+                    orig_model_performance_acc = lm_accuracy(orig_logits, tokens, per_token=False)
+                    sae_model_performance_loss = lm_cross_entropy_loss(
+                        new_logits, tokens, per_token=False
+                    )
+                    sae_model_performance_acc = lm_accuracy(new_logits, tokens, per_token=False)
+                    # flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
+                    # flat_new_logits = new_logits.view(-1, new_logits.shape[-1])
+                    # kl_div = torch.nn.functional.kl_div(
+                    #     torch.nn.functional.log_softmax(flat_new_logits, dim=-1),
+                    #     torch.nn.functional.softmax(flat_orig_logits, dim=-1),
+                    #     reduction="batchmean",
+                    # ) # Unsure if this is correct. Also it's expensive in terms of memory.
+
+                    wandb.log(
+                        {
+                            "performance/orig_model_performance_loss": orig_model_performance_loss.item(),
+                            "samples": samples,
+                            "epoch": epoch,
+                            "grad_updates": grad_updates,
+                        }
+                    )
+                    wandb.log(
+                        {
+                            "performance/orig_model_performance_acc": orig_model_performance_acc.item(),
+                            "samples": samples,
+                            "epoch": epoch,
+                            "grad_updates": grad_updates,
+                        }
+                    )
+                    wandb.log(
+                        {
+                            "performance/sae_model_performance_loss": sae_model_performance_loss.item(),
+                            "samples": samples,
+                            "epoch": epoch,
+                            "grad_updates": grad_updates,
+                        }
+                    )
+                    wandb.log(
+                        {
+                            "performance/sae_model_performance_acc": sae_model_performance_acc.item(),
+                            "samples": samples,
+                            "epoch": epoch,
+                            "grad_updates": grad_updates,
+                        }
+                    )
+                    wandb.log(
+                        {
+                            "performance/difference_loss": (
+                                orig_model_performance_loss - sae_model_performance_loss
+                            ).item(),
+                            "samples": samples,
+                            "epoch": epoch,
+                            "grad_updates": grad_updates,
+                        }
+                    )
+                    wandb.log(
+                        {
+                            "performance/difference_acc": (
+                                orig_model_performance_acc - sae_model_performance_acc
+                            ).item(),
+                            "samples": samples,
+                            "epoch": epoch,
+                            "grad_updates": grad_updates,
+                        }
+                    )
+                    # wandb.log(
+                    #     {"performance/kl_div": kl_div.item(), "samples": samples, "epoch": epoch}
+                    # )
 
 
 def main(config_path_str: str) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config = load_config(config_path_str, config_model=Config)
+    set_seed(config.seed)
 
     if config.tlens_model_name is not None:
         tlens_model = HookedTransformer.from_pretrained(config.tlens_model_name)

@@ -1,6 +1,8 @@
+import random
 from pathlib import Path
 from typing import Any, TypeVar
 
+import numpy as np
 import torch
 import yaml
 from pydantic import BaseModel
@@ -57,3 +59,11 @@ def load_config(config_path_or_obj: Path | str | T, config_model: type[T]) -> T:
     with open(config_path_or_obj) as f:
         config_dict = yaml.safe_load(f)
     return config_model(**config_dict)
+
+
+def set_seed(seed: int | None) -> None:
+    """Set the random seed for random, PyTorch and NumPy"""
+    if seed is not None:
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)

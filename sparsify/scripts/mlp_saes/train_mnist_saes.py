@@ -25,7 +25,7 @@ from sparsify.log import logger
 from sparsify.models.mlp import MLP, MLPMod
 from sparsify.settings import REPO_ROOT
 from sparsify.types import RootPath
-from sparsify.utils import load_config, save_model
+from sparsify.utils import load_config, save_model, set_seed
 
 
 class TrainConfig(BaseModel):
@@ -119,7 +119,21 @@ def train(config: Config) -> None:
 
     If config.wandb is not None, log the results to Weights & Biases.
     """
-    torch.manual_seed(config.seed)
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_name = (
+        f"sparse_lambda-{config.train.sparsity_lambda}_lr-{config.train.learning_rate}"
+        f"_bs-{config.train.batch_size}_{timestamp}"
+    )
+    if config.wandb_project:
+        wandb.init(
+            name=run_name,
+            project=config.wandb_project,
+            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
+            config=config.model_dump(),
+        )
+
+    save_dir = config.train.save_dir / f"{run_name}" if config.train.save_dir else None
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info("Using device: %s", device)
 
@@ -133,21 +147,6 @@ def train(config: Config) -> None:
     criterion = nn.MSELoss()
     # Note: only pass the SAE parameters to the optimizer
     optimizer = torch.optim.Adam(model_mod.sparsifiers.parameters(), lr=config.train.learning_rate)
-
-    run_name = (
-        f"sparse-lambda-{config.train.sparsity_lambda}-lr-{config.train.learning_rate}"
-        f"_bs-{config.train.batch_size}"
-    )
-    if config.wandb_project:
-        wandb.init(
-            name=run_name,
-            project=config.wandb_project,
-            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
-            config=config.model_dump(),
-        )
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-    save_dir = config.train.save_dir / f"{run_name}_{timestamp}" if config.train.save_dir else None
 
     samples = 0
     # Training loop
@@ -314,6 +313,7 @@ def train(config: Config) -> None:
 def main(config_path_str: str) -> None:
     config_path = Path(config_path_str)  # TODO make separate config for model_mod
     config = load_config(config_path, config_model=Config)
+    set_seed(config.seed)
     train(config)
 
 

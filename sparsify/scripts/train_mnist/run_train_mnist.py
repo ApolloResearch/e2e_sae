@@ -23,7 +23,7 @@ from sparsify.log import logger
 from sparsify.models.mlp import MLP
 from sparsify.settings import REPO_ROOT
 from sparsify.types import RootPath
-from sparsify.utils import load_config, save_model
+from sparsify.utils import load_config, save_model, set_seed
 
 
 class ModelConfig(BaseModel):
@@ -193,6 +193,7 @@ def train(config: Config) -> None:
 def main(config_path_str: str) -> None:
     config_path = Path(config_path_str)
     config = load_config(config_path, config_model=Config)
+    set_seed(config.seed)
     train(config)
 
 
