@@ -53,7 +53,6 @@ def train(config: Config) -> None:
 
     If config.wandb is not None, log the results to Weights & Biases.
     """
-    torch.manual_seed(config.seed)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info("Using device: %s", device)
 
