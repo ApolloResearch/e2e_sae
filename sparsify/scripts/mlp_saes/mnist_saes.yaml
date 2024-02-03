@@ -3,7 +3,7 @@ saved_model_dir: sparsify/scripts/train_mnist/out/orig-train-lr-0.001_bs-1024_hi
 train:
   learning_rate: 0.001
   batch_size: 1024
-  epochs: 1
+  epochs: 2
   type_of_sparsifier: sae
   sparsity_lambda: 0.005
   dict_eles_to_input_ratio: 10.0

@@ -119,21 +119,6 @@ def train(config: Config) -> None:
 
     If config.wandb is not None, log the results to Weights & Biases.
     """
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    run_name = (
-        f"sparse_lambda-{config.train.sparsity_lambda}_lr-{config.train.learning_rate}"
-        f"_bs-{config.train.batch_size}_{timestamp}"
-    )
-    if config.wandb_project:
-        wandb.init(
-            name=run_name,
-            project=config.wandb_project,
-            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
-            config=config.model_dump(),
-        )
-
-    save_dir = config.train.save_dir / f"{run_name}" if config.train.save_dir else None
-
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info("Using device: %s", device)
 
@@ -147,6 +132,21 @@ def train(config: Config) -> None:
     criterion = nn.MSELoss()
     # Note: only pass the SAE parameters to the optimizer
     optimizer = torch.optim.Adam(model_mod.sparsifiers.parameters(), lr=config.train.learning_rate)
+
+    run_name = (
+        f"sparse_lambda-{config.train.sparsity_lambda}_lr-{config.train.learning_rate}"
+        f"_bs-{config.train.batch_size}"
+    )
+    if config.wandb_project:
+        wandb.init(
+            name=run_name,
+            project=config.wandb_project,
+            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
+            config=config.model_dump(),
+        )
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    save_dir = config.train.save_dir / f"{run_name}_{timestamp}" if config.train.save_dir else None
 
     samples = 0
     # Training loop

@@ -5,7 +5,6 @@ Usage:
 """
 
 from collections.abc import Callable
-from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import Any, Self, cast
@@ -116,56 +115,8 @@ def sae_hook(
     return output
 
 
-# def calc_loss(
-#     orig_acts: dict[str, Tensor],
-#     sae_acts: dict[str, dict[str, Tensor]],
-#     sae_orig: bool,
-#     sae_sparsity: bool,
-#     device: torch.device,
-# ) -> Float[Tensor, ""]:
-#     """Compute loss between orig_acts and sae_acts.
-
-#     Args:
-#         orig_acts: Dictionary of original activations, keyed by tlens attribute
-#         sae_acts: Dictionary of SAE activations. First level keys should match orig_acts.
-#             Second level keys are "output" and "c".
-#         sae_orig: Whether to use original activations in loss.
-#         sae_sparsity: Whether to use sparsity in loss.
-#         device: Device to use for loss computation.
-
-#     Returns:
-#         loss: Scalar tensor representing the loss.
-#     """
-#     assert set(orig_acts.keys()) == set(sae_acts.keys()), (
-#         f"Keys of orig_acts and sae_acts must match, got {orig_acts.keys()} and "
-#         f"{sae_acts.keys()}"
-#     )
-#     loss: Float[Tensor, ""] = torch.zeros(1, requires_grad=True, device=device)
-#     for name, orig_act in orig_acts.items():
-#         # Convert from inference tensor. TODO: Make more memory efficient
-#         orig_act = orig_act.clone()
-#         sae_act = sae_acts[name]
-#         if sae_orig:
-#             loss = loss + torch.nn.functional.mse_loss(orig_act, sae_act["output"])
-#         if sae_sparsity:
-#             loss = loss + torch.norm(sae_act["c"], p=0.6, dim=-1).mean()
-#     return loss
-
-
 def train(config: Config, model: SAETransformer, device: torch.device) -> None:
     model_name = config.tlens_model_name or "custom"
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    run_name = (
-        f"saes_{model_name}_lambda-{config.train.act_sparsity_lambda}"
-        f"_Lp{config.train.sparsity_p_norm}_lr-{config.train.lr}_{timestamp}"
-    )
-    if config.wandb_project:
-        wandb.init(
-            name=run_name,
-            project=config.wandb_project,
-            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
-            config=config.model_dump(),
-        )
 
     # TODO make appropriate for transcoders and metaSAEs
     optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
@@ -198,9 +149,19 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
     def orig_resid_names(name: str) -> bool:
         return model.sae_position_name in name
 
+    # Initialize wandb
+    run_name = (
+        f"saes_{model_name}_lambda-{config.train.act_sparsity_lambda}"
+        f"_Lp{config.train.sparsity_p_norm}_lr-{config.train.lr}"
+    )
+    if config.wandb_project:
+        wandb.init(
+            name=run_name,
+            project=config.wandb_project,
+            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
+            config=config.model_dump(),
+        )
     for epoch in tqdm(range(1, config.train.num_epochs + 1)):
-        # Now do gradient accumulation
-
         for step, batch in tqdm(enumerate(train_loader)):
             tokens: Int[Tensor, "batch pos"] = batch["tokens"].to(device=device)
             # Run model without SAEs
@@ -263,6 +224,7 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                 )
 
             if config.wandb_project:
+                # TODO: Simplify logging
                 wandb.log(
                     {
                         "train_loss": loss.item(),

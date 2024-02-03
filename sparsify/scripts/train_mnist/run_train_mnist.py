@@ -78,6 +78,7 @@ def train(config: Config) -> None:
     hidden_repr = (
         "-".join(str(x) for x in config.model.hidden_sizes) if config.model.hidden_sizes else None
     )
+
     run_name = (
         f"orig-train-lr-{config.train.learning_rate}_bs-{config.train.batch_size}"
         f"_hidden-{hidden_repr}"
@@ -91,7 +92,6 @@ def train(config: Config) -> None:
         )
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
     save_dir = config.train.save_dir / f"{run_name}_{timestamp}" if config.train.save_dir else None
 
     samples = 0
