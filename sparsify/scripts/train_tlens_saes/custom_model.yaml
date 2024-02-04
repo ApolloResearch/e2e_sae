@@ -1,0 +1,20 @@
+seed: 0
+tlens_model_name: null
+tlens_config:
+  d_model: 16
+  n_layers: 2
+  n_ctx: 1024
+  d_head: 4
+  d_vocab: 50257
+  act_fn: gelu
+  dtype: float32
+train:
+  num_epochs: 2
+  batch_size: 3
+  lr: 1e-3
+  loss_include_sae_inp_orig: true
+  loss_include_sae_out_orig: true
+saes:
+  sae_position_name: hook_resid_post
+tokenizer_name: gpt2
+wandb_project: sparsify-custom

@@ -4,45 +4,40 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - '.github/**'
-      - '.vscode/**'
-      - '.gitignore'
-      - 'README.md'
-      - 'ACCESS.md'
   pull_request:
     branches:
-      - main
-    paths-ignore:
-      - '.github/**'
-      - '.vscode/**'
-      - '.gitignore'
-      - 'README.md'
-      - 'ACCESS.md'
+      - '**'
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python 3.9
-      uses: actions/setup-python@v4
+    - uses: actions/checkout@v4
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
       with:
-        python-version: 3.9
+        python-version: '3.11'
+    # pyright needs node
+    - name: Setup node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install ".[dev]"
-    - name: Check with Black
+    - name: Run pyright type check
       run: |
-        black --check --diff --line-length 100 sparsify scripts tests
-    - name: Check with isort
+        pyright .
+    - name: Run ruff lint
       run: |
-        isort --check --thirdparty wandb --profile black sparsify scripts tests
-    - name: Check with mypy
+        ruff check --fix-only .
+    - name: Run ruff format
       run: |
-        mypy --ignore-missing-imports sparsify scripts
+        ruff format .
     - name: Run tests
       run: |
-        pytest tests
+        python -m pytest --runslow --durations=10

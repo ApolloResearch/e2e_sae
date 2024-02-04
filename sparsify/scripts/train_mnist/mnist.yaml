@@ -7,8 +7,5 @@ train:
   learning_rate: 0.001
   batch_size: 1024
   epochs: 30
-  save_dir: sparsify/models
   save_every_n_epochs: null
-wandb:
-  project: mlp-mnist-sae
-  entity: lee_sharkey
+wandb_project: mlp-mnist-sae

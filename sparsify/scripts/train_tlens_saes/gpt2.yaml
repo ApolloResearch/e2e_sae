@@ -1,0 +1,20 @@
+seed: 0
+tlens_model_name: gpt2-small
+tlens_config: null
+train:
+  num_epochs: 2
+  batch_size: 8
+  effective_batch_size: 128
+  lr: 1e-3
+  warmup_steps: 0
+  max_grad_norm: 1.0
+  act_sparsity_lambda: 0.001
+  w_sparsity_lambda: 0.0
+  sparsity_p_norm: 0.7
+  loss_include_sae_inp_orig: False
+  loss_include_sae_out_orig: False
+  loss_include_sae_inp_sae_out: False
+  loss_include_sae_sparsity: False
+saes:
+  sae_position_name: hook_resid_post
+wandb_project: sparsify-gpt2-small

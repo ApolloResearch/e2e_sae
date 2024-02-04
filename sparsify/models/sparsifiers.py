@@ -1,7 +1,6 @@
 """
 Defines a generic MLP.
 """
-from typing import List, Optional
 
 import torch
 from torch import nn
@@ -11,8 +10,9 @@ class SAE(nn.Module):
     """
     Sparse AutoEncoder
     """
-    def __init__(self, input_size, n_dict_components):
-        super(SAE, self).__init__()
+
+    def __init__(self, input_size: int, n_dict_components: int):
+        super().__init__()
 
         self.encoder = nn.Sequential(nn.Linear(input_size, n_dict_components), nn.ReLU())
         self.decoder = nn.Linear(n_dict_components, input_size, bias=False)
@@ -22,7 +22,7 @@ class SAE(nn.Module):
         # Initialize the decoder weights orthogonally
         nn.init.orthogonal_(self.decoder.weight)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         c = self.encoder(x)
 
         # Apply unit norm constraint to the decoder weights
@@ -40,28 +40,33 @@ class Codebook(nn.Module):
     """
     Codebook from Tamkin et al. (2023)
 
-    It compute the cosine similarity between an input and a dictionary of features of 
-    size size n_dict_components. Then it simply takes the top k most similar codebook features 
-    and outputs their sum. The output thus has size input_size and consists of a simple sum of 
+    It compute the cosine similarity between an input and a dictionary of features of
+    size size n_dict_components. Then it simply takes the top k most similar codebook features
+    and outputs their sum. The output thus has size input_size and consists of a simple sum of
     the top k codebook features. There is no encoder, just the dictionary of codebook features.
     """
-    def __init__(self, input_size, n_dict_components, k):
-        super(Codebook, self).__init__()
 
-        self.codebook = nn.Parameter(torch.randn(n_dict_components, input_size)) # (n_dict_components, input_size)
+    def __init__(self, input_size: int, n_dict_components: int, k: int):
+        super().__init__()
+
+        self.codebook = nn.Parameter(
+            torch.randn(n_dict_components, input_size)
+        )  # (n_dict_components, input_size)
         self.n_dict_components = n_dict_components
-        self.input_size = input_size 
+        self.input_size = input_size
         self.k = k
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, None]:
         # Compute cosine similarity between input and codebook features
-        cos_sim = nn.functional.cosine_similarity(x.unsqueeze(1), self.codebook, dim=2) # (batch_size, n_dict_components)
+        cos_sim = nn.functional.cosine_similarity(
+            x.unsqueeze(1), self.codebook, dim=2
+        )  # (batch_size, n_dict_components)
 
         # Take the top k most similar codebook features
-        _, topk = torch.topk(cos_sim, self.k, dim=1) # (batch_size, k)
+        _, topk = torch.topk(cos_sim, self.k, dim=1)  # (batch_size, k)
 
         # Sum the top k codebook features
-        x_hat = torch.sum(self.codebook[topk], dim=1) # (batch_size, input_size)
+        x_hat = torch.sum(self.codebook[topk], dim=1)  # (batch_size, input_size)
 
         return x_hat, None
 

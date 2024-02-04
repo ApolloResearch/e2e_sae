@@ -1,46 +1,33 @@
-# Sample project
-
-
-with the name of your package as the argument. This will rename the package and set up the pre-commit hooks. You should also provide your name and email address in `setup.py`. You may then wish to remove the files and content that you do not need for your project.
-
-## Privacy level
-
-You must set the privacy level of your repository in `ACCESS.md`, listing all parties that can access the project. See our [privacy levels](https://www.apolloresearch.ai/blog/security) for more information.
+# Sparsify
 
 ## Installation
 
-From the root of the repository, run
+From the root of the repository, run one of
 
 ```bash
-pip install -e .
+make install-dev  # (recommended) Installs the package, dev requirements and pre-commit hooks
+make install  # Just installs the package (runs `pip install -e .`)
 ```
 
 ## Development
 
-To install the development dependencies, run
+Suggested extensions and settings for VSCode are provided in `.vscode/`. To use the suggested
+settings, copy `.vscode/settings-example.json` to `.vscode/settings.json`.
+
+There are various `make` commands that may be helpful
 
 ```bash
-pip install -e ".[dev]"
+make check  # Run pre-commit checks on all files (i.e. pyright, ruff linter, and ruff formatter)
+make type  # Run pyright on all files
+make format  # Run ruff linter and formatter on all files
+make test  # Run tests that aren't marked `slow`
+make test-all  # Run all tests
 ```
-
-Suggested extensions and settings for VSCode are provided in `.vscode/`.
-
-### Pre-commit hooks
-
-A pre-commit hook that runs black, isort, mypy, and tests is saved in the `.pre-commit` file. If
-you ran the `setup_pkg.sh` as instructed earlier, this pre-commit will be automatically setup.
-Otherwise, you can copy it to the `.git/hooks/`
-dir and make it executable
-(`cp .pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`).
 
 ## Usage
 
-### MNIST
+Weights and Biases is used to track experiments. Place your api key and entity name in `.env`. An
+example is provided in `.env.example`.
 
-To train an MLP on MNIST, define a config file (see `configs/mnist.yaml` for an example) and run
-
-```bash
-python scripts/train_mnist.py <path_to_config_file>
-```
-
-You may be asked to enter your wandb API key. You can find it in your [wandb account settings](https://wandb.ai/settings). Alternatively, to avoid entering your API key on program execution, you can set the environment variable `WANDB_API_KEY` to your API key.
+All entrypoints are in `sparsify/scripts`. Configs, scripts, and results are all stored in this
+directory (results are not checked in to git).

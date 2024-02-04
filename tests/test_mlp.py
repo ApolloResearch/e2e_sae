@@ -1,10 +1,7 @@
-from typing import Tuple
-
 import pytest
 from torch import nn
 
-from sparsify.models import MLP
-from sparsify.models.mlp import Layer
+from sparsify.models.mlp import MLP, Layer
 
 
 @pytest.mark.parametrize(
@@ -21,7 +18,7 @@ from sparsify.models.mlp import Layer
 def test_mlp_layers(
     hidden_sizes: list[int],
     bias: bool,
-    expected_layer_sizes: list[Tuple[int, int]],
+    expected_layer_sizes: list[tuple[int, int]],
 ) -> None:
     """Test the MLP constructor for fixed input and output sizes.
 
@@ -56,7 +53,7 @@ def test_mlp_layers(
 
         if i < len(model.layers) - 1:
             # Activation layers at indices before the last layer
-            assert isinstance(layer.activation, nn.ReLU)
+            assert isinstance(layer.activation, nn.GELU)
         else:
             # No activation function for the last layer
             assert not hasattr(layer, "activation")
