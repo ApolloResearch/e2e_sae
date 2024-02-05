@@ -4,6 +4,7 @@ Usage:
     python run_train_tlens_saes.py <path/to/config.yaml>
 """
 
+import os
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Any, Self, cast
 import fire
 import torch
 import wandb
-from dotenv import dotenv_values
+from dotenv import load_dotenv
 from jaxtyping import Float, Int
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from torch import Tensor
@@ -25,7 +26,6 @@ from transformers import AutoTokenizer
 from sparsify.losses import calc_loss
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
-from sparsify.settings import REPO_ROOT
 from sparsify.types import TORCH_DTYPES, RootPath, StrDtype
 from sparsify.utils import load_config, set_seed
 
@@ -155,11 +155,12 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
         f"_Lp{config.train.sparsity_p_norm}_lr-{config.train.lr}"
     )
     if config.wandb_project:
+        load_dotenv()
         wandb.init(
             name=run_name,
             project=config.wandb_project,
-            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
-            config=config.model_dump(),
+            entity=os.getenv("WANDB_ENTITY"),
+            config=config.model_dump(mode="json"),
         )
     for epoch in tqdm(range(1, config.train.num_epochs + 1)):
         for step, batch in tqdm(enumerate(train_loader)):

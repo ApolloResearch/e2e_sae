@@ -4,6 +4,7 @@ Usage:
     python train_mnist_saes.py <path/to/config.yaml>
 """
 
+import os
 from collections import OrderedDict
 from collections.abc import Callable
 from datetime import datetime
@@ -13,7 +14,7 @@ import fire
 import torch
 import wandb
 import yaml
-from dotenv import dotenv_values
+from dotenv import load_dotenv
 from jaxtyping import Float
 from pydantic import BaseModel, ConfigDict
 from torch import Tensor, nn
@@ -138,11 +139,12 @@ def train(config: Config) -> None:
         f"_bs-{config.train.batch_size}"
     )
     if config.wandb_project:
+        load_dotenv()
         wandb.init(
             name=run_name,
             project=config.wandb_project,
-            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
-            config=config.model_dump(),
+            entity=os.getenv("WANDB_ENTITY"),
+            config=config.model_dump(mode="json"),
         )
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -298,11 +300,11 @@ def train(config: Config) -> None:
         # if save_dir and config.train.save_every_n_epochs and \
         #         (epoch + 1) % config.train.save_every_n_epochs == 0:
         #     # TODO Figure out how to save only saes
-        #     save_model(config.model_dump(), save_dir, model, epoch)
+        #     save_model(config.model_dump(mode="json"), save_dir, model, epoch)
 
     if save_dir and not (save_dir / f"sparse_model_epoch_{config.train.epochs - 1}").exists():
         save_model(
-            config_dict=config.model_dump(),
+            config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             model=model_mod,
             epoch=config.train.epochs - 1,

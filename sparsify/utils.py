@@ -28,11 +28,11 @@ def save_model(
         logger.info("Saving config to %s", save_dir)
         with open(save_dir / "config.yaml", "w") as f:
             yaml.dump(config_dict, f)
-    logger.info("Saving model to %s", save_dir)
     if not sparse:
         torch.save(model.state_dict(), save_dir / f"model_epoch_{epoch + 1}.pt")
     else:
         torch.save(model.state_dict(), save_dir / f"sparse_model_epoch_{epoch + 1}.pt")
+    logger.info("Saved model to %s", save_dir)
 
 
 def load_config(config_path_or_obj: Path | str | T, config_model: type[T]) -> T:

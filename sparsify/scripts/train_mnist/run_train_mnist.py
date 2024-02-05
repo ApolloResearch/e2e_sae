@@ -6,13 +6,14 @@ Usage:
     python run_train_mnist.py <path/to/config.yaml>
 """
 
+import os
 from datetime import datetime
 from pathlib import Path
 
 import fire
 import torch
 import wandb
-from dotenv import dotenv_values
+from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
 from torch import nn
 from torch.utils.data import DataLoader
@@ -83,11 +84,12 @@ def train(config: Config) -> None:
         f"_hidden-{hidden_repr}"
     )
     if config.wandb_project:
+        load_dotenv()
         wandb.init(
             name=run_name,
             project=config.wandb_project,
-            entity=dotenv_values(REPO_ROOT / ".env")["WANDB_ENTITY"],
-            config=config.model_dump(),
+            entity=os.getenv("WANDB_ENTITY"),
+            config=config.model_dump(mode="json"),
         )
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -153,7 +155,7 @@ def train(config: Config) -> None:
             and (epoch + 1) % config.train.save_every_n_epochs == 0
         ):
             save_model(
-                config_dict=config.model_dump(),
+                config_dict=config.model_dump(mode="json"),
                 save_dir=save_dir,
                 model=model,
                 epoch=epoch,
@@ -181,7 +183,7 @@ def train(config: Config) -> None:
 
     if save_dir and not (save_dir / f"model_epoch_{config.train.epochs - 1}.pt").exists():
         save_model(
-            config_dict=config.model_dump(),
+            config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             model=model,
             epoch=config.train.epochs - 1,
