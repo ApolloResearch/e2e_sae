@@ -22,9 +22,8 @@ from tqdm import tqdm
 from transformer_lens import HookedTransformer, HookedTransformerConfig, evals
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utils import lm_accuracy, lm_cross_entropy_loss
-from transformers import AutoTokenizer
 
-from sparsify.losses import calc_loss
+from sparsify.losses import LossConfigs, calc_loss
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
 from sparsify.scripts.train_tlens.run_train_tlens import HookedTransformerPreConfig
@@ -42,13 +41,7 @@ class TrainConfig(BaseModel):
     scheduler: str | None = None
     warmup_steps: int = 0
     max_grad_norm: float | None = None
-    act_sparsity_lambda: float | None = 0.0
-    w_sparsity_lambda: float | None = 0.0
-    sparsity_p_norm: float = 1.0
-    loss_include_sae_inp_orig: bool = True
-    loss_include_sae_out_orig: bool = True
-    loss_include_sae_inp_sae_out: bool = True
-    loss_include_sae_sparsity: bool = True
+    loss_configs: LossConfigs
 
     @model_validator(mode="after")
     def check_effective_batch_size(self) -> Self:
@@ -75,7 +68,6 @@ class Config(BaseModel):
     train: TrainConfig
     saes: SparsifiersConfig
     wandb_project: str | None  # If None, don't log to Weights & Biases
-    tokenizer_name: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -87,8 +79,8 @@ class Config(BaseModel):
 
 
 def sae_hook(
-    value: Float[torch.Tensor, "... d_head"], hook: HookPoint, sae: SAE, hook_acts: dict[str, Any]
-) -> Float[torch.Tensor, "... d_head"]:
+    value: Float[torch.Tensor, "... dim"], hook: HookPoint, sae: SAE, hook_acts: dict[str, Any]
+) -> Float[torch.Tensor, "... dim"]:
     """Runs the SAE on the input and stores the output and c in hook_acts."""
     hook_acts["input"] = value.detach().clone()
     output, c = sae(value)
@@ -110,14 +102,9 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
             lr_lambda=lambda step: min(1.0, step / config.train.warmup_steps),
         )
 
-    # Load tokenizer from transformers if not provided
-    if model.tlens_model.tokenizer is None:
-        assert config.tokenizer_name is not None, "Tokenizer must be defined for training."
-        tokenizer = AutoTokenizer.from_pretrained(config.tokenizer_name)
-    else:
-        tokenizer = model.tlens_model.tokenizer
-
-    train_loader = evals.make_pile_data_loader(tokenizer, batch_size=config.train.batch_size)
+    train_loader = evals.make_pile_data_loader(
+        model.tlens_model.tokenizer, batch_size=config.train.batch_size
+    )
 
     samples = 0
     grad_updates = 0
@@ -133,8 +120,8 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
 
     # Initialize wandb
     run_name = (
-        f"saes_{model_name}_lambda-{config.train.act_sparsity_lambda}"
-        f"_Lp{config.train.sparsity_p_norm}_lr-{config.train.lr}"
+        f"saes_{model_name}_lambda-{config.train.loss_configs.sparsity.coeff}_"
+        f"Lp{config.train.loss_configs.sparsity.p_norm}_lr-{config.train.lr}"
     )
     if config.wandb_project:
         load_dotenv()
@@ -171,18 +158,12 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                 tokens,
                 fwd_hooks=fwd_hooks,  # type: ignore
             )
-            # TODO: Pass in loss config to simplify this
             loss, loss_dict = calc_loss(
                 orig_acts=orig_acts,
                 sae_acts=sae_acts,
                 orig_logits=orig_logits,
                 new_logits=new_logits,
-                sae_inp_orig=config.train.loss_include_sae_inp_orig,
-                sae_out_orig=config.train.loss_include_sae_out_orig,
-                sae_inp_sae_out=config.train.loss_include_sae_inp_sae_out,
-                sae_sparsity=config.train.loss_include_sae_sparsity,
-                sparsity_p_norm=config.train.sparsity_p_norm,
-                act_sparsity_lambda=config.train.act_sparsity_lambda,
+                loss_configs=config.train.loss_configs,
             )
 
             loss = loss / n_gradient_accumulation_steps
@@ -273,6 +254,8 @@ def load_tlens_model(config: Config) -> HookedTransformer:
             config.tlens_model_path.glob("*.pt"), key=lambda x: int(x.stem.split("_")[-1])
         )
         tlens_model.load_state_dict(torch.load(latest_model_path))
+
+    assert tlens_model.tokenizer is not None
     return tlens_model
 
 

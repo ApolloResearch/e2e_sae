@@ -29,9 +29,9 @@ def save_model(
         with open(save_dir / "config.yaml", "w") as f:
             yaml.dump(config_dict, f)
     if not sparse:
-        torch.save(model.state_dict(), save_dir / f"model_epoch_{epoch + 1}.pt")
+        torch.save(model.state_dict(), save_dir / f"model_epoch_{epoch}.pt")
     else:
-        torch.save(model.state_dict(), save_dir / f"sparse_model_epoch_{epoch + 1}.pt")
+        torch.save(model.state_dict(), save_dir / f"sparse_model_epoch_{epoch}.pt")
     logger.info("Saved model to %s", save_dir)
 
 

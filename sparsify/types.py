@@ -32,6 +32,11 @@ def serialize_torch_dtype_to_str(v: torch.dtype) -> str:
     raise ValueError(f"Invalid dtype found during serialization: {v}")
 
 
+# Pydantic magic for:
+# 1. If given a string as input (e.g. "float32"), convert it to a torch dtype (e.g. torch.float32)
+# 2. model_dump(mode="json") will serialize the torch dtype to a string, model_dump() leaves it
+#   as a torch dtype
+#
 TorchDtype = Annotated[
     torch.dtype,
     BeforeValidator(convert_str_to_torch_dtype),

@@ -10,9 +10,9 @@ if TYPE_CHECKING:
 
 
 class SAETransformer(nn.Module):
-    def __init__(self, tflens_model: HookedTransformer, config: "Config") -> None:
+    def __init__(self, tlens_model: HookedTransformer, config: "Config") -> None:
         super().__init__()
-        self.tlens_model = tflens_model.eval()
+        self.tlens_model = tlens_model.eval()
         self.saes = nn.ModuleDict()
         for i in range(self.tlens_model.cfg.n_layers):
             input_size = (

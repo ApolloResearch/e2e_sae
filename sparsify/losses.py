@@ -1,6 +1,87 @@
+from typing import Any
+
 import torch
 from jaxtyping import Float
+from pydantic import BaseModel, ConfigDict
 from torch import Tensor
+
+
+class BaseLossConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    coeff: float
+
+    def calc_loss(self, *args: Any, **kwargs: Any) -> Float[Tensor, ""]:
+        raise NotImplementedError
+
+
+class SparsityLossConfig(BaseLossConfig):
+    p_norm: float = 1.0
+
+    def calc_loss(self, *args: Any, c: Float[Tensor, "... c"], **kwargs: Any) -> Float[Tensor, ""]:
+        """Calculate the sparsity loss.
+
+        Args:
+            c: The activations after the non-linearity in the SAE.
+        """
+        return self.coeff * torch.norm(c, p=self.p_norm, dim=-1).mean()
+
+
+class InpToOrigLossConfig(BaseLossConfig):
+    def calc_loss(
+        self,
+        *args: Any,
+        input: Float[Tensor, "... dim"],
+        orig: Float[Tensor, "... dim"],
+        **kwargs: Any,
+    ) -> Float[Tensor, ""]:
+        """Calculate loss between the input of the SAE and the non-SAE-augmented activations."""
+        return self.coeff * torch.nn.functional.mse_loss(input, orig)
+
+
+class OutToOrigLossConfig(BaseLossConfig):
+    def calc_loss(
+        self,
+        *args: Any,
+        output: Float[Tensor, "... dim"],
+        orig: Float[Tensor, "... dim"],
+        **kwargs: Any,
+    ) -> Float[Tensor, ""]:
+        """Calculate loss between the output of the SAE and the non-SAE-augmented activations."""
+        return self.coeff * torch.nn.functional.mse_loss(output, orig)
+
+
+class InpToOutLossConfig(BaseLossConfig):
+    def calc_loss(
+        self,
+        *args: Any,
+        input: Float[Tensor, "... dim"],
+        output: Float[Tensor, "... dim"],
+        **kwargs: Any,
+    ) -> Float[Tensor, ""]:
+        """Calculate loss between the input and output of the SAE."""
+        return self.coeff * torch.nn.functional.mse_loss(input, output)
+
+
+class LogitsLossConfig(BaseLossConfig):
+    def calc_loss(
+        self,
+        *args: Any,
+        new_logits: Float[Tensor, "... dim"],
+        orig_logits: Float[Tensor, "... dim"],
+        **kwargs: Any,
+    ) -> Float[Tensor, ""]:
+        """Calculate loss between SAE-augmented and non-SAE-augmented logits."""
+        # TODO explore KL and other losses
+        return self.coeff * torch.nn.functional.mse_loss(new_logits, orig_logits)
+
+
+class LossConfigs(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    sparsity: SparsityLossConfig
+    inp_to_orig: InpToOrigLossConfig | None
+    out_to_orig: OutToOrigLossConfig | None
+    inp_to_out: InpToOutLossConfig | None
+    logits: LogitsLossConfig | None
 
 
 def calc_loss(
@@ -8,70 +89,55 @@ def calc_loss(
     sae_acts: dict[str, dict[str, Tensor]],
     orig_logits: Float[Tensor, "batch pos vocab"],
     new_logits: Float[Tensor, "batch pos vocab"],
-    sae_inp_orig: bool = False,
-    sae_out_orig: bool = False,
-    sae_inp_sae_out: bool = False,
-    sae_sparsity: bool = False,
-    sparsity_p_norm: float = 1.0,
-    act_sparsity_lambda: float | None = 1.0,
+    loss_configs: LossConfigs,
 ) -> tuple[Float[Tensor, ""], dict[str, Float[Tensor, ""]]]:
-    """Compute loss between orig_acts and sae_acts.
+    """Compute losses.
 
-    TODO: Pass in loss config for this
+    Note that some losses may be computed on the final logits, while others may be computed on
+    intermediate activations.
 
     Args:
-        orig_acts: Dictionary of original activations, keyed by tlens attribute
+        orig_acts: Dictionary of original activations, keyed by tlens attribute.
         sae_acts: Dictionary of SAE activations. First level keys should match orig_acts.
             Second level keys are "output" and "c".
-        orig_logits: Original logits
-        new_logits: New logits
+        orig_logits: Logits from non-SAE-augmented model.
+        new_logits: Logits from SAE-augmented model.
+        loss_configs: Config for the losses to be computed.
 
     Returns:
         loss: Scalar tensor representing the loss.
-        loss_dict: Dictionary of losses, keyed by loss name.
+        loss_dict: Dictionary of losses, keyed by loss type and name.
     """
     assert set(orig_acts.keys()) == set(sae_acts.keys()), (
         f"Keys of orig_acts and sae_acts must match, got {orig_acts.keys()} and "
         f"{sae_acts.keys()}"
     )
+
     loss: Float[Tensor, ""] = torch.zeros(1, device=orig_logits.device, dtype=orig_logits.dtype)
     loss_dict = {}
 
+    if loss_configs.logits:
+        loss_dict["loss/logits"] = loss_configs.logits.calc_loss(
+            new_logits=new_logits, orig_logits=orig_logits.detach().clone()
+        )
+        loss = loss + loss_dict["loss/logits"]
     # TODO Future: Maintain a record of batch-element-wise losses
 
-    # Calculate difference of logits
-    loss_logits = torch.nn.functional.mse_loss(
-        new_logits, orig_logits.clone().detach()
-    )  # TODO explore KL and other losses
-    loss_dict["loss/logits"] = loss_logits
-    loss = loss + loss_logits
-
     for name, orig_act in orig_acts.items():
-        # Convert from inference tensor. TODO: Make more memory efficient
-        orig_act = orig_act.clone()
+        # Convert from inference tensor.
+        orig_act = orig_act.detach().clone()
         sae_act = sae_acts[name]
 
-        if sae_inp_orig:
-            loss_sae_inp_orig = torch.nn.functional.mse_loss(sae_act["input"], orig_act.detach())
-            loss_dict[f"loss/sae_inp_to_orig/{name}"] = loss_sae_inp_orig
-            loss = loss + loss_sae_inp_orig
-        if sae_out_orig:
-            loss_sae_out_orig = torch.nn.functional.mse_loss(sae_act["output"], orig_act.detach())
-            loss_dict[f"loss/sae_out_to_orig/{name}"] = loss_sae_out_orig
-            loss = loss + loss_sae_out_orig
-        if sae_inp_sae_out:
-            loss_sae_inp_sae_out = torch.nn.functional.mse_loss(
-                sae_act["output"], sae_act["input"].detach()
-            )
-            loss_dict[f"loss/sae_inp_to_sae_out/{name}"] = loss_sae_inp_sae_out
-            loss = loss + loss_sae_inp_sae_out
-        if sae_sparsity:
-            assert act_sparsity_lambda is not None, "act_sparsity_lambda must be provided"
-            loss_sparsity = torch.norm(sae_act["c"], p=sparsity_p_norm, dim=-1).mean()
-            loss_dict[f"loss/sparsity/pre-scaling/{name}"] = loss_sparsity.clone()
-            loss_sparsity *= act_sparsity_lambda
-            loss_dict[f"loss/sparsity/post-scaling/{name}"] = loss_sparsity
-            loss = loss + loss_sparsity
+        for config_type in ["inp_to_orig", "out_to_orig", "inp_to_out", "sparsity"]:
+            loss_config: BaseLossConfig | None = getattr(loss_configs, config_type)
+            if loss_config:
+                loss_dict[f"loss/{config_type}/{name}"] = loss_config.calc_loss(
+                    input=sae_act["input"],
+                    output=sae_act["output"],
+                    orig=orig_act,
+                    c=sae_act["c"],
+                )
+                loss = loss + loss_dict[f"loss/{config_type}/{name}"]
 
         # Record L_0 norm of the cs
         l_0_norm = torch.norm(sae_act["c"], p=0, dim=-1).mean()
