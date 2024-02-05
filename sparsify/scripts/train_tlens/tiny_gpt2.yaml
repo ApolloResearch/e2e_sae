@@ -10,7 +10,7 @@ tlens_config:
   dtype: float32
   tokenizer_name: gpt2
 train:
-  num_epochs: 3
+  n_epochs: 3
   batch_size: 16
   effective_batch_size: null
   lr: 1e-3

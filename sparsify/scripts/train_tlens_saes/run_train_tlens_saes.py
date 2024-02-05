@@ -13,9 +13,10 @@ from typing import Any, Self, cast
 import fire
 import torch
 import wandb
+import yaml
 from dotenv import load_dotenv
 from jaxtyping import Float, Int
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 from torch import Tensor
 from tqdm import tqdm
 from transformer_lens import HookedTransformer, HookedTransformerConfig, evals
@@ -26,34 +27,15 @@ from transformers import AutoTokenizer
 from sparsify.losses import calc_loss
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
-from sparsify.types import TORCH_DTYPES, RootPath, StrDtype
+from sparsify.scripts.train_tlens.run_train_tlens import HookedTransformerPreConfig
+from sparsify.types import RootPath
 from sparsify.utils import load_config, set_seed
-
-
-class HookedTransformerPreConfig(BaseModel):
-    """Pydantic model whose arguments will be passed to a HookedTransformerConfig."""
-
-    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True, frozen=True)
-    d_model: int
-    n_layers: int
-    n_ctx: int
-    d_head: int
-    d_vocab: int
-    act_fn: str
-    dtype: torch.dtype | None
-
-    @field_validator("dtype", mode="before")
-    @classmethod
-    def dtype_to_torch_dtype(cls, v: StrDtype | None) -> torch.dtype | None:
-        if v is None:
-            return None
-        return TORCH_DTYPES[v]
 
 
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     save_dir: RootPath | None = Path(__file__).parent / "out"
-    num_epochs: int
+    n_epochs: int
     batch_size: int
     effective_batch_size: int | None = None
     lr: float
@@ -89,7 +71,7 @@ class Config(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     seed: int = 0
     tlens_model_name: str | None = None
-    tlens_config: HookedTransformerPreConfig | None = None
+    tlens_model_path: RootPath | None = None
     train: TrainConfig
     saes: SparsifiersConfig
     wandb_project: str | None  # If None, don't log to Weights & Biases
@@ -99,8 +81,8 @@ class Config(BaseModel):
     @classmethod
     def check_only_one_model_definition(cls, values: dict[str, Any]) -> dict[str, Any]:
         assert (values.get("tlens_model_name") is not None) + (
-            values.get("tlens_config") is not None
-        ) == 1, "Must specify exactly one of tlens_model_name or tlens_config."
+            values.get("tlens_model_path") is not None
+        ) == 1, "Must specify exactly one of tlens_model_name or tlens_model_path."
         return values
 
 
@@ -162,15 +144,17 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
             entity=os.getenv("WANDB_ENTITY"),
             config=config.model_dump(mode="json"),
         )
-    for epoch in tqdm(range(1, config.train.num_epochs + 1)):
-        for step, batch in tqdm(enumerate(train_loader)):
+    for epoch in tqdm(
+        range(1, config.train.n_epochs + 1), total=config.train.n_epochs, desc="Epochs"
+    ):
+        for step, batch in tqdm(enumerate(train_loader), total=len(train_loader), desc="Steps"):
             tokens: Int[Tensor, "batch pos"] = batch["tokens"].to(device=device)
             # Run model without SAEs
             with torch.inference_mode():
-                orig_logits_obj, orig_acts = model.tlens_model.run_with_cache(
+                orig_logits, orig_acts = model.tlens_model.run_with_cache(
                     tokens, names_filter=orig_resid_names, return_cache_object=False
                 )
-            orig_logits: Float[Tensor, "batch pos vocab"] = orig_logits_obj.logits
+            assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
 
             # Run model with SAEs
             sae_acts = {hook_name: {} for hook_name in orig_acts}
@@ -218,8 +202,8 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                     scheduler.step()
 
             samples += tokens.shape[0]
-            if step == 0 or step % 5 == 0:
-                print(
+            if step == 0 or step % 20 == 0:
+                tqdm.write(
                     f"Epoch {epoch} Samples {samples} Step {step} GradUpdates {grad_updates} "
                     f"Loss {loss.item()}"
                 )
@@ -329,18 +313,32 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                     # )
 
 
+def load_tlens_model(config: Config) -> HookedTransformer:
+    """Load transformerlens model from either HuggingFace or local path."""
+    if config.tlens_model_name is not None:
+        tlens_model = HookedTransformer.from_pretrained(config.tlens_model_name)
+    else:
+        assert config.tlens_model_path is not None, "tlens_model_path is None."
+        # Load the tlens_config
+        with open(config.tlens_model_path / "config.yaml") as f:
+            tlens_config = HookedTransformerPreConfig(**yaml.safe_load(f)["tlens_config"])
+        hooked_transformer_config = HookedTransformerConfig(**tlens_config.model_dump())
+
+        # Load the model
+        tlens_model = HookedTransformer(hooked_transformer_config)
+        latest_model_path = max(
+            config.tlens_model_path.glob("*.pt"), key=lambda x: int(x.stem.split("_")[-1])
+        )
+        tlens_model.load_state_dict(torch.load(latest_model_path))
+    return tlens_model
+
+
 def main(config_path_str: str) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config = load_config(config_path_str, config_model=Config)
     set_seed(config.seed)
 
-    if config.tlens_model_name is not None:
-        tlens_model = HookedTransformer.from_pretrained(config.tlens_model_name)
-    else:
-        assert config.tlens_config is not None, "tlens_config and tlens_model_name are both None."
-        hooked_transformer_config = HookedTransformerConfig(**config.tlens_config.model_dump())
-        tlens_model = HookedTransformer(hooked_transformer_config)
-
+    tlens_model = load_tlens_model(config)
     model = SAETransformer(tlens_model, config).to(device=device)
     train(config, model, device=device)
 

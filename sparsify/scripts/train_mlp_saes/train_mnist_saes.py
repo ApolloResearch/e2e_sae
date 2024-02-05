@@ -33,7 +33,7 @@ class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     learning_rate: float
     batch_size: int
-    epochs: int
+    n_epochs: int
     save_dir: RootPath | None = Path(__file__).parent / "out"
     type_of_sparsifier: str
     sparsity_lambda: float
@@ -152,7 +152,9 @@ def train(config: Config) -> None:
 
     samples = 0
     # Training loop
-    for epoch in tqdm(range(config.train.epochs), total=config.train.epochs, desc="Epochs"):
+    for epoch in tqdm(
+        range(1, config.train.n_epochs + 1), total=config.train.n_epochs, desc="Epochs"
+    ):
         for i, (images, labels) in enumerate(train_loader):
             images, labels = images.to(device), labels.to(device)
 
@@ -234,8 +236,8 @@ def train(config: Config) -> None:
             if i % 10 == 0:
                 logger.info(
                     "Epoch [%d/%d], Step [%d/%d], Loss: %f, Accuracy: %f",
-                    epoch + 1,
-                    config.train.epochs,
+                    epoch,
+                    config.train.n_epochs,
                     i + 1,
                     len(train_loader),
                     loss.item(),
@@ -298,16 +300,16 @@ def train(config: Config) -> None:
 
         # Comment out because we're not saving mod models right now
         # if save_dir and config.train.save_every_n_epochs and \
-        #         (epoch + 1) % config.train.save_every_n_epochs == 0:
+        #         epoch % config.train.save_every_n_epochs == 0:
         #     # TODO Figure out how to save only saes
         #     save_model(config.model_dump(mode="json"), save_dir, model, epoch)
 
-    if save_dir and not (save_dir / f"sparse_model_epoch_{config.train.epochs - 1}").exists():
+    if save_dir and not (save_dir / f"sparse_model_epoch_{config.train.n_epochs}").exists():
         save_model(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             model=model_mod,
-            epoch=config.train.epochs - 1,
+            epoch=config.train.n_epochs,
             sparse=True,
         )  # TODO Figure out how to save only saes
 

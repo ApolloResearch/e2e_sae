@@ -36,7 +36,7 @@ class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     learning_rate: float
     batch_size: int
-    epochs: int
+    n_epochs: int
     save_dir: RootPath | None = Path(__file__).parent / "out"
     save_every_n_epochs: int | None
 
@@ -97,7 +97,9 @@ def train(config: Config) -> None:
 
     samples = 0
     # Training loop
-    for epoch in tqdm(range(config.train.epochs), total=config.train.epochs, desc="Epochs"):
+    for epoch in tqdm(
+        range(1, config.train.n_epochs + 1), total=config.train.n_epochs, desc="Epochs"
+    ):
         for i, (images, labels) in enumerate(train_loader):
             images, labels = images.to(device), labels.to(device)
 
@@ -116,11 +118,11 @@ def train(config: Config) -> None:
             loss.backward()
             optimizer.step()
 
-            if (i + 1) % config.train.epochs // 10 == 0:
+            if (i + 1) % config.train.n_epochs // 10 == 0:
                 logger.info(
                     "Epoch [%d/%d], Step [%d/%d], Loss: %f, Accuracy: %f",
-                    epoch + 1,
-                    config.train.epochs,
+                    epoch,
+                    config.train.n_epochs,
                     i + 1,
                     len(train_loader),
                     loss.item(),
@@ -152,7 +154,7 @@ def train(config: Config) -> None:
         if (
             save_dir
             and config.train.save_every_n_epochs
-            and (epoch + 1) % config.train.save_every_n_epochs == 0
+            and epoch % config.train.save_every_n_epochs == 0
         ):
             save_model(
                 config_dict=config.model_dump(mode="json"),
@@ -181,12 +183,12 @@ def train(config: Config) -> None:
         if config.wandb_project:
             wandb.log({"test/accuracy": accuracy}, step=samples)
 
-    if save_dir and not (save_dir / f"model_epoch_{config.train.epochs - 1}.pt").exists():
+    if save_dir and not (save_dir / f"model_epoch_{config.train.n_epochs}.pt").exists():
         save_model(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             model=model,
-            epoch=config.train.epochs - 1,
+            epoch=config.train.n_epochs,
             sparse=False,
         )
 

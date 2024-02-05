@@ -1,15 +1,8 @@
 seed: 0
 tlens_model_name: null
-tlens_config:
-  d_model: 16
-  n_layers: 2
-  n_ctx: 1024
-  d_head: 4
-  d_vocab: 50257
-  act_fn: gelu
-  dtype: float32
+tlens_model_path: sparsify/scripts/train_tlens/out/tiny-gpt2_lr-0.001_bs-16_2024-02-05_12-28-22
 train:
-  num_epochs: 2
+  n_epochs: 2
   batch_size: 3
   lr: 1e-3
   loss_include_sae_inp_orig: true

@@ -1,8 +1,8 @@
 seed: 0
 tlens_model_name: pythia-14m
-tlens_config: null
+tlens_model_path: null
 train:
-  num_epochs: 2
+  n_epochs: 2
   batch_size: 8
   effective_batch_size: 128
   lr: 1e-3

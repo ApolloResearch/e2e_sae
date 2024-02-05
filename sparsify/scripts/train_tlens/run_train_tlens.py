@@ -39,7 +39,7 @@ class HookedTransformerPreConfig(BaseModel):
 
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    num_epochs: int
+    n_epochs: int
     batch_size: int
     effective_batch_size: int | None = None
     lr: float
@@ -97,7 +97,9 @@ def train(config: Config, model: HookedTransformer, device: torch.device) -> Non
 
     samples = 0
     grad_updates = 0
-    for epoch in tqdm(range(config.train.num_epochs), total=config.train.num_epochs, desc="Epochs"):
+    for epoch in tqdm(
+        range(1, config.train.n_epochs + 1), total=config.train.n_epochs, desc="Epochs"
+    ):
         for step, batch in tqdm(enumerate(train_loader), total=len(train_loader), desc="Steps"):
             tokens: Int[Tensor, "batch pos"] = batch["tokens"].to(device=device)
             loss = model(tokens, return_type="loss")
@@ -133,7 +135,7 @@ def train(config: Config, model: HookedTransformer, device: torch.device) -> Non
         if (
             save_dir
             and config.train.save_every_n_epochs
-            and (epoch + 1) % config.train.save_every_n_epochs == 0
+            and epoch % config.train.save_every_n_epochs == 0
         ):
             save_model(
                 config_dict=config.model_dump(mode="json"),

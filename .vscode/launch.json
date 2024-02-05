@@ -23,11 +23,11 @@
             "justMyCode": true
         },
         {
-            "name": "train custom lm sae",
+            "name": "train tiny-gpt2 lm sae",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py",
-            "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/custom_model.yaml",
+            "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/tiny_gpt2.yaml",
             "console": "integratedTerminal",
             "justMyCode": true
         },
