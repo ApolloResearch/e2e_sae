@@ -125,12 +125,8 @@ def train(config: Config, model: HookedTransformer, device: torch.device) -> Non
 
             if config.wandb_project:
                 wandb.log(
-                    {
-                        "train_loss": loss.item(),
-                        "samples": samples,
-                        "epoch": epoch,
-                        "grad_updates": grad_updates,
-                    }
+                    {"train_loss": loss.item(), "epoch": epoch, "grad_updates": grad_updates},
+                    step=samples,
                 )
         if (
             save_dir

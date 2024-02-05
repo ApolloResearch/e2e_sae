@@ -130,7 +130,7 @@ def train(config: Config) -> None:
                 )
 
                 if config.wandb_project:
-                    wandb.log({"train/loss": loss.item(), "train/samples": samples}, step=samples)
+                    wandb.log({"train/loss": loss.item()}, step=samples)
 
         # Validate the model
         model.eval()

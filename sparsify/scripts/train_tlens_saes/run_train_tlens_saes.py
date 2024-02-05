@@ -209,35 +209,17 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                 )
 
             if config.wandb_project:
-                # TODO: Simplify logging
-                wandb.log(
-                    {
-                        "train_loss": loss.item(),
-                        "samples": samples,
-                        "epoch": epoch,
-                        "grad_updates": grad_updates,
-                    }
-                )
+                log_info = {
+                    "epoch": epoch,
+                    "grad_updates": grad_updates,
+                }
+                wandb.log({"train_loss": loss.item(), **log_info})
                 for loss_name, loss_value in loss_dict.items():
-                    wandb.log(
-                        {
-                            loss_name: loss_value.item(),
-                            "samples": samples,
-                            "epoch": epoch,
-                            "grad_updates": grad_updates,
-                        }
-                    )
+                    wandb.log({loss_name: loss_value.item(), **log_info}, step=samples)
 
                 if config.train.max_grad_norm is not None:
                     assert grad_norm is not None
-                    wandb.log(
-                        {
-                            "grad_norm": grad_norm,
-                            "samples": samples,
-                            "epoch": epoch,
-                            "grad_updates": grad_updates,
-                        }
-                    )
+                    wandb.log({"grad_norm": grad_norm, **log_info}, step=samples)
 
                 if step == 0 or step % 5 == 0:
                     orig_model_performance_loss = lm_cross_entropy_loss(
@@ -259,58 +241,19 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                     wandb.log(
                         {
                             "performance/orig_model_performance_loss": orig_model_performance_loss.item(),
-                            "samples": samples,
-                            "epoch": epoch,
-                            "grad_updates": grad_updates,
-                        }
-                    )
-                    wandb.log(
-                        {
                             "performance/orig_model_performance_acc": orig_model_performance_acc.item(),
-                            "samples": samples,
-                            "epoch": epoch,
-                            "grad_updates": grad_updates,
-                        }
-                    )
-                    wandb.log(
-                        {
                             "performance/sae_model_performance_loss": sae_model_performance_loss.item(),
-                            "samples": samples,
-                            "epoch": epoch,
-                            "grad_updates": grad_updates,
-                        }
-                    )
-                    wandb.log(
-                        {
                             "performance/sae_model_performance_acc": sae_model_performance_acc.item(),
-                            "samples": samples,
-                            "epoch": epoch,
-                            "grad_updates": grad_updates,
-                        }
-                    )
-                    wandb.log(
-                        {
                             "performance/difference_loss": (
                                 orig_model_performance_loss - sae_model_performance_loss
                             ).item(),
-                            "samples": samples,
-                            "epoch": epoch,
-                            "grad_updates": grad_updates,
-                        }
-                    )
-                    wandb.log(
-                        {
                             "performance/difference_acc": (
                                 orig_model_performance_acc - sae_model_performance_acc
                             ).item(),
-                            "samples": samples,
-                            "epoch": epoch,
-                            "grad_updates": grad_updates,
-                        }
+                            **log_info,
+                        },
+                        step=samples,
                     )
-                    # wandb.log(
-                    #     {"performance/kl_div": kl_div.item(), "samples": samples, "epoch": epoch}
-                    # )
 
 
 def load_tlens_model(config: Config) -> HookedTransformer:

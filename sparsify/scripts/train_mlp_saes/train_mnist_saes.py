@@ -245,38 +245,20 @@ def train(config: Config) -> None:
                 )
 
                 if config.wandb_project:
-                    wandb.log({"train/loss": loss.item(), "train/samples": samples}, step=samples)
-                    wandb.log({"train/accuracy": accuracy, "train/samples": samples}, step=samples)
+                    wandb.log({"train/loss": loss.item()}, step=samples)
+                    wandb.log({"train/accuracy": accuracy}, step=samples)
                     for k, v in sp_orig_losses.items():
-                        wandb.log(
-                            {f"train/loss-sae-orig-{k}": v.item(), "train/samples": samples},
-                            step=samples,
-                        )
+                        wandb.log({f"train/loss-sae-orig-{k}": v.item()}, step=samples)
                     for k, v in new_orig_losses.items():
-                        wandb.log(
-                            {f"train/loss-new-orig-{k}": v.item(), "train/samples": samples},
-                            step=samples,
-                        )
+                        wandb.log({f"train/loss-new-orig-{k}": v.item()}, step=samples)
                     for k, v in sp_new_losses.items():
-                        wandb.log(
-                            {f"train/loss-sae-new-{k}": v.item(), "train/samples": samples},
-                            step=samples,
-                        )
+                        wandb.log({f"train/loss-sae-new-{k}": v.item()}, step=samples)
                     for k, v in sparsity_losses.items():
-                        wandb.log(
-                            {f"train/loss-sparsity-loss-{k}": v.item(), "train/samples": samples},
-                            step=samples,
-                        )
+                        wandb.log({f"train/loss-sparsity-loss-{k}": v.item()}, step=samples)
                     for k, v in zeros_counts.items():
-                        wandb.log(
-                            {f"train/zero-counts-{k}": v.item(), "train/samples": samples},
-                            step=samples,
-                        )
+                        wandb.log({f"train/zero-counts-{k}": v.item()}, step=samples)
                     for k, v in zeros_fracs.items():
-                        wandb.log(
-                            {f"train/fraction-zeros-{k}": v.item(), "train/samples": samples},
-                            step=samples,
-                        )
+                        wandb.log({f"train/fraction-zeros-{k}": v.item()}, step=samples)
 
         # Validate the model
         model_mod.eval()
