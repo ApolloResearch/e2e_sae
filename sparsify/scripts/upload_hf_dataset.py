@@ -384,9 +384,9 @@ if __name__ == "__main__":
     datasets: list[DatasetToPreprocess] = [
         DatasetToPreprocess(
             source_path="roneneldan/TinyStories",
+            # Paper says gpt-neo tokenizer, gpt-neo says gpt2 (https://github.com/EleutherAI/gpt-neo)
             tokenizer_name="gpt2",
             hugging_face_username="apollo-research",
-            # Paper says gpt-neo tokenizer, gpt-neo says gpt2 (https://github.com/EleutherAI/gpt-neo)
             context_size=512,
             # Get the newer versions (Generated with GPT-4 only)
             data_files=["TinyStoriesV2-GPT4-train.txt", "TinyStoriesV2-GPT4-valid.txt"],
