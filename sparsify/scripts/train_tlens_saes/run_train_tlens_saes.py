@@ -148,7 +148,7 @@ def train(
         range(1, config.train.n_epochs + 1), total=config.train.n_epochs, desc="Epochs"
     ):
         for step, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
-            tokens: Int[Tensor, "batch pos"] = batch["input_ids"].to(device=device)
+            tokens: Int[Tensor, "batch pos"] = batch[config.data.column_name].to(device=device)
             # Run model without SAEs
             with torch.inference_mode():
                 orig_logits, orig_acts = model.tlens_model.run_with_cache(
@@ -276,7 +276,7 @@ def main(config_path_str: str) -> None:
     config = load_config(config_path_str, config_model=Config)
     set_seed(config.seed)
 
-    data_loader = create_data_loader(config.data, batch_size=config.train.batch_size)
+    data_loader, _ = create_data_loader(config.data, batch_size=config.train.batch_size)
     tlens_model = load_tlens_model(config)
 
     model = SAETransformer(tlens_model, config).to(device=device)

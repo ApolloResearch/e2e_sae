@@ -22,6 +22,7 @@ data:
   tokenizer_name: gpt2
   streaming: true
   split: train
+  n_ctx: 1024
 saes:
   sae_position_name: hook_resid_post
 wandb_project: sparsify-custom
