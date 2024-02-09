@@ -16,6 +16,12 @@ train:
     inp_to_out: null
     logits:
       coeff: 1.0
+data:
+  dataset_name: apollo-research/sae-Skylion007-openwebtext-tokenizer-gpt2
+  is_tokenized: true
+  tokenizer_name: gpt2
+  streaming: true
+  split: train
 saes:
   sae_position_name: hook_resid_post
 wandb_project: sparsify-custom
