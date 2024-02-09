@@ -21,12 +21,13 @@ train:
     logits:
       coeff: 1.0
 data:
-  dataset_name: apollo-research/sae-Skylion007-openwebtext-tokenizer-gpt2
-  is_tokenized: true
+  dataset_name: NeelNanda/pile-10k
+  is_tokenized: false
   tokenizer_name: gpt2
-  streaming: true
+  streaming: false
   split: train
   n_ctx: 1024
+  column_name: tokens
 saes:
   sae_position_name: hook_resid_post
-wandb_project: sparsify-gpt2-small-owt
+wandb_project: sparsify-gpt2-small-pile10k

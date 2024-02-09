@@ -18,22 +18,26 @@ from dotenv import load_dotenv
 from jaxtyping import Float, Int
 from pydantic import BaseModel, ConfigDict, model_validator
 from torch import Tensor
+from torch.utils.data import DataLoader
+from torch.utils.data.dataset import IterableDataset
 from tqdm import tqdm
-from transformer_lens import HookedTransformer, HookedTransformerConfig, evals
+from transformer_lens import HookedTransformer, HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utils import lm_accuracy, lm_cross_entropy_loss
 
+from sparsify.data import DataConfig, create_data_loader
 from sparsify.losses import LossConfigs, calc_loss
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
 from sparsify.scripts.train_tlens.run_train_tlens import HookedTransformerPreConfig
-from sparsify.types import RootPath
+from sparsify.types import RootPath, Samples
 from sparsify.utils import load_config, set_seed
 
 
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     save_dir: RootPath | None = Path(__file__).parent / "out"
+    n_samples: int | None = None
     n_epochs: int
     batch_size: int
     effective_batch_size: int | None = None
@@ -66,8 +70,9 @@ class Config(BaseModel):
     tlens_model_name: str | None = None
     tlens_model_path: RootPath | None = None
     train: TrainConfig
+    data: DataConfig
     saes: SparsifiersConfig
-    wandb_project: str | None  # If None, don't log to Weights & Biases
+    wandb_project: str | None = None  # If None, don't log to Weights & Biases
 
     @model_validator(mode="before")
     @classmethod
@@ -89,7 +94,12 @@ def sae_hook(
     return output
 
 
-def train(config: Config, model: SAETransformer, device: torch.device) -> None:
+def train(
+    config: Config,
+    model: SAETransformer,
+    data_loader: DataLoader[Samples],
+    device: torch.device,
+) -> None:
     model_name = config.tlens_model_name or "custom"
 
     # TODO make appropriate for transcoders and metaSAEs
@@ -102,13 +112,11 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
             lr_lambda=lambda step: min(1.0, step / config.train.warmup_steps),
         )
 
-    train_loader = evals.make_pile_data_loader(
-        model.tlens_model.tokenizer, batch_size=config.train.batch_size
-    )
-
-    samples = 0
-    grad_updates = 0
-    grad_norm: float | None = None
+    if config.train.n_samples is None:
+        # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
+        n_batches = None if isinstance(data_loader.dataset, IterableDataset) else len(data_loader)
+    else:
+        n_batches = config.train.n_samples // config.train.batch_size
 
     if config.train.effective_batch_size is not None:
         n_gradient_accumulation_steps = config.train.effective_batch_size // config.train.batch_size
@@ -131,11 +139,16 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
             entity=os.getenv("WANDB_ENTITY"),
             config=config.model_dump(mode="json"),
         )
+
+    total_samples = 0
+    grad_updates = 0
+    grad_norm: float | None = None
+
     for epoch in tqdm(
         range(1, config.train.n_epochs + 1), total=config.train.n_epochs, desc="Epochs"
     ):
-        for step, batch in tqdm(enumerate(train_loader), total=len(train_loader), desc="Steps"):
-            tokens: Int[Tensor, "batch pos"] = batch["tokens"].to(device=device)
+        for step, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
+            tokens: Int[Tensor, "batch pos"] = batch[config.data.column_name].to(device=device)
             # Run model without SAEs
             with torch.inference_mode():
                 orig_logits, orig_acts = model.tlens_model.run_with_cache(
@@ -182,10 +195,10 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                     assert scheduler is not None
                     scheduler.step()
 
-            samples += tokens.shape[0]
+            total_samples += tokens.shape[0]
             if step == 0 or step % 20 == 0:
                 tqdm.write(
-                    f"Epoch {epoch} Samples {samples} Step {step} GradUpdates {grad_updates} "
+                    f"Epoch {epoch} Samples {total_samples} Step {step} GradUpdates {grad_updates} "
                     f"Loss {loss.item()}"
                 )
 
@@ -196,12 +209,11 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                 }
                 wandb.log({"train_loss": loss.item(), **log_info})
                 for loss_name, loss_value in loss_dict.items():
-                    wandb.log({loss_name: loss_value.item(), **log_info}, step=samples)
+                    wandb.log({loss_name: loss_value.item(), **log_info}, step=total_samples)
 
                 if config.train.max_grad_norm is not None:
                     assert grad_norm is not None
-                    wandb.log({"grad_norm": grad_norm, **log_info}, step=samples)
-
+                    wandb.log({"grad_norm": grad_norm, **log_info}, step=total_samples)
                 if step == 0 or step % 5 == 0:
                     orig_model_performance_loss = lm_cross_entropy_loss(
                         orig_logits, tokens, per_token=False
@@ -233,7 +245,7 @@ def train(config: Config, model: SAETransformer, device: torch.device) -> None:
                             ).item(),
                             **log_info,
                         },
-                        step=samples,
+                        step=total_samples,
                     )
 
 
@@ -264,9 +276,16 @@ def main(config_path_str: str) -> None:
     config = load_config(config_path_str, config_model=Config)
     set_seed(config.seed)
 
+    data_loader, _ = create_data_loader(config.data, batch_size=config.train.batch_size)
     tlens_model = load_tlens_model(config)
+
     model = SAETransformer(tlens_model, config).to(device=device)
-    train(config, model, device=device)
+    train(
+        config=config,
+        model=model,
+        data_loader=data_loader,
+        device=device,
+    )
 
 
 if __name__ == "__main__":

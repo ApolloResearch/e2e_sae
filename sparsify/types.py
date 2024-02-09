@@ -1,8 +1,10 @@
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypedDict
 
 import torch
+from jaxtyping import Int
 from pydantic import BeforeValidator, PlainSerializer
+from torch import Tensor
 
 from sparsify.utils import to_root_path
 
@@ -12,6 +14,12 @@ TORCH_DTYPES: dict[StrDtype, torch.dtype] = {
     "float64": torch.float64,
     "bfloat16": torch.bfloat16,
 }
+
+
+class Samples(TypedDict):
+    """Tokenized samples."""
+
+    input_ids: Int[Tensor, "batch pos"]
 
 
 def convert_str_to_torch_dtype(v: Any) -> torch.dtype:

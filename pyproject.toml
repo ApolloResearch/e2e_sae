@@ -16,6 +16,7 @@ dependencies = [
     "transformer-lens~=1.14.0",
     "jaxtyping~=0.2.25",
     "python-dotenv~=1.0.1",
+    "zstandard~=0.22.0",
 ]
 
 [project.urls]
