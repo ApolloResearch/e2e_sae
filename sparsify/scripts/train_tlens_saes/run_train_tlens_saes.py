@@ -38,7 +38,6 @@ class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     save_dir: RootPath | None = Path(__file__).parent / "out"
     n_samples: int | None = None
-    n_epochs: int
     batch_size: int
     effective_batch_size: int | None = None
     lr: float
@@ -144,109 +143,103 @@ def train(
     grad_updates = 0
     grad_norm: float | None = None
 
-    for epoch in tqdm(
-        range(1, config.train.n_epochs + 1), total=config.train.n_epochs, desc="Epochs"
-    ):
-        for step, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
-            tokens: Int[Tensor, "batch pos"] = batch[config.data.column_name].to(device=device)
-            # Run model without SAEs
-            with torch.inference_mode():
-                orig_logits, orig_acts = model.tlens_model.run_with_cache(
-                    tokens, names_filter=orig_resid_names, return_cache_object=False
-                )
-            assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
-
-            # Run model with SAEs
-            sae_acts = {hook_name: {} for hook_name in orig_acts}
-            fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
-                (
-                    hook_name,
-                    partial(
-                        sae_hook, sae=cast(SAE, model.saes[str(i)]), hook_acts=sae_acts[hook_name]
-                    ),
-                )
-                for i, hook_name in enumerate(orig_acts)
-            ]
-            new_logits: Float[Tensor, "batch pos vocab"] = model.tlens_model.run_with_hooks(
-                tokens,
-                fwd_hooks=fwd_hooks,  # type: ignore
+    for step, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
+        tokens: Int[Tensor, "batch pos"] = batch[config.data.column_name].to(device=device)
+        # Run model without SAEs
+        with torch.inference_mode():
+            orig_logits, orig_acts = model.tlens_model.run_with_cache(
+                tokens, names_filter=orig_resid_names, return_cache_object=False
             )
-            loss, loss_dict = calc_loss(
-                orig_acts=orig_acts,
-                sae_acts=sae_acts,
-                orig_logits=orig_logits,
-                new_logits=new_logits,
-                loss_configs=config.train.loss_configs,
+        assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
+
+        # Run model with SAEs
+        sae_acts = {hook_name: {} for hook_name in orig_acts}
+        fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
+            (
+                hook_name,
+                partial(sae_hook, sae=cast(SAE, model.saes[str(i)]), hook_acts=sae_acts[hook_name]),
+            )
+            for i, hook_name in enumerate(orig_acts)
+        ]
+        new_logits: Float[Tensor, "batch pos vocab"] = model.tlens_model.run_with_hooks(
+            tokens,
+            fwd_hooks=fwd_hooks,  # type: ignore
+        )
+        loss, loss_dict = calc_loss(
+            orig_acts=orig_acts,
+            sae_acts=sae_acts,
+            orig_logits=orig_logits,
+            new_logits=new_logits,
+            loss_configs=config.train.loss_configs,
+        )
+
+        loss = loss / n_gradient_accumulation_steps
+        loss.backward()
+        if config.train.max_grad_norm is not None:
+            grad_norm = torch.nn.utils.clip_grad_norm_(
+                model.parameters(), config.train.max_grad_norm
+            ).item()
+
+        if (step + 1) % n_gradient_accumulation_steps == 0:
+            optimizer.step()
+            optimizer.zero_grad()
+            grad_updates += 1
+
+            if config.train.warmup_steps > 0:
+                assert scheduler is not None
+                scheduler.step()
+
+        total_samples += tokens.shape[0]
+        if step == 0 or step % 20 == 0:
+            tqdm.write(
+                f"Samples {total_samples} Step {step} GradUpdates {grad_updates} "
+                f"Loss {loss.item()}"
             )
 
-            loss = loss / n_gradient_accumulation_steps
-            loss.backward()
+        if config.wandb_project:
+            log_info = {"grad_updates": grad_updates}
+            wandb.log({"train_loss": loss.item(), **log_info})
+            for loss_name, loss_value in loss_dict.items():
+                wandb.log({loss_name: loss_value.item(), **log_info}, step=total_samples)
+
             if config.train.max_grad_norm is not None:
-                grad_norm = torch.nn.utils.clip_grad_norm_(
-                    model.parameters(), config.train.max_grad_norm
-                ).item()
-
-            if (step + 1) % n_gradient_accumulation_steps == 0:
-                optimizer.step()
-                optimizer.zero_grad()
-                grad_updates += 1
-
-                if config.train.warmup_steps > 0:
-                    assert scheduler is not None
-                    scheduler.step()
-
-            total_samples += tokens.shape[0]
-            if step == 0 or step % 20 == 0:
-                tqdm.write(
-                    f"Epoch {epoch} Samples {total_samples} Step {step} GradUpdates {grad_updates} "
-                    f"Loss {loss.item()}"
+                assert grad_norm is not None
+                wandb.log({"grad_norm": grad_norm, **log_info}, step=total_samples)
+            if step == 0 or step % 5 == 0:
+                orig_model_performance_loss = lm_cross_entropy_loss(
+                    orig_logits, tokens, per_token=False
                 )
+                orig_model_performance_acc = lm_accuracy(orig_logits, tokens, per_token=False)
+                sae_model_performance_loss = lm_cross_entropy_loss(
+                    new_logits, tokens, per_token=False
+                )
+                sae_model_performance_acc = lm_accuracy(new_logits, tokens, per_token=False)
+                # flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
+                # flat_new_logits = new_logits.view(-1, new_logits.shape[-1])
+                # kl_div = torch.nn.functional.kl_div(
+                #     torch.nn.functional.log_softmax(flat_new_logits, dim=-1),
+                #     torch.nn.functional.softmax(flat_orig_logits, dim=-1),
+                #     reduction="batchmean",
+                # ) # Unsure if this is correct. Also it's expensive in terms of memory.
 
-            if config.wandb_project:
-                log_info = {
-                    "epoch": epoch,
-                    "grad_updates": grad_updates,
-                }
-                wandb.log({"train_loss": loss.item(), **log_info})
-                for loss_name, loss_value in loss_dict.items():
-                    wandb.log({loss_name: loss_value.item(), **log_info}, step=total_samples)
-
-                if config.train.max_grad_norm is not None:
-                    assert grad_norm is not None
-                    wandb.log({"grad_norm": grad_norm, **log_info}, step=total_samples)
-                if step == 0 or step % 5 == 0:
-                    orig_model_performance_loss = lm_cross_entropy_loss(
-                        orig_logits, tokens, per_token=False
-                    )
-                    orig_model_performance_acc = lm_accuracy(orig_logits, tokens, per_token=False)
-                    sae_model_performance_loss = lm_cross_entropy_loss(
-                        new_logits, tokens, per_token=False
-                    )
-                    sae_model_performance_acc = lm_accuracy(new_logits, tokens, per_token=False)
-                    # flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
-                    # flat_new_logits = new_logits.view(-1, new_logits.shape[-1])
-                    # kl_div = torch.nn.functional.kl_div(
-                    #     torch.nn.functional.log_softmax(flat_new_logits, dim=-1),
-                    #     torch.nn.functional.softmax(flat_orig_logits, dim=-1),
-                    #     reduction="batchmean",
-                    # ) # Unsure if this is correct. Also it's expensive in terms of memory.
-
-                    wandb.log(
-                        {
-                            "performance/orig_model_performance_loss": orig_model_performance_loss.item(),
-                            "performance/orig_model_performance_acc": orig_model_performance_acc.item(),
-                            "performance/sae_model_performance_loss": sae_model_performance_loss.item(),
-                            "performance/sae_model_performance_acc": sae_model_performance_acc.item(),
-                            "performance/difference_loss": (
-                                orig_model_performance_loss - sae_model_performance_loss
-                            ).item(),
-                            "performance/difference_acc": (
-                                orig_model_performance_acc - sae_model_performance_acc
-                            ).item(),
-                            **log_info,
-                        },
-                        step=total_samples,
-                    )
+                wandb.log(
+                    {
+                        "performance/orig_model_performance_loss": orig_model_performance_loss.item(),
+                        "performance/orig_model_performance_acc": orig_model_performance_acc.item(),
+                        "performance/sae_model_performance_loss": sae_model_performance_loss.item(),
+                        "performance/sae_model_performance_acc": sae_model_performance_acc.item(),
+                        "performance/difference_loss": (
+                            orig_model_performance_loss - sae_model_performance_loss
+                        ).item(),
+                        "performance/difference_acc": (
+                            orig_model_performance_acc - sae_model_performance_acc
+                        ).item(),
+                        **log_info,
+                    },
+                    step=total_samples,
+                )
+        if config.train.n_samples is not None and total_samples >= config.train.n_samples:
+            break
 
 
 def load_tlens_model(config: Config) -> HookedTransformer:

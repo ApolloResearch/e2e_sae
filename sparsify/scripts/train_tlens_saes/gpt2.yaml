@@ -3,7 +3,6 @@ tlens_model_name: gpt2-small
 tlens_model_path: null
 train:
   n_samples: 2000
-  n_epochs: 2
   batch_size: 8
   effective_batch_size: 128
   lr: 1e-3
@@ -29,4 +28,4 @@ data:
   n_ctx: 1024
 saes:
   sae_position_name: hook_resid_post
-wandb_project: sparsify-gpt2-small-owt
+wandb_project: gpt2-small-owt

@@ -2,7 +2,6 @@ seed: 0
 tlens_model_name: null
 tlens_model_path: sparsify/scripts/train_tlens/out/tiny-gpt2_lr-0.001_bs-16_2024-02-05_12-28-22
 train:
-  n_epochs: 2
   batch_size: 3
   lr: 1e-3
   loss_configs:
@@ -25,4 +24,4 @@ data:
   n_ctx: 1024
 saes:
   sae_position_name: hook_resid_post
-wandb_project: sparsify-custom
+wandb_project: custom

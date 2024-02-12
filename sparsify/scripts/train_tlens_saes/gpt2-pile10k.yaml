@@ -3,7 +3,6 @@ tlens_model_name: gpt2-small
 tlens_model_path: null
 train:
   n_samples: 2000
-  n_epochs: 2
   batch_size: 8
   effective_batch_size: 128
   lr: 1e-3
@@ -30,4 +29,4 @@ data:
   column_name: tokens
 saes:
   sae_position_name: hook_resid_post
-wandb_project: sparsify-gpt2-small-pile10k
+wandb_project: gpt2-small-pile10k
