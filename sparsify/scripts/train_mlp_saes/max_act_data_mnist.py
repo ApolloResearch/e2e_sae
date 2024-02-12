@@ -9,7 +9,12 @@ from pathlib import Path
 
 import fire
 import torch
-from pydantic import BaseModel, ConfigDict
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    NonNegativeInt,
+    PositiveInt,
+)
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
@@ -21,19 +26,19 @@ from sparsify.utils import load_config
 
 class ModelConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    hidden_sizes: list[int] | None
+    hidden_sizes: list[PositiveInt] | None
 
 
 class InferenceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    batch_size: int
+    batch_size: PositiveInt
     model_name: str
     save_dir: Path | None
 
 
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    seed: int
+    seed: NonNegativeInt
     model: ModelConfig
     infer: InferenceConfig
 

@@ -16,7 +16,15 @@ import wandb
 import yaml
 from dotenv import load_dotenv
 from jaxtyping import Float, Int
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    NonNegativeFloat,
+    NonNegativeInt,
+    PositiveFloat,
+    PositiveInt,
+    model_validator,
+)
 from torch import Tensor
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import IterableDataset
@@ -37,13 +45,13 @@ from sparsify.utils import load_config, set_seed
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     save_dir: RootPath | None = Path(__file__).parent / "out"
-    n_samples: int | None = None
-    batch_size: int
-    effective_batch_size: int | None = None
-    lr: float
+    n_samples: PositiveInt | None = None
+    batch_size: PositiveInt
+    effective_batch_size: PositiveInt | None = None
+    lr: PositiveFloat
     scheduler: str | None = None
-    warmup_steps: int = 0
-    max_grad_norm: float | None = None
+    warmup_steps: NonNegativeFloat = 0
+    max_grad_norm: PositiveFloat | None = None
     loss_configs: LossConfigs
 
     @model_validator(mode="after")
@@ -58,14 +66,14 @@ class TrainConfig(BaseModel):
 class SparsifiersConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     type_of_sparsifier: str | None = "sae"
-    dict_size_to_input_ratio: float = 1.0
-    k: int | None = None
+    dict_size_to_input_ratio: PositiveFloat = 1.0
+    k: PositiveInt | None = None  # Only used for codebook sparsifier
     sae_position_name: str  # TODO will become List[str]
 
 
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    seed: int = 0
+    seed: NonNegativeInt = 0
     tlens_model_name: str | None = None
     tlens_model_path: RootPath | None = None
     train: TrainConfig

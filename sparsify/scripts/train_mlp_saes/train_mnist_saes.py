@@ -16,7 +16,14 @@ import wandb
 import yaml
 from dotenv import load_dotenv
 from jaxtyping import Float
-from pydantic import BaseModel, ConfigDict
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    NonNegativeFloat,
+    NonNegativeInt,
+    PositiveFloat,
+    PositiveInt,
+)
 from torch import Tensor, nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -32,20 +39,20 @@ from sparsify.utils import load_config, save_model, set_seed
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     learning_rate: float
-    batch_size: int
-    n_epochs: int
+    batch_size: PositiveInt
+    n_epochs: PositiveInt
     save_dir: RootPath | None = Path(__file__).parent / "out"
     type_of_sparsifier: str
-    sparsity_lambda: float
-    dict_eles_to_input_ratio: float
-    sparsifier_inp_out_recon_loss_scale: float
-    k: int
-    save_every_n_epochs: int | None
+    sparsity_lambda: NonNegativeFloat
+    dict_eles_to_input_ratio: PositiveFloat
+    sparsifier_inp_out_recon_loss_scale: NonNegativeFloat
+    k: PositiveInt
+    save_every_n_epochs: PositiveInt | None
 
 
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    seed: int
+    seed: NonNegativeInt
     saved_model_dir: RootPath
     train: TrainConfig
     wandb_project: str | None  # If None, don't log to Weights & Biases

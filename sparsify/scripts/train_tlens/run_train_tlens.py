@@ -14,7 +14,14 @@ import torch
 import wandb
 from dotenv import load_dotenv
 from jaxtyping import Int
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    NonNegativeInt,
+    PositiveFloat,
+    PositiveInt,
+    model_validator,
+)
 from torch import Tensor
 from tqdm import tqdm
 from transformer_lens import HookedTransformer, HookedTransformerConfig, evals
@@ -27,11 +34,11 @@ class HookedTransformerPreConfig(BaseModel):
     """Pydantic model whose arguments will be passed to a HookedTransformerConfig."""
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True, frozen=True)
-    d_model: int
-    n_layers: int
-    n_ctx: int
-    d_head: int
-    d_vocab: int
+    d_model: PositiveInt
+    n_layers: PositiveInt
+    n_ctx: PositiveInt
+    d_head: PositiveInt
+    d_vocab: PositiveInt
     act_fn: str
     dtype: TorchDtype | None
     tokenizer_name: str
@@ -39,13 +46,13 @@ class HookedTransformerPreConfig(BaseModel):
 
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    n_epochs: int
-    batch_size: int
-    effective_batch_size: int | None = None
-    lr: float
-    warmup_steps: int = 0
+    n_epochs: PositiveInt
+    batch_size: PositiveInt
+    effective_batch_size: PositiveInt | None = None
+    lr: PositiveFloat
+    warmup_steps: NonNegativeInt = 0
     save_dir: RootPath | None = Path(__file__).parent / "out"
-    save_every_n_epochs: int | None
+    save_every_n_epochs: PositiveInt | None
 
     @model_validator(mode="after")
     def check_effective_batch_size(self) -> Self:
