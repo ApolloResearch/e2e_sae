@@ -11,7 +11,10 @@
             "program": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py",
             "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/gpt2.yaml",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": true,
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
         },
         {
             "name": "train pythia-14m sae",
@@ -20,7 +23,10 @@
             "program": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py",
             "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/pythia_14m.yaml",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": true,
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
         },
         {
             "name": "train tiny-gpt2 lm sae",
@@ -29,7 +35,10 @@
             "program": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py",
             "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/tiny_gpt2.yaml",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": true,
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
         },
         {
             "name": "train mnist sae",
@@ -38,7 +47,10 @@
             "program": "${workspaceFolder}/sparsify/scripts/mlp_saes/train_mnist_saes.py",
             "args": "${workspaceFolder}/sparsify/scripts/mlp_saes/train_mnist_mod.yaml",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": true,
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
         },
         {
             "name": "Python: Attach",
@@ -47,7 +59,7 @@
             "connect": {
                 "host": "localhost",
                 "port": 5678
-            }
+            },
         }
     ]
 }
