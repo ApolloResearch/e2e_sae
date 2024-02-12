@@ -86,10 +86,10 @@ def sae_hook(
     value: Float[torch.Tensor, "... dim"], hook: HookPoint, sae: SAE, hook_acts: dict[str, Any]
 ) -> Float[torch.Tensor, "... dim"]:
     """Runs the SAE on the input and stores the output and c in hook_acts."""
-    hook_acts["input"] = value.detach().clone()
+    hook_acts["input"] = value
     output, c = sae(value)
-    hook_acts["output"] = output.detach().clone()
-    hook_acts["c"] = c.detach().clone()
+    hook_acts["output"] = output
+    hook_acts["c"] = c
     return output
 
 
