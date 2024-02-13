@@ -73,6 +73,7 @@ class Config(BaseModel):
 
 
 def train(config: Config, model: HookedTransformer, device: torch.device) -> None:
+    model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.train.lr)
 
     scheduler = None

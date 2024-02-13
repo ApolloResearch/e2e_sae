@@ -135,6 +135,7 @@ def train(config: Config) -> None:
     # Initialize the MLP model and modified model
     model, model_mod, activations = get_models(config, device)
 
+    model_mod.sparsifiers.train()
     # Define the loss and optimizer
     criterion = nn.MSELoss()
     # Note: only pass the SAE parameters to the optimizer
@@ -267,7 +268,7 @@ def train(config: Config) -> None:
                         wandb.log({f"train/fraction-zeros-{k}": v.item()}, step=samples)
 
         # Validate the model
-        model_mod.eval()
+        model_mod.sparsifiers.eval()
         with torch.no_grad():
             correct = 0
             total = 0
@@ -285,6 +286,7 @@ def train(config: Config) -> None:
 
             if config.wandb_project:
                 wandb.log({"valid/accuracy": accuracy}, step=samples)
+        model_mod.sparsifiers.train()
 
     if save_dir:
         save_model(

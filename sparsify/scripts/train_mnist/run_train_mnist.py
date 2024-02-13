@@ -69,6 +69,7 @@ def train(config: Config) -> None:
     # Initialize the MLP model
     model = MLP(config.model.hidden_sizes, input_size=784, output_size=10)
     model = model.to(device)
+    model.train()
 
     # Define the loss and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -149,6 +150,7 @@ def train(config: Config) -> None:
 
             if config.wandb_project:
                 wandb.log({"valid/accuracy": accuracy}, step=samples)
+        model.train()
 
     # Test the model
     model.eval()
@@ -168,6 +170,7 @@ def train(config: Config) -> None:
 
         if config.wandb_project:
             wandb.log({"test/accuracy": accuracy}, step=samples)
+    model.train()
 
     if save_dir:
         save_model(

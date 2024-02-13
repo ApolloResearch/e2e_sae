@@ -110,8 +110,7 @@ def train(
     data_loader: DataLoader[Samples],
     device: torch.device,
 ) -> None:
-    model_name = config.tlens_model_name or "custom"
-
+    model.saes.train()
     # TODO make appropriate for transcoders and metaSAEs
     optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
 
@@ -138,8 +137,7 @@ def train(
 
     # Initialize wandb
     run_name = (
-        f"saes_{model_name}_{config.saes.sae_position_name}_"
-        f"ratio-{config.saes.dict_size_to_input_ratio}_"
+        f"{config.saes.sae_position_name}_ratio-{config.saes.dict_size_to_input_ratio}_"
         f"lpcoeff-{config.train.loss_configs.sparsity.coeff}"
     )
     if config.wandb_project:
