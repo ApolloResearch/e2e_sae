@@ -20,19 +20,33 @@ def to_root_path(path: str | Path):
 
 
 def save_model(
-    config_dict: dict[str, Any], save_dir: Path, model: nn.Module, epoch: int, sparse: bool
+    config_dict: dict[str, Any],
+    save_dir: Path,
+    model: nn.Module,
+    model_filename: str,
 ) -> None:
+    """Save the model and config to the save_dir.
+
+    The config will only be saved if the save_dir doesn't exist (i.e. the first time the model is
+    saved assuming the save_dir is unique to the model).
+
+    Args:
+        config_dict: Dictionary representation of the config to save.
+        save_dir: Directory to save the model and config to.
+        model: The model to save.
+        model_filename: The name of the file to save the model to.
+
+    """
     # If the save_dir doesn't exist, create it and save the config
     if not save_dir.exists():
         save_dir.mkdir(parents=True)
-        logger.info("Saving config to %s", save_dir)
-        with open(save_dir / "config.yaml", "w") as f:
+        filename = save_dir / "config.yaml"
+        logger.info("Saving config to %s", filename)
+        with open(filename, "w") as f:
             yaml.dump(config_dict, f)
-    if not sparse:
-        torch.save(model.state_dict(), save_dir / f"model_epoch_{epoch}.pt")
-    else:
-        torch.save(model.state_dict(), save_dir / f"sparse_model_epoch_{epoch}.pt")
-    logger.info("Saved model to %s", save_dir)
+
+    torch.save(model.state_dict(), save_dir / model_filename)
+    logger.info("Saved model to %s", save_dir / model_filename)
 
 
 def load_config(config_path_or_obj: Path | str | T, config_model: type[T]) -> T:

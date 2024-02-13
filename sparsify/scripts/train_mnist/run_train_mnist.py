@@ -44,7 +44,6 @@ class TrainConfig(BaseModel):
     batch_size: PositiveInt
     n_epochs: PositiveInt
     save_dir: RootPath | None = Path(__file__).parent / "out"
-    save_every_n_epochs: PositiveInt | None
 
 
 class Config(BaseModel):
@@ -157,19 +156,6 @@ def train(config: Config) -> None:
             if config.wandb_project:
                 wandb.log({"valid/accuracy": accuracy}, step=samples)
 
-        if (
-            save_dir
-            and config.train.save_every_n_epochs
-            and epoch % config.train.save_every_n_epochs == 0
-        ):
-            save_model(
-                config_dict=config.model_dump(mode="json"),
-                save_dir=save_dir,
-                model=model,
-                epoch=epoch,
-                sparse=False,
-            )
-
     # Test the model
     model.eval()
     with torch.no_grad():
@@ -189,13 +175,12 @@ def train(config: Config) -> None:
         if config.wandb_project:
             wandb.log({"test/accuracy": accuracy}, step=samples)
 
-    if save_dir and not (save_dir / f"model_epoch_{config.train.n_epochs}.pt").exists():
+    if save_dir:
         save_model(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             model=model,
-            epoch=config.train.n_epochs,
-            sparse=False,
+            model_filename=f"epoch_{config.train.n_epochs}.pt",
         )
 
 

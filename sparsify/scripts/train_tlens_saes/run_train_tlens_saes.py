@@ -3,9 +3,9 @@
 Usage:
     python run_train_tlens_saes.py <path/to/config.yaml>
 """
-
 import os
 from collections.abc import Callable
+from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import Any, Self, cast
@@ -29,6 +29,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import IterableDataset
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utils import lm_accuracy, lm_cross_entropy_loss
@@ -39,12 +40,13 @@ from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
 from sparsify.scripts.train_tlens.run_train_tlens import HookedTransformerPreConfig
 from sparsify.types import RootPath, Samples
-from sparsify.utils import load_config, set_seed
+from sparsify.utils import load_config, save_model, set_seed
 
 
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     save_dir: RootPath | None = Path(__file__).parent / "out"
+    save_every_n_samples: PositiveInt | None
     n_samples: PositiveInt | None = None
     batch_size: PositiveInt
     effective_batch_size: PositiveInt | None = None
@@ -101,6 +103,7 @@ def sae_hook(
     return output
 
 
+@logging_redirect_tqdm()
 def train(
     config: Config,
     model: SAETransformer,
@@ -139,7 +142,7 @@ def train(
         f"Lp{config.train.loss_configs.sparsity.p_norm}_lr-{config.train.lr}"
     )
     if config.wandb_project:
-        load_dotenv()
+        load_dotenv(override=True)
         wandb.init(
             name=run_name,
             project=config.wandb_project,
@@ -147,7 +150,11 @@ def train(
             config=config.model_dump(mode="json"),
         )
 
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    save_dir = config.train.save_dir / f"{run_name}_{timestamp}" if config.train.save_dir else None
+
     total_samples = 0
+    total_samples_at_last_save = 0
     grad_updates = 0
     grad_norm: float | None = None
 
@@ -201,7 +208,7 @@ def train(
         if step == 0 or step % 20 == 0:
             tqdm.write(
                 f"Samples {total_samples} Step {step} GradUpdates {grad_updates} "
-                f"Loss {loss.item()}"
+                f"Loss {loss.item():.3f}"
             )
 
         if config.wandb_project:
@@ -246,8 +253,28 @@ def train(
                     },
                     step=total_samples,
                 )
+        if (
+            save_dir
+            and config.train.save_every_n_samples
+            and total_samples - total_samples_at_last_save >= config.train.save_every_n_samples
+        ):
+            total_samples_at_last_save = total_samples
+            save_model(
+                config_dict=config.model_dump(mode="json"),
+                save_dir=save_dir,
+                model=model,
+                model_filename=f"samples_{total_samples}.pt",
+            )
         if config.train.n_samples is not None and total_samples >= config.train.n_samples:
             break
+
+    if save_dir:
+        save_model(
+            config_dict=config.model_dump(mode="json"),
+            save_dir=save_dir,
+            model=model,
+            model_filename=f"samples_{total_samples}.pt",
+        )
 
 
 def load_tlens_model(config: Config) -> HookedTransformer:

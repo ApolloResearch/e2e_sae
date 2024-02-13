@@ -9,5 +9,4 @@ train:
   dict_eles_to_input_ratio: 10.0
   sparsifier_inp_out_recon_loss_scale: 0.0
   k: 128
-  save_every_n_epochs: null
 wandb_project: mlp-mnist-sae

@@ -47,7 +47,6 @@ class TrainConfig(BaseModel):
     dict_eles_to_input_ratio: PositiveFloat
     sparsifier_inp_out_recon_loss_scale: NonNegativeFloat
     k: PositiveInt
-    save_every_n_epochs: PositiveInt | None
 
 
 class Config(BaseModel):
@@ -142,7 +141,7 @@ def train(config: Config) -> None:
     optimizer = torch.optim.Adam(model_mod.sparsifiers.parameters(), lr=config.train.learning_rate)
 
     run_name = (
-        f"sparse_lambda-{config.train.sparsity_lambda}_lr-{config.train.learning_rate}"
+        f"sae_lambda-{config.train.sparsity_lambda}_lr-{config.train.learning_rate}"
         f"_bs-{config.train.batch_size}"
     )
     if config.wandb_project:
@@ -287,19 +286,12 @@ def train(config: Config) -> None:
             if config.wandb_project:
                 wandb.log({"valid/accuracy": accuracy}, step=samples)
 
-        # Comment out because we're not saving mod models right now
-        # if save_dir and config.train.save_every_n_epochs and \
-        #         epoch % config.train.save_every_n_epochs == 0:
-        #     # TODO Figure out how to save only saes
-        #     save_model(config.model_dump(mode="json"), save_dir, model, epoch)
-
-    if save_dir and not (save_dir / f"sparse_model_epoch_{config.train.n_epochs}").exists():
+    if save_dir:
         save_model(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             model=model_mod,
-            epoch=config.train.n_epochs,
-            sparse=True,
+            model_filename=f"epoch_{config.train.n_epochs}.pt",
         )  # TODO Figure out how to save only saes
 
 
