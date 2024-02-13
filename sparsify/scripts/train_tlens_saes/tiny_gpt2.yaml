@@ -23,5 +23,5 @@ data:
   split: train
   n_ctx: 1024
 saes:
-  sae_position_name: hook_resid_post
+  sae_position_names: hook_resid_post
 wandb_project: custom

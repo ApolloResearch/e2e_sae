@@ -44,6 +44,7 @@ from sparsify.utils import load_config, set_seed
 
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+    layer_wise: bool = False
     save_dir: RootPath | None = Path(__file__).parent / "out"
     n_samples: PositiveInt | None = None
     batch_size: PositiveInt
@@ -68,7 +69,7 @@ class SparsifiersConfig(BaseModel):
     type_of_sparsifier: str | None = "sae"
     dict_size_to_input_ratio: PositiveFloat = 1.0
     k: PositiveInt | None = None  # Only used for codebook sparsifier
-    sae_position_name: str  # TODO will become List[str]
+    sae_position_names: str | list[str] # for example 'hook_resid_post' or ['blocks.0.hook_resid_post','blocks.1.hook_resid_post'] or ['hook_mlp_out','hook_resid_post']
 
 
 class Config(BaseModel):
@@ -129,9 +130,8 @@ def train(
         n_gradient_accumulation_steps = config.train.effective_batch_size // config.train.batch_size
     else:
         n_gradient_accumulation_steps = 1
-
-    def orig_resid_names(name: str) -> bool:
-        return model.sae_position_name in name
+        
+    sae_position_names = [tlens_hook_key for tlens_hook_key in model.tlens_model.hook_dict.keys() if any(sae_pos_name in tlens_hook_key for sae_pos_name in config.saes.sae_position_names)] # Finds any transformerlens hook keys which contain any config.saes.sae_position_names
 
     # Initialize wandb
     run_name = (
@@ -156,7 +156,7 @@ def train(
         # Run model without SAEs
         with torch.inference_mode():
             orig_logits, orig_acts = model.tlens_model.run_with_cache(
-                tokens, names_filter=orig_resid_names, return_cache_object=False
+                tokens, names_filter=sae_position_names, return_cache_object=False
             )
         assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
 
@@ -165,9 +165,9 @@ def train(
         fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
             (
                 hook_name,
-                partial(sae_hook, sae=cast(SAE, model.saes[str(i)]), hook_acts=sae_acts[hook_name]),
+                partial(sae_hook, sae=cast(SAE, model.saes[hook_name]), hook_acts=sae_acts[hook_name]),
             )
-            for i, hook_name in enumerate(orig_acts)
+            for hook_name in enumerate(orig_acts)
         ]
         new_logits: Float[Tensor, "batch pos vocab"] = model.tlens_model.run_with_hooks(
             tokens,

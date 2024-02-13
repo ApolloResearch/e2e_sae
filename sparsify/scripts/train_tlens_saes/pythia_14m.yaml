@@ -2,6 +2,7 @@ seed: 0
 tlens_model_name: pythia-14m
 tlens_model_path: null
 train:
+  layer_wise: False
   n_samples: 10000
   batch_size: 6
   effective_batch_size: 6
@@ -25,7 +26,7 @@ data:
   split: train
   n_ctx: 2048
 saes:
-  sae_position_name: hook_resid_post
+  sae_position_names: hook_resid_post
   dict_size_to_input_ratio: 1.0
 wandb_project: pythia-14m
 

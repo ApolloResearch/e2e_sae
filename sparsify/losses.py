@@ -87,8 +87,8 @@ class LossConfigs(BaseModel):
 def calc_loss(
     orig_acts: dict[str, Tensor],
     sae_acts: dict[str, dict[str, Tensor]],
-    orig_logits: Float[Tensor, "batch pos vocab"],
-    new_logits: Float[Tensor, "batch pos vocab"],
+    orig_logits: Float[Tensor, "batch pos vocab"] | None,
+    new_logits: Float[Tensor, "batch pos vocab"] | None,
     loss_configs: LossConfigs,
 ) -> tuple[Float[Tensor, ""], dict[str, Float[Tensor, ""]]]:
     """Compute losses.
@@ -116,7 +116,7 @@ def calc_loss(
     loss: Float[Tensor, ""] = torch.zeros(1, device=orig_logits.device, dtype=orig_logits.dtype)
     loss_dict = {}
 
-    if loss_configs.logits:
+    if loss_configs.logits and orig_logits is not None and new_logits is not None:
         loss_dict["loss/logits"] = loss_configs.logits.calc_loss(
             new_logits=new_logits, orig_logits=orig_logits.detach().clone()
         )
