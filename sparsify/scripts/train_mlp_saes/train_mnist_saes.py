@@ -293,6 +293,8 @@ def train(config: Config) -> None:
             model=model_mod,
             model_filename=f"epoch_{config.train.n_epochs}.pt",
         )  # TODO Figure out how to save only saes
+    if config.wandb_project:
+        wandb.finish()
 
 
 def main(config_path_str: str) -> None:

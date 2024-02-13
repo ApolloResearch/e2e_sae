@@ -146,6 +146,8 @@ def train(config: Config, model: HookedTransformer, device: torch.device) -> Non
                 model_filename=f"epoch_{epoch}.pt",
             )
             # TODO: Add evaluation loop
+    if config.wandb_project:
+        wandb.finish()
 
 
 def main(config_path_str: str) -> None:

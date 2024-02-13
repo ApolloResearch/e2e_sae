@@ -14,13 +14,7 @@ import fire
 import torch
 import wandb
 from dotenv import load_dotenv
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    NonNegativeInt,
-    PositiveFloat,
-    PositiveInt,
-)
+from pydantic import BaseModel, ConfigDict, NonNegativeInt, PositiveFloat, PositiveInt
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -182,6 +176,8 @@ def train(config: Config) -> None:
             model=model,
             model_filename=f"epoch_{config.train.n_epochs}.pt",
         )
+    if config.wandb_project:
+        wandb.finish()
 
 
 def main(config_path_str: str) -> None:
