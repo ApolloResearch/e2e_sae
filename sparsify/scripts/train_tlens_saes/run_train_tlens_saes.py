@@ -32,7 +32,7 @@ from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utils import lm_accuracy, lm_cross_entropy_loss
+from transformer_lens.utils import lm_cross_entropy_loss
 
 from sparsify.data import DataConfig, create_data_loader
 from sparsify.losses import LossConfigs, calc_loss
@@ -224,13 +224,7 @@ def train(
                     orig_model_performance_loss = lm_cross_entropy_loss(
                         orig_logits_logging, tokens, per_token=False
                     )
-                    orig_model_performance_acc = lm_accuracy(
-                        orig_logits_logging, tokens, per_token=False
-                    )
                     sae_model_performance_loss = lm_cross_entropy_loss(
-                        new_logits_logging, tokens, per_token=False
-                    )
-                    sae_model_performance_acc = lm_accuracy(
                         new_logits_logging, tokens, per_token=False
                     )
                     # flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
@@ -243,15 +237,10 @@ def train(
 
                     wandb_log_info.update(
                         {
-                            "performance/orig_model_performance_loss": orig_model_performance_loss.item(),
-                            "performance/orig_model_performance_acc": orig_model_performance_acc.item(),
-                            "performance/sae_model_performance_loss": sae_model_performance_loss.item(),
-                            "performance/sae_model_performance_acc": sae_model_performance_acc.item(),
+                            "performance/orig_model_ce_loss": orig_model_performance_loss.item(),
+                            "performance/sae_model_ce_loss": sae_model_performance_loss.item(),
                             "performance/difference_loss": (
                                 orig_model_performance_loss - sae_model_performance_loss
-                            ).item(),
-                            "performance/difference_acc": (
-                                orig_model_performance_acc - sae_model_performance_acc
                             ).item(),
                         },
                     )
