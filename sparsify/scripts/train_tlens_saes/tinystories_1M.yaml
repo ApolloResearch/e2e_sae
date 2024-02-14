@@ -4,20 +4,20 @@ tlens_model_path: null
 train:
   save_every_n_samples: null
   n_samples: 40000
-  batch_size: 18
-  effective_batch_size: 18
+  batch_size: 16
+  effective_batch_size: 16
   lr: 1e-3
   warmup_steps: 0
   max_grad_norm: 1.0
   loss_configs:
     sparsity:
-      p_norm: 0.7
-      coeff: 0.00005
+      p_norm: 0.5
+      coeff: 0.001
     inp_to_orig: null
-    out_to_orig:
-      coeff: 1.0
+    out_to_orig: null
     inp_to_out: null
-    logits: null
+    logits_kl:
+      coeff: 1.0
 data:
   dataset_name: apollo-research/sae-roneneldan-TinyStories-tokenizer-gpt2
   is_tokenized: true

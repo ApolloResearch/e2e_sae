@@ -1,6 +1,8 @@
 from typing import Any
 
+import einops
 import torch
+import torch.nn.functional as F
 from jaxtyping import Float
 from pydantic import BaseModel, ConfigDict
 from torch import Tensor
@@ -35,7 +37,7 @@ class InpToOrigLossConfig(BaseLossConfig):
         **kwargs: Any,
     ) -> Float[Tensor, ""]:
         """Calculate loss between the input of the SAE and the non-SAE-augmented activations."""
-        return self.coeff * torch.nn.functional.mse_loss(input, orig)
+        return self.coeff * F.mse_loss(input, orig)
 
 
 class OutToOrigLossConfig(BaseLossConfig):
@@ -47,7 +49,7 @@ class OutToOrigLossConfig(BaseLossConfig):
         **kwargs: Any,
     ) -> Float[Tensor, ""]:
         """Calculate loss between the output of the SAE and the non-SAE-augmented activations."""
-        return self.coeff * torch.nn.functional.mse_loss(output, orig)
+        return self.coeff * F.mse_loss(output, orig)
 
 
 class InpToOutLossConfig(BaseLossConfig):
@@ -59,10 +61,10 @@ class InpToOutLossConfig(BaseLossConfig):
         **kwargs: Any,
     ) -> Float[Tensor, ""]:
         """Calculate loss between the input and output of the SAE."""
-        return self.coeff * torch.nn.functional.mse_loss(input, output)
+        return self.coeff * F.mse_loss(input, output)
 
 
-class LogitsLossConfig(BaseLossConfig):
+class LogitsKLLossConfig(BaseLossConfig):
     def calc_loss(
         self,
         *args: Any,
@@ -70,9 +72,22 @@ class LogitsLossConfig(BaseLossConfig):
         orig_logits: Float[Tensor, "... dim"],
         **kwargs: Any,
     ) -> Float[Tensor, ""]:
-        """Calculate loss between SAE-augmented and non-SAE-augmented logits."""
-        # TODO explore KL and other losses
-        return self.coeff * torch.nn.functional.mse_loss(new_logits, orig_logits)
+        """Calculate KL divergence between SAE-augmented and non-SAE-augmented logits.
+
+        Important: new_logits should be passed first as we want the relative entropy from
+        new_logits to orig_logits - KL(new_logits || orig_logits).
+
+        We flatten all but the last dimensions and take the mean over this new dimension.
+        """
+        new_logits_flat = einops.rearrange(new_logits, "... dim -> (...) dim")
+        orig_logits_flat = einops.rearrange(orig_logits, "... dim -> (...) dim")
+
+        return self.coeff * F.kl_div(
+            F.log_softmax(new_logits_flat, dim=-1),
+            F.log_softmax(orig_logits_flat, dim=-1),
+            log_target=True,
+            reduction="batchmean",
+        )
 
 
 class LossConfigs(BaseModel):
@@ -81,7 +96,7 @@ class LossConfigs(BaseModel):
     inp_to_orig: InpToOrigLossConfig | None
     out_to_orig: OutToOrigLossConfig | None
     inp_to_out: InpToOutLossConfig | None
-    logits: LogitsLossConfig | None
+    logits_kl: LogitsKLLossConfig | None
 
 
 def calc_loss(
@@ -116,11 +131,11 @@ def calc_loss(
     loss: Float[Tensor, ""] = torch.zeros(1, device=orig_logits.device, dtype=orig_logits.dtype)
     loss_dict = {}
 
-    if loss_configs.logits:
-        loss_dict["loss/logits"] = loss_configs.logits.calc_loss(
+    if loss_configs.logits_kl:
+        loss_dict["loss/logits_kl"] = loss_configs.logits_kl.calc_loss(
             new_logits=new_logits, orig_logits=orig_logits.detach().clone()
         )
-        loss = loss + loss_dict["loss/logits"]
+        loss = loss + loss_dict["loss/logits_kl"]
     # TODO Future: Maintain a record of batch-element-wise losses
 
     for name, orig_act in orig_acts.items():

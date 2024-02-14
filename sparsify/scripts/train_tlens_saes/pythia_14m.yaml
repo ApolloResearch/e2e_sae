@@ -11,13 +11,13 @@ train:
   max_grad_norm: 1.0
   loss_configs:
     sparsity:
-      p_norm: 0.7
+      p_norm: 0.5
       coeff: 0.00005
     inp_to_orig: null
     out_to_orig:
       coeff: 1.0
     inp_to_out: null
-    logits: null
+    logits_kl: null
 data:
   dataset_name: apollo-research/sae-monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b
   is_tokenized: true
