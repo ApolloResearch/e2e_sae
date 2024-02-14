@@ -15,13 +15,17 @@ from sparsify.utils import replace_pydantic_model
 
 def main(config_path_str: str) -> None:
     """Run the training script with different sae_position_name values."""
-    values = [f"blocks.{i}.hook_resid_post" for i in [0, 2, 4, 5]]
+    sweep_name = "tinystories-1m_sparsity-coeff"
+    values = [1.0, 0.1, 0.01, 0.001, 0.0001, 0.00001]
 
     with open(config_path_str) as f:
         base_config = Config(**yaml.safe_load(f))
 
     for value in values:
-        update_dict = {"saes": {"sae_position_name": value}}
+        update_dict = {
+            "train": {"loss_configs": {"sparsity": {"coeff": value}}},
+            "wandb_project": sweep_name,
+        }
         new_config = replace_pydantic_model(base_config, update_dict)
         print(new_config)
         run_train(new_config)
