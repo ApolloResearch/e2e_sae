@@ -25,7 +25,7 @@ class SparsityLossConfig(BaseLossConfig):
         Args:
             c: The activations after the non-linearity in the SAE.
         """
-        return self.coeff * torch.norm(c, p=self.p_norm, dim=-1).mean()
+        return torch.norm(c, p=self.p_norm, dim=-1).mean()
 
 
 class InpToOrigLossConfig(BaseLossConfig):
@@ -37,7 +37,7 @@ class InpToOrigLossConfig(BaseLossConfig):
         **kwargs: Any,
     ) -> Float[Tensor, ""]:
         """Calculate loss between the input of the SAE and the non-SAE-augmented activations."""
-        return self.coeff * F.mse_loss(input, orig)
+        return F.mse_loss(input, orig)
 
 
 class OutToOrigLossConfig(BaseLossConfig):
@@ -49,7 +49,7 @@ class OutToOrigLossConfig(BaseLossConfig):
         **kwargs: Any,
     ) -> Float[Tensor, ""]:
         """Calculate loss between the output of the SAE and the non-SAE-augmented activations."""
-        return self.coeff * F.mse_loss(output, orig)
+        return F.mse_loss(output, orig)
 
 
 class InpToOutLossConfig(BaseLossConfig):
@@ -61,7 +61,7 @@ class InpToOutLossConfig(BaseLossConfig):
         **kwargs: Any,
     ) -> Float[Tensor, ""]:
         """Calculate loss between the input and output of the SAE."""
-        return self.coeff * F.mse_loss(input, output)
+        return F.mse_loss(input, output)
 
 
 class LogitsKLLossConfig(BaseLossConfig):
@@ -82,7 +82,7 @@ class LogitsKLLossConfig(BaseLossConfig):
         new_logits_flat = einops.rearrange(new_logits, "... dim -> (...) dim")
         orig_logits_flat = einops.rearrange(orig_logits, "... dim -> (...) dim")
 
-        return self.coeff * F.kl_div(
+        return F.kl_div(
             F.log_softmax(new_logits_flat, dim=-1),
             F.log_softmax(orig_logits_flat, dim=-1),
             log_target=True,
@@ -135,7 +135,7 @@ def calc_loss(
         loss_dict["loss/logits_kl"] = loss_configs.logits_kl.calc_loss(
             new_logits=new_logits, orig_logits=orig_logits.detach().clone()
         )
-        loss = loss + loss_dict["loss/logits_kl"]
+        loss = loss + loss_configs.logits_kl.coeff * loss_dict["loss/logits_kl"]
     # TODO Future: Maintain a record of batch-element-wise losses
 
     for name, orig_act in orig_acts.items():
@@ -152,7 +152,7 @@ def calc_loss(
                     orig=orig_act,
                     c=sae_act["c"],
                 )
-                loss = loss + loss_dict[f"loss/{config_type}/{name}"]
+                loss = loss + loss_config.coeff * loss_dict[f"loss/{config_type}/{name}"]
 
         # Record L_0 norm of the cs
         l_0_norm = torch.norm(sae_act["c"], p=0, dim=-1).mean()
