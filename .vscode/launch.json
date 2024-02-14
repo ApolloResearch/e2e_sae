@@ -29,6 +29,18 @@
             }
         },
         {
+            "name": "train tinystories-1M sae",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py",
+            "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/tinystories_1M.yaml",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "env": {
+                "PYDEVD_DISABLE_FILE_VALIDATION": "1"
+            }
+        },
+        {
             "name": "train tiny-gpt2 lm sae",
             "type": "debugpy",
             "request": "launch",

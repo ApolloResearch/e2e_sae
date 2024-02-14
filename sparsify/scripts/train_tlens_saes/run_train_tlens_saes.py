@@ -219,14 +219,20 @@ def train(
                     assert grad_norm is not None
                     wandb_log_info["grad_norm"] = grad_norm
                 if step == 0 or step % 5 == 0:
+                    orig_logits_logging = orig_logits.detach().clone()
+                    new_logits_logging = new_logits.detach().clone()
                     orig_model_performance_loss = lm_cross_entropy_loss(
-                        orig_logits, tokens, per_token=False
+                        orig_logits_logging, tokens, per_token=False
                     )
-                    orig_model_performance_acc = lm_accuracy(orig_logits, tokens, per_token=False)
+                    orig_model_performance_acc = lm_accuracy(
+                        orig_logits_logging, tokens, per_token=False
+                    )
                     sae_model_performance_loss = lm_cross_entropy_loss(
-                        new_logits, tokens, per_token=False
+                        new_logits_logging, tokens, per_token=False
                     )
-                    sae_model_performance_acc = lm_accuracy(new_logits, tokens, per_token=False)
+                    sae_model_performance_acc = lm_accuracy(
+                        new_logits_logging, tokens, per_token=False
+                    )
                     # flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
                     # flat_new_logits = new_logits.view(-1, new_logits.shape[-1])
                     # kl_div = torch.nn.functional.kl_div(
