@@ -35,6 +35,7 @@ from transformer_lens.hook_points import HookPoint
 from transformer_lens.utils import lm_cross_entropy_loss
 
 from sparsify.data import DataConfig, create_data_loader
+from sparsify.log import logger
 from sparsify.losses import LossConfigs, calc_loss
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
@@ -118,7 +119,7 @@ def train(
     if config.train.warmup_steps > 0:
         scheduler = torch.optim.lr_scheduler.LambdaLR(
             optimizer,
-            lr_lambda=lambda step: min(1.0, step / config.train.warmup_steps),
+            lr_lambda=lambda step: min(1.0, (step + 1) / config.train.warmup_steps),
         )
 
     if config.train.n_samples is None:
@@ -137,7 +138,8 @@ def train(
 
     # Initialize wandb
     run_name = (
-        f"{config.saes.sae_position_name}_ratio-{config.saes.dict_size_to_input_ratio}_"
+        f"{config.saes.sae_position_name}_lr-{config.train.lr}_warm-{config.train.warmup_steps}_"
+        f"ratio-{config.saes.dict_size_to_input_ratio}_"
         f"lpcoeff-{config.train.loss_configs.sparsity.coeff}"
     )
     if config.wandb_project:
@@ -211,9 +213,9 @@ def train(
             )
 
             if config.wandb_project:
-                wandb_log_info = {"train_loss": loss.item(), "grad_updates": grad_updates}
+                wandb_log_info = {"loss": loss.item(), "grad_updates": grad_updates}
                 for loss_name, loss_value in loss_dict.items():
-                    wandb_log_info[f"train_{loss_name}"] = loss_value.item()
+                    wandb_log_info[loss_name] = loss_value.item()
 
                 if config.train.max_grad_norm is not None:
                     assert grad_norm is not None
@@ -296,6 +298,7 @@ def load_tlens_model(config: Config) -> HookedTransformer:
 def main(config_path_or_obj: Path | str | Config) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config = load_config(config_path_or_obj, config_model=Config)
+    logger.info(config)
     set_seed(config.seed)
 
     data_loader, _ = create_data_loader(config.data, batch_size=config.train.batch_size)
