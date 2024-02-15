@@ -14,13 +14,7 @@ import fire
 import torch
 import wandb
 from dotenv import load_dotenv
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    NonNegativeInt,
-    PositiveFloat,
-    PositiveInt,
-)
+from pydantic import BaseModel, ConfigDict, NonNegativeInt, PositiveFloat, PositiveInt
 from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -44,7 +38,6 @@ class TrainConfig(BaseModel):
     batch_size: PositiveInt
     n_epochs: PositiveInt
     save_dir: RootPath | None = Path(__file__).parent / "out"
-    save_every_n_epochs: PositiveInt | None
 
 
 class Config(BaseModel):
@@ -76,6 +69,7 @@ def train(config: Config) -> None:
     # Initialize the MLP model
     model = MLP(config.model.hidden_sizes, input_size=784, output_size=10)
     model = model.to(device)
+    model.train()
 
     # Define the loss and optimizer
     criterion = nn.CrossEntropyLoss()
@@ -156,19 +150,7 @@ def train(config: Config) -> None:
 
             if config.wandb_project:
                 wandb.log({"valid/accuracy": accuracy}, step=samples)
-
-        if (
-            save_dir
-            and config.train.save_every_n_epochs
-            and epoch % config.train.save_every_n_epochs == 0
-        ):
-            save_model(
-                config_dict=config.model_dump(mode="json"),
-                save_dir=save_dir,
-                model=model,
-                epoch=epoch,
-                sparse=False,
-            )
+        model.train()
 
     # Test the model
     model.eval()
@@ -188,15 +170,17 @@ def train(config: Config) -> None:
 
         if config.wandb_project:
             wandb.log({"test/accuracy": accuracy}, step=samples)
+    model.train()
 
-    if save_dir and not (save_dir / f"model_epoch_{config.train.n_epochs}.pt").exists():
+    if save_dir:
         save_model(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             model=model,
-            epoch=config.train.n_epochs,
-            sparse=False,
+            model_filename=f"epoch_{config.train.n_epochs}.pt",
         )
+    if config.wandb_project:
+        wandb.finish()
 
 
 def main(config_path_str: str) -> None:

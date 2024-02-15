@@ -73,6 +73,7 @@ class Config(BaseModel):
 
 
 def train(config: Config, model: HookedTransformer, device: torch.device) -> None:
+    model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.train.lr)
 
     scheduler = None
@@ -135,19 +136,19 @@ def train(config: Config, model: HookedTransformer, device: torch.device) -> Non
                     {"train_loss": loss.item(), "epoch": epoch, "grad_updates": grad_updates},
                     step=samples,
                 )
-        if (
-            save_dir
-            and config.train.save_every_n_epochs
-            and epoch % config.train.save_every_n_epochs == 0
+        if save_dir and (
+            (config.train.save_every_n_epochs and epoch % config.train.save_every_n_epochs == 0)
+            or epoch == config.train.n_epochs  # Save the last epoch
         ):
             save_model(
                 config_dict=config.model_dump(mode="json"),
                 save_dir=save_dir,
                 model=model,
-                epoch=epoch,
-                sparse=False,
+                model_filename=f"epoch_{epoch}.pt",
             )
             # TODO: Add evaluation loop
+    if config.wandb_project:
+        wandb.finish()
 
 
 def main(config_path_str: str) -> None:

@@ -388,8 +388,7 @@ if __name__ == "__main__":
             tokenizer_name="gpt2",
             hugging_face_username="apollo-research",
             context_size=512,
-            # Get the newer versions (Generated with GPT-4 only)
-            data_files=["TinyStoriesV2-GPT4-train.txt", "TinyStoriesV2-GPT4-valid.txt"],
+            data_files=["TinyStories-train.txt", "TinyStories-valid.txt"],
         ),
         DatasetToPreprocess(
             source_path="Skylion007/openwebtext",

@@ -2,22 +2,22 @@ seed: 0
 tlens_model_name: pythia-14m
 tlens_model_path: null
 train:
-  layer_wise: False
-  n_samples: 10000
-  batch_size: 6
-  effective_batch_size: 6
+  save_every_n_samples: null
+  n_samples: 15000
+  batch_size: 12
+  effective_batch_size: 24
   lr: 1e-3
   warmup_steps: 0
   max_grad_norm: 1.0
   loss_configs:
     sparsity:
-      p_norm: 0.7
-      coeff: 0.001
+      p_norm: 0.5
+      coeff: 0.00005
     inp_to_orig: null
     out_to_orig:
       coeff: 1.0
     inp_to_out: null
-    logits: null
+    logits_kl: null
 data:
   dataset_name: apollo-research/sae-monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b
   is_tokenized: true
@@ -26,7 +26,7 @@ data:
   split: train
   n_ctx: 2048
 saes:
-  sae_position_names: hook_resid_post
+  sae_position_names: blocks.3.hook_resid_post
   dict_size_to_input_ratio: 1.0
 wandb_project: pythia-14m
 

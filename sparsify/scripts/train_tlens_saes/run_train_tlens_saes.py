@@ -3,9 +3,9 @@
 Usage:
     python run_train_tlens_saes.py <path/to/config.yaml>
 """
-
 import os
 from collections.abc import Callable
+from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import Any, Self, cast
@@ -29,9 +29,10 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import IterableDataset
 from tqdm import tqdm
+from tqdm.contrib.logging import logging_redirect_tqdm
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utils import lm_accuracy, lm_cross_entropy_loss
+from transformer_lens.utils import lm_cross_entropy_loss
 
 from sparsify.data import DataConfig, create_data_loader
 from sparsify.losses import LossConfigs, calc_loss
@@ -39,13 +40,14 @@ from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
 from sparsify.scripts.train_tlens.run_train_tlens import HookedTransformerPreConfig
 from sparsify.types import RootPath, Samples
-from sparsify.utils import load_config, set_seed
+from sparsify.utils import load_config, save_model, set_seed
 
 
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     layer_wise: bool = False
     save_dir: RootPath | None = Path(__file__).parent / "out"
+    save_every_n_samples: PositiveInt | None
     n_samples: PositiveInt | None = None
     batch_size: PositiveInt
     effective_batch_size: PositiveInt | None = None
@@ -102,14 +104,14 @@ def sae_hook(
     return output
 
 
+@logging_redirect_tqdm()
 def train(
     config: Config,
     model: SAETransformer,
     data_loader: DataLoader[Samples],
     device: torch.device,
 ) -> None:
-    model_name = config.tlens_model_name or "custom"
-
+    model.saes.train()
     # TODO make appropriate for transcoders and metaSAEs
     optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
 
@@ -135,11 +137,11 @@ def train(
 
     # Initialize wandb
     run_name = (
-        f"saes_{model_name}_lambda-{config.train.loss_configs.sparsity.coeff}_"
-        f"Lp{config.train.loss_configs.sparsity.p_norm}_lr-{config.train.lr}"
+        f"{config.saes.sae_position_name}_ratio-{config.saes.dict_size_to_input_ratio}_"
+        f"lpcoeff-{config.train.loss_configs.sparsity.coeff}"
     )
     if config.wandb_project:
-        load_dotenv()
+        load_dotenv(override=True)
         wandb.init(
             name=run_name,
             project=config.wandb_project,
@@ -147,7 +149,11 @@ def train(
             config=config.model_dump(mode="json"),
         )
 
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    save_dir = config.train.save_dir / f"{run_name}_{timestamp}" if config.train.save_dir else None
+
     total_samples = 0
+    total_samples_at_last_save = 0
     grad_updates = 0
     grad_norm: float | None = None
 
@@ -201,53 +207,68 @@ def train(
         if step == 0 or step % 20 == 0:
             tqdm.write(
                 f"Samples {total_samples} Step {step} GradUpdates {grad_updates} "
-                f"Loss {loss.item()}"
+                f"Loss {loss.item():.5f}"
             )
 
-        if config.wandb_project:
-            log_info = {"grad_updates": grad_updates}
-            wandb.log({"train_loss": loss.item(), **log_info})
-            for loss_name, loss_value in loss_dict.items():
-                wandb.log({loss_name: loss_value.item(), **log_info}, step=total_samples)
+            if config.wandb_project:
+                wandb_log_info = {"train_loss": loss.item(), "grad_updates": grad_updates}
+                for loss_name, loss_value in loss_dict.items():
+                    wandb_log_info[f"train_{loss_name}"] = loss_value.item()
 
-            if config.train.max_grad_norm is not None:
-                assert grad_norm is not None
-                wandb.log({"grad_norm": grad_norm, **log_info}, step=total_samples)
-            if step == 0 or step % 5 == 0:
-                orig_model_performance_loss = lm_cross_entropy_loss(
-                    orig_logits, tokens, per_token=False
-                )
-                orig_model_performance_acc = lm_accuracy(orig_logits, tokens, per_token=False)
-                sae_model_performance_loss = lm_cross_entropy_loss(
-                    new_logits, tokens, per_token=False
-                )
-                sae_model_performance_acc = lm_accuracy(new_logits, tokens, per_token=False)
-                # flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
-                # flat_new_logits = new_logits.view(-1, new_logits.shape[-1])
-                # kl_div = torch.nn.functional.kl_div(
-                #     torch.nn.functional.log_softmax(flat_new_logits, dim=-1),
-                #     torch.nn.functional.softmax(flat_orig_logits, dim=-1),
-                #     reduction="batchmean",
-                # ) # Unsure if this is correct. Also it's expensive in terms of memory.
+                if config.train.max_grad_norm is not None:
+                    assert grad_norm is not None
+                    wandb_log_info["grad_norm"] = grad_norm
+                if step == 0 or step % 5 == 0:
+                    orig_logits_logging = orig_logits.detach().clone()
+                    new_logits_logging = new_logits.detach().clone()
+                    orig_model_performance_loss = lm_cross_entropy_loss(
+                        orig_logits_logging, tokens, per_token=False
+                    )
+                    sae_model_performance_loss = lm_cross_entropy_loss(
+                        new_logits_logging, tokens, per_token=False
+                    )
+                    # flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
+                    # flat_new_logits = new_logits.view(-1, new_logits.shape[-1])
+                    # kl_div = torch.nn.functional.kl_div(
+                    #     torch.nn.functional.log_softmax(flat_new_logits, dim=-1),
+                    #     torch.nn.functional.softmax(flat_orig_logits, dim=-1),
+                    #     reduction="batchmean",
+                    # ) # Unsure if this is correct. Also it's expensive in terms of memory.
 
-                wandb.log(
-                    {
-                        "performance/orig_model_performance_loss": orig_model_performance_loss.item(),
-                        "performance/orig_model_performance_acc": orig_model_performance_acc.item(),
-                        "performance/sae_model_performance_loss": sae_model_performance_loss.item(),
-                        "performance/sae_model_performance_acc": sae_model_performance_acc.item(),
-                        "performance/difference_loss": (
-                            orig_model_performance_loss - sae_model_performance_loss
-                        ).item(),
-                        "performance/difference_acc": (
-                            orig_model_performance_acc - sae_model_performance_acc
-                        ).item(),
-                        **log_info,
-                    },
-                    step=total_samples,
-                )
+                    wandb_log_info.update(
+                        {
+                            "performance/orig_model_ce_loss": orig_model_performance_loss.item(),
+                            "performance/sae_model_ce_loss": sae_model_performance_loss.item(),
+                            "performance/difference_loss": (
+                                orig_model_performance_loss - sae_model_performance_loss
+                            ).item(),
+                        },
+                    )
+                wandb.log(wandb_log_info, step=total_samples)
+        if (
+            save_dir
+            and config.train.save_every_n_samples
+            and total_samples - total_samples_at_last_save >= config.train.save_every_n_samples
+        ):
+            total_samples_at_last_save = total_samples
+            save_model(
+                config_dict=config.model_dump(mode="json"),
+                save_dir=save_dir,
+                model=model,
+                model_filename=f"samples_{total_samples}.pt",
+            )
         if config.train.n_samples is not None and total_samples >= config.train.n_samples:
             break
+
+    if save_dir:
+        save_model(
+            config_dict=config.model_dump(mode="json"),
+            save_dir=save_dir,
+            model=model,
+            model_filename=f"samples_{total_samples}.pt",
+        )
+    if config.wandb_project:
+        wandb.finish()
 
 
 def load_tlens_model(config: Config) -> HookedTransformer:
@@ -272,9 +293,9 @@ def load_tlens_model(config: Config) -> HookedTransformer:
     return tlens_model
 
 
-def main(config_path_str: str) -> None:
+def main(config_path_or_obj: Path | str | Config) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = load_config(config_path_str, config_model=Config)
+    config = load_config(config_path_or_obj, config_model=Config)
     set_seed(config.seed)
 
     data_loader, _ = create_data_loader(config.data, batch_size=config.train.batch_size)

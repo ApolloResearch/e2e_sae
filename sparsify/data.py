@@ -30,9 +30,7 @@ def create_data_loader(
 ) -> tuple[DataLoader[Samples], AutoTokenizer]:
     """Create a DataLoader for the given dataset."""
     dataset = load_dataset(
-        data_config.dataset_name,
-        streaming=data_config.streaming,
-        split=data_config.split,
+        data_config.dataset_name, streaming=data_config.streaming, split=data_config.split
     )
     tokenizer = AutoTokenizer.from_pretrained(data_config.tokenizer_name)
     torch_dataset: TorchDataset[Samples]
