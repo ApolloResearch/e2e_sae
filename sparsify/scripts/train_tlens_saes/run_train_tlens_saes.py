@@ -19,6 +19,7 @@ from jaxtyping import Float, Int
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
@@ -41,7 +42,11 @@ from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
 from sparsify.scripts.train_tlens.run_train_tlens import HookedTransformerPreConfig
 from sparsify.types import RootPath, Samples
-from sparsify.utils import load_config, save_model, set_seed
+from sparsify.utils import (
+    load_config,
+    save_model,
+    set_seed,
+)
 
 
 class TrainConfig(BaseModel):
@@ -55,6 +60,15 @@ class TrainConfig(BaseModel):
     scheduler: str | None = None
     warmup_steps: NonNegativeFloat = 0
     max_grad_norm: PositiveFloat | None = None
+    log_every_n_steps: PositiveInt = 20
+    collect_discrete_metrics_every_n_samples: PositiveInt = Field(
+        20_000,
+        description="Metrics such as activation frequency and alive neurons, are calculated over "
+        "discrete periods. This parameter specifies how often to calculate these metrics.",
+    )
+    discrete_metrics_n_tokens: PositiveInt = Field(
+        100_000, description="The number of tokens to caclulate discrete metrics over."
+    )
     loss_configs: LossConfigs
 
     @model_validator(mode="after")
@@ -158,6 +172,8 @@ def train(
     total_samples_at_last_save = 0
     grad_updates = 0
     grad_norm: float | None = None
+    samples_since_discrete_metrics_saved: int = 0
+    collect_discrete_metrics = False
 
     for step, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
         tokens: Int[Tensor, "batch pos"] = batch[config.data.column_name].to(device=device)
@@ -206,14 +222,105 @@ def train(
                 scheduler.step()
 
         total_samples += tokens.shape[0]
-        if step == 0 or step % 20 == 0:
+        samples_since_discrete_metrics_saved += tokens.shape[0]
+
+        if not collect_discrete_metrics and (
+            samples_since_discrete_metrics_saved
+            >= config.train.collect_discrete_metrics_every_n_samples
+        ):
+            collect_discrete_metrics = True
+            samples_since_discrete_metrics_saved = 0
+            tokens_in_discrete_metrics = 0
+            dict_el_frequencies: dict[str, list[float]] = {
+                hook_name: torch.zeros(sae_acts[hook_name]["c"].shape[-1], device=device)
+                for hook_name in sae_acts
+            }
+
+        if collect_discrete_metrics:
+            batch_tokens = tokens.shape[0] * tokens.shape[1]
+            tokens_in_discrete_metrics += batch_tokens
+
+            # batch_dict_el_frequencies = calc_batch_dict_el_frequencies(sae_acts)
+            # Update dictionary element features with the current batch
+            for hook_name in dict_el_frequencies:
+                dict_el_frequencies[hook_name] += (sae_acts[hook_name]["c"] != 0).sum(dim=(0, 1))
+
+        if (
+            collect_discrete_metrics
+            and tokens_in_discrete_metrics >= config.train.discrete_metrics_n_tokens
+        ):
+            collect_discrete_metrics = False
+            samples_since_discrete_metrics_saved = 0
+
+            # Log the discrete metrics
+            discrete_metrics: dict[str, float | list[float]] = {}
+            for hook_name, sae_act in sae_acts.items():
+                # Divide the dict_el_frequencies by the number of tokens since the last save
+                dict_el_frequencies[hook_name] /= tokens_in_discrete_metrics
+
+                discrete_metrics["sparsity/alive_dict_elements"] = (
+                    (dict_el_frequencies[hook_name] > 0).sum().item()
+                )
+
+                if config.wandb_project:
+                    data = [[s] for s in dict_el_frequencies[hook_name]]
+                    table = wandb.Table(data=data, columns=["dict element activation frequency"])
+                    plot = wandb.plot.histogram(
+                        table,
+                        "dict element activation frequency",
+                        title=f"{hook_name} (most_recent_n_tokens={tokens_in_discrete_metrics} "
+                        f"dict_size={sae_act['c'].shape[-1]})",
+                    )
+                    discrete_metrics[f"sparsity/dict_el_frequencies_hist/{hook_name}"] = plot
+            if config.wandb_project:
+                # TODO: Log when not using wandb too
+                wandb.log(discrete_metrics, step=total_samples)
+            # update_dict_el_frequencies(
+            #     dict_el_frequencies=dict_el_frequencies,
+            #     batch_dict_el_frequencies=batch_dict_el_frequencies,
+            #     tokens_since_last_freq_save=tokens_since_discrete_metrics_save,
+            #     batch_tokens=batch_tokens,
+            # )
+            # sparsity_metrics, tokens_since_discrete_metrics_save = calc_sparsity_metrics(
+            #     sae_acts=sae_acts,
+            #     dict_el_frequencies=dict_el_frequencies,
+            #     tokens_since_discrete_metrics_save=tokens_since_discrete_metrics_save,
+            #     discrete_metrics_n_tokens=config.train.discrete_metrics_n_tokens,
+            #     batch_tokens=batch_tokens,
+            #     create_wandb_hist=True,
+            # )
+
+        if step == 0 or step % config.train.log_every_n_steps == 0:
             tqdm.write(
                 f"Samples {total_samples} Step {step} GradUpdates {grad_updates} "
                 f"Loss {loss.item():.5f}"
             )
 
             if config.wandb_project:
-                wandb_log_info = {"loss": loss.item(), "grad_updates": grad_updates}
+                # sparsity_metrics, tokens_since_discrete_metrics_save = calc_sparsity_metrics(
+                #     sae_acts=sae_acts,
+                #     dict_el_frequencies=dict_el_frequencies,
+                #     tokens_since_discrete_metrics_save=tokens_since_discrete_metrics_save,
+                #     discrete_metrics_n_tokens=config.train.discrete_metrics_n_tokens,
+                #     batch_tokens=tokens.shape[0] * tokens.shape[1],
+                #     create_wandb_hist=True,
+                # )
+                sparsity_metrics: dict[str, float | list[float]] = {}
+                for name, sae_act in sae_acts.items():
+                    # Record L_0 norm of the cs
+                    l_0_norm = torch.norm(sae_act["c"], p=0, dim=-1).mean()
+                    sparsity_metrics[f"sparsity/L_0/{name}"] = l_0_norm
+
+                    # Record fraction of zeros in the cs
+                    frac_zeros = (sae_act["c"] == 0).sum() / sae_act["c"].numel()
+                    sparsity_metrics[f"sparsity/frac_zeros/{name}"] = frac_zeros
+
+                wandb_log_info = {
+                    "loss": loss.item(),
+                    "grad_updates": grad_updates,
+                    **sparsity_metrics,
+                }
+
                 for loss_name, loss_value in loss_dict.items():
                     wandb_log_info[loss_name] = loss_value.item()
 
@@ -229,13 +336,6 @@ def train(
                     sae_model_performance_loss = lm_cross_entropy_loss(
                         new_logits_logging, tokens, per_token=False
                     )
-                    # flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
-                    # flat_new_logits = new_logits.view(-1, new_logits.shape[-1])
-                    # kl_div = torch.nn.functional.kl_div(
-                    #     torch.nn.functional.log_softmax(flat_new_logits, dim=-1),
-                    #     torch.nn.functional.softmax(flat_orig_logits, dim=-1),
-                    #     reduction="batchmean",
-                    # ) # Unsure if this is correct. Also it's expensive in terms of memory.
 
                     wandb_log_info.update(
                         {
