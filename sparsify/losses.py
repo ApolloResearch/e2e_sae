@@ -130,8 +130,8 @@ def calc_loss(
 
     loss: Float[Tensor, ""] = torch.zeros(
         1,
-        device=orig_acts[list(orig_acts.keys())[0]].device,
-        dtype=orig_acts[list(orig_acts.keys())[0]].dtype,
+        device=next(iter(orig_acts.values())).device,
+        dtype=next(iter(orig_acts.values())).dtype,
     )
     loss_dict = {}
 

@@ -10,29 +10,34 @@ if TYPE_CHECKING:
 
 
 class SAETransformer(nn.Module):
-    def __init__(self, tlens_model: HookedTransformer, config: "Config") -> None:
+    """A transformer model with SAEs at various positions.
+
+    Args:
+        config: The config for the model.
+        tlens_model: The transformer model.
+        raw_sae_position_names: A list of all the positions in the tlens_mdoel where SAEs are to be
+            placed. These positions may have periods in them, which are replaced with hyphens in
+            the keys of the `saes` attribute.
+    """
+
+    def __init__(
+        self, config: "Config", tlens_model: HookedTransformer, raw_sae_position_names: list[str]
+    ):
         super().__init__()
         self.tlens_model = tlens_model.eval()
-        self.saes = nn.ModuleDict()
-        # Expand the sae_position_names into an explicit list of all sae positions
-        # (e.g. 'hook_resid_pre' -> [blocks.0.hook_resid_pre, blocks.1.hook_resid_pre, ...])
-        self.sae_position_names_explicit = [
-            tlens_hook_key
-            for tlens_hook_key in tlens_model.hook_dict
-            if any(
-                sae_pos_name in tlens_hook_key for sae_pos_name in config.saes.sae_position_names
-            )
-        ]
-        self.sae_positions_training_now = self.sae_position_names_explicit
+        self.raw_sae_position_names = raw_sae_position_names
+        # ModuleDict keys can't have periods in them, so we replace them with hyphens
+        self.all_sae_position_names = [name.replace(".", "-") for name in raw_sae_position_names]
 
-        for sae_position_name in self.sae_position_names_explicit:
-            input_size = (
-                self.tlens_model.cfg.d_model
-            )  # TODO: Make this accommodate not just residual positions
-            n_dict_components = int(config.saes.dict_size_to_input_ratio * input_size)
-            self.saes[str(sae_position_name).replace(".", "_")] = SAE(
+        self.saes = nn.ModuleDict()
+
+        for sae_position_name in self.all_sae_position_names:
+            # TODO: Make this accommodate not just residual positions
+            # https://github.com/ApolloResearch/sparsify/issues/19
+            input_size = self.tlens_model.cfg.d_model
+            self.saes[sae_position_name] = SAE(
                 input_size=input_size,
-                n_dict_components=n_dict_components,
+                n_dict_components=int(config.saes.dict_size_to_input_ratio * input_size),
             )
 
     def forward(self, x: Tensor) -> Tensor:

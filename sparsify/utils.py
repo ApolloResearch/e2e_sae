@@ -113,3 +113,19 @@ def replace_pydantic_model(model: BaseModelType, *updates: dict[str, Any]) -> Ba
         Bar(foo=Foo(a=3, b=2))
     """
     return model.__class__(**deep_update(model.model_dump(), *updates))
+
+
+def filter_names(all_names: list[str], filter_names: list[str]) -> list[str]:
+    """Use filter_names to filter `all_names` by partial match.
+
+    The filtering is done by checking if any of the filter_names are in the all_names. Partial
+    matches are allowed. E.g. "hook_resid_pre" matches ["blocks.0.hook_resid_pre",
+    "blocks.1.hook_resid_pre", ...].
+
+    Args:
+        all_names: The names to filter.
+        filter_names: The names to use to filter all_names by partial match.
+    Returns:
+        The filtered names.
+    """
+    return [name for name in all_names if any(filter_name in name for filter_name in filter_names)]
