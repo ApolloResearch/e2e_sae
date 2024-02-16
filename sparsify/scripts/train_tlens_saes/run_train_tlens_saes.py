@@ -144,19 +144,6 @@ def train(
     else:
         n_gradient_accumulation_steps = 1
 
-    # We don't need to run through the whole model if we're training layerwise (we won't need the later activations or logits)
-    stop_at_layer = None
-    if config.train.layerwise:
-        stop_at_layer = (
-            max(
-                [
-                    int(sae_position_name.split(".")[1])
-                    for sae_position_name in model.sae_positions_training_now
-                ]
-            )
-            + 1
-        )
-
     # Initialize wandb
     run_name = (
         f"{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
@@ -187,7 +174,6 @@ def train(
                 tokens,
                 names_filter=model.sae_positions_training_now,
                 return_cache_object=False,
-                stop_at_layer=stop_at_layer,
             )
         assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
         # Get SAE feature activations
