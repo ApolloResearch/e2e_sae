@@ -195,7 +195,7 @@ def train(
         # Get SAE feature activations
         sae_acts = {hook_name: {} for hook_name in orig_acts}
         new_logits: Float[Tensor, "batch pos vocab"] | None = None
-        if config.train.layerwise:
+        if config.train.loss_configs.logits_kl is None:
             # Just run the already-stored activations through the SAEs
             for hook_name in orig_acts:
                 sae_hook(
