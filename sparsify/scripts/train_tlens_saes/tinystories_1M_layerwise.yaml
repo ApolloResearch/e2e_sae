@@ -4,7 +4,10 @@ tlens_model_path: null
 train:
   layerwise: True
   save_every_n_samples: null
-  n_samples: 40000
+  n_samples: 40000  # 918604 samples of 512 tokens
+  log_every_n_steps: 20
+  collect_discrete_metrics_every_n_samples: 5000
+  discrete_metrics_n_tokens: 500_000  #500k tokens is ~977 samples
   batch_size: 16
   effective_batch_size: 16
   lr: 1e-3
@@ -28,9 +31,9 @@ data:
   n_ctx: 512
 saes:
   sae_position_names: 
-  - blocks.1.hook_resid_post
-  - blocks.2.hook_resid_post
-  - blocks.3.hook_resid_post
+    - blocks.1.hook_resid_post
+    - blocks.2.hook_resid_post
+    - blocks.3.hook_resid_post
   dict_size_to_input_ratio: 1.0
 wandb_project: tinystories-1m_layerwise
 

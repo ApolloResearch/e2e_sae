@@ -101,7 +101,7 @@ class LossConfigs(BaseModel):
 
 def calc_loss(
     orig_acts: dict[str, Tensor],
-    sae_acts: dict[str, dict[str, Tensor]],
+    sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]],
     orig_logits: Float[Tensor, "batch pos vocab"] | None,
     new_logits: Float[Tensor, "batch pos vocab"] | None,
     loss_configs: LossConfigs,
@@ -157,13 +157,5 @@ def calc_loss(
                     c=sae_act["c"],
                 )
                 loss = loss + loss_config.coeff * loss_dict[f"loss/{config_type}/{name}"]
-
-        # Record L_0 norm of the cs
-        l_0_norm = torch.norm(sae_act["c"], p=0, dim=-1).mean()
-        loss_dict[f"sparsity/L_0/{name}"] = l_0_norm
-
-        # Record fraction of zeros in the cs
-        frac_zeros = (sae_act["c"] == 0).sum() / sae_act["c"].numel()
-        loss_dict[f"sparsity/frac_zeros/{name}"] = frac_zeros
 
     return loss, loss_dict
