@@ -8,7 +8,7 @@ from collections.abc import Callable
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Self, cast
+from typing import Annotated, Any, Self, cast
 
 import fire
 import torch
@@ -18,7 +18,9 @@ from dotenv import load_dotenv
 from jaxtyping import Float, Int
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
+    Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
@@ -71,15 +73,13 @@ class SparsifiersConfig(BaseModel):
     type_of_sparsifier: str | None = "sae"
     dict_size_to_input_ratio: PositiveFloat = 1.0
     k: PositiveInt | None = None  # Only used for codebook sparsifier
-    sae_position_names: str | list[str] # for example 'hook_resid_post' 
-                                        # or ['blocks.0.hook_resid_post','blocks.1.hook_resid_post']
-                                        # or ['hook_mlp_out','hook_resid_post']
-    @model_validator(mode="before")
-    def make_sae_position_names_a_list(cls, values: dict[str, Any]) -> dict[str, Any]:
-        # Allow config.saes.sae_position_names to be input as a single string
-        if isinstance(values["sae_position_names"], str):
-            values["sae_position_names"] = [values["sae_position_names"]]
-        return values
+    sae_position_names: Annotated[
+        list[str], BeforeValidator(lambda x: list(x) if isinstance(x, str) else x)
+    ] = Field(
+        ...,
+        description="The names of the SAE positions to train on. E.g. 'hook_resid_post' or "
+        "['hook_resid_post', 'hook_mlp_out'] or ['hook_mlp_out', 'hook_resid_post']",
+    )
 
 
 class Config(BaseModel):
