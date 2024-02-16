@@ -19,6 +19,7 @@ from jaxtyping import Float, Int
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
@@ -32,16 +33,20 @@ from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from transformer_lens import HookedTransformer, HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utils import lm_cross_entropy_loss
 
 from sparsify.data import DataConfig, create_data_loader
 from sparsify.log import logger
 from sparsify.losses import LossConfigs, calc_loss
+from sparsify.metrics import DiscreteMetrics, collect_wandb_metrics
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
 from sparsify.scripts.train_tlens.run_train_tlens import HookedTransformerPreConfig
 from sparsify.types import RootPath, Samples
-from sparsify.utils import load_config, save_model, set_seed
+from sparsify.utils import (
+    load_config,
+    save_model,
+    set_seed,
+)
 
 
 class TrainConfig(BaseModel):
@@ -55,6 +60,15 @@ class TrainConfig(BaseModel):
     scheduler: str | None = None
     warmup_steps: NonNegativeFloat = 0
     max_grad_norm: PositiveFloat | None = None
+    log_every_n_steps: PositiveInt = 20
+    collect_discrete_metrics_every_n_samples: PositiveInt = Field(
+        20_000,
+        description="Metrics such as activation frequency and alive neurons, are calculated over "
+        "discrete periods. This parameter specifies how often to calculate these metrics.",
+    )
+    discrete_metrics_n_tokens: PositiveInt = Field(
+        100_000, description="The number of tokens to caclulate discrete metrics over."
+    )
     loss_configs: LossConfigs
 
     @model_validator(mode="after")
@@ -112,7 +126,6 @@ def train(
     device: torch.device,
 ) -> None:
     model.saes.train()
-    # TODO make appropriate for transcoders and metaSAEs
     optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
 
     scheduler = None
@@ -158,6 +171,8 @@ def train(
     total_samples_at_last_save = 0
     grad_updates = 0
     grad_norm: float | None = None
+    samples_since_discrete_metric_collection: int = 0
+    discrete_metrics: DiscreteMetrics | None = None
 
     for step, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
         tokens: Int[Tensor, "batch pos"] = batch[config.data.column_name].to(device=device)
@@ -206,46 +221,52 @@ def train(
                 scheduler.step()
 
         total_samples += tokens.shape[0]
-        if step == 0 or step % 20 == 0:
+        samples_since_discrete_metric_collection += tokens.shape[0]
+
+        if discrete_metrics is None and (
+            samples_since_discrete_metric_collection
+            >= config.train.collect_discrete_metrics_every_n_samples
+        ):
+            # Start collecting discrete metrics for next config.train.discrete_metrics_n_tokens
+            discrete_metrics = DiscreteMetrics(
+                dict_sizes={
+                    hook_name: sae_acts[hook_name]["c"].shape[-1] for hook_name in sae_acts
+                },
+                has_pos_dim=True,
+                device=device,
+            )
+            samples_since_discrete_metric_collection = 0
+
+        if discrete_metrics is not None:
+            discrete_metrics.update_dict_el_frequencies(
+                sae_acts, batch_tokens=tokens.shape[0] * tokens.shape[1]
+            )
+            if discrete_metrics.tokens_used >= config.train.discrete_metrics_n_tokens:
+                # Finished collecting discrete metrics
+                metrics = discrete_metrics.collect_for_logging()
+                if config.wandb_project:
+                    # TODO: Log when not using wandb too
+                    wandb.log(metrics, step=total_samples)
+                discrete_metrics = None
+                samples_since_discrete_metric_collection = 0
+
+        if step == 0 or step % config.train.log_every_n_steps == 0:
             tqdm.write(
                 f"Samples {total_samples} Step {step} GradUpdates {grad_updates} "
                 f"Loss {loss.item():.5f}"
             )
 
             if config.wandb_project:
-                wandb_log_info = {"loss": loss.item(), "grad_updates": grad_updates}
-                for loss_name, loss_value in loss_dict.items():
-                    wandb_log_info[loss_name] = loss_value.item()
-
-                if config.train.max_grad_norm is not None:
-                    assert grad_norm is not None
-                    wandb_log_info["grad_norm"] = grad_norm
-                if step == 0 or step % 5 == 0:
-                    orig_logits_logging = orig_logits.detach().clone()
-                    new_logits_logging = new_logits.detach().clone()
-                    orig_model_performance_loss = lm_cross_entropy_loss(
-                        orig_logits_logging, tokens, per_token=False
-                    )
-                    sae_model_performance_loss = lm_cross_entropy_loss(
-                        new_logits_logging, tokens, per_token=False
-                    )
-                    # flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
-                    # flat_new_logits = new_logits.view(-1, new_logits.shape[-1])
-                    # kl_div = torch.nn.functional.kl_div(
-                    #     torch.nn.functional.log_softmax(flat_new_logits, dim=-1),
-                    #     torch.nn.functional.softmax(flat_orig_logits, dim=-1),
-                    #     reduction="batchmean",
-                    # ) # Unsure if this is correct. Also it's expensive in terms of memory.
-
-                    wandb_log_info.update(
-                        {
-                            "performance/orig_model_ce_loss": orig_model_performance_loss.item(),
-                            "performance/sae_model_ce_loss": sae_model_performance_loss.item(),
-                            "performance/difference_loss": (
-                                orig_model_performance_loss - sae_model_performance_loss
-                            ).item(),
-                        },
-                    )
+                wandb_log_info = collect_wandb_metrics(
+                    loss=loss.item(),
+                    grad_updates=grad_updates,
+                    sae_acts=sae_acts,
+                    loss_dict=loss_dict,
+                    grad_norm=grad_norm,
+                    orig_logits=orig_logits.detach().clone(),
+                    new_logits=new_logits.detach().clone(),
+                    tokens=tokens,
+                )
                 wandb.log(wandb_log_info, step=total_samples)
         if (
             save_dir
