@@ -158,16 +158,10 @@ def train(
         )
 
     # Initialize wandb
-    if config.train.layerwise:
-        run_name = (
-            f"layerwise_{'-'.join(model.sae_positions_training_now)}_ratio-{config.saes.dict_size_to_input_ratio}_"
-            f"lpcoeff-{config.train.loss_configs.sparsity.coeff}"
-        )
-    else:
-        run_name = (
-            f"e2e_{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
-            f"lpcoeff-{config.train.loss_configs.sparsity.coeff}"
-        )
+    run_name = (
+        f"{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
+        f"lpcoeff-{config.train.loss_configs.sparsity.coeff}"
+    )
     if config.wandb_project:
         load_dotenv(override=True)
         wandb.init(
