@@ -14,10 +14,15 @@ class SAETransformer(nn.Module):
         super().__init__()
         self.tlens_model = tlens_model.eval()
         self.saes = nn.ModuleDict()
-        # Expand the sae_position_names into an explicit list of all sae positions 
+        # Expand the sae_position_names into an explicit list of all sae positions
         # (e.g. 'hook_resid_pre' -> [blocks.0.hook_resid_pre, blocks.1.hook_resid_pre, ...])
-        self.sae_position_names_explicit = [tlens_hook_key for tlens_hook_key in tlens_model.hook_dict\
-                                             if any(sae_pos_name in tlens_hook_key for sae_pos_name in config.saes.sae_position_names)]
+        self.sae_position_names_explicit = [
+            tlens_hook_key
+            for tlens_hook_key in tlens_model.hook_dict
+            if any(
+                sae_pos_name in tlens_hook_key for sae_pos_name in config.saes.sae_position_names
+            )
+        ]
         self.sae_positions_training_now = self.sae_position_names_explicit
 
         for sae_position_name in self.sae_position_names_explicit:
@@ -25,7 +30,7 @@ class SAETransformer(nn.Module):
                 self.tlens_model.cfg.d_model
             )  # TODO: Make this accommodate not just residual positions
             n_dict_components = int(config.saes.dict_size_to_input_ratio * input_size)
-            self.saes[str(sae_position_name).replace('.', '_')] = SAE(
+            self.saes[str(sae_position_name).replace(".", "_")] = SAE(
                 input_size=input_size,
                 n_dict_components=n_dict_components,
             )

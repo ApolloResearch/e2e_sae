@@ -71,13 +71,16 @@ class SparsifiersConfig(BaseModel):
     type_of_sparsifier: str | None = "sae"
     dict_size_to_input_ratio: PositiveFloat = 1.0
     k: PositiveInt | None = None  # Only used for codebook sparsifier
-    sae_position_names: str | list[str] # for example 'hook_resid_post' or ['blocks.0.hook_resid_post','blocks.1.hook_resid_post'] or ['hook_mlp_out','hook_resid_post']
+    sae_position_names: str | list[str] # for example 'hook_resid_post' 
+                                        # or ['blocks.0.hook_resid_post','blocks.1.hook_resid_post']
+                                        # or ['hook_mlp_out','hook_resid_post']
     @model_validator(mode="before")
     def make_sae_position_names_a_list(cls, values: dict[str, Any]) -> dict[str, Any]:
         # Allow config.saes.sae_position_names to be input as a single string
-        if isinstance(values['sae_position_names'], str):
-            values['sae_position_names'] = [values['sae_position_names']]
+        if isinstance(values["sae_position_names"], str):
+            values["sae_position_names"] = [values["sae_position_names"]]
         return values
+
 
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -99,7 +102,10 @@ class Config(BaseModel):
 
 
 def sae_hook(
-    value: Float[torch.Tensor, "... dim"], hook: HookPoint | None, sae: SAE, hook_acts: dict[str, Any]
+    value: Float[torch.Tensor, "... dim"],
+    hook: HookPoint | None,
+    sae: SAE | torch.nn.Module,
+    hook_acts: dict[str, Any],
 ) -> Float[torch.Tensor, "... dim"]:
     """Runs the SAE on the input and stores the output and c in hook_acts."""
     hook_acts["input"] = value
@@ -141,7 +147,15 @@ def train(
     # We don't need to run through the whole model if we're training layerwise (we won't need the later activations or logits)
     stop_at_layer = None
     if config.train.layerwise:
-        stop_at_layer = max([int(sae_position_name.split('.')[1]) for sae_position_name in model.sae_positions_training_now]) + 1
+        stop_at_layer = (
+            max(
+                [
+                    int(sae_position_name.split(".")[1])
+                    for sae_position_name in model.sae_positions_training_now
+                ]
+            )
+            + 1
+        )
 
     # Initialize wandb
     if config.train.layerwise:
@@ -176,25 +190,36 @@ def train(
         # Run model without SAEs
         with torch.inference_mode():
             orig_logits, orig_acts = model.tlens_model.run_with_cache(
-                tokens, names_filter=model.sae_positions_training_now,
-                return_cache_object=False, stop_at_layer=stop_at_layer,
+                tokens,
+                names_filter=model.sae_positions_training_now,
+                return_cache_object=False,
+                stop_at_layer=stop_at_layer,
             )
         assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
         # Get SAE feature activations
         sae_acts = {hook_name: {} for hook_name in orig_acts}
+        new_logits: Float[Tensor, "batch pos vocab"] | None = None
         if config.train.layerwise:
-            new_logits = None
             for hook_name in orig_acts:
-                sae_hook(value=orig_acts[hook_name].detach().clone(), hook=None, sae=model.saes[hook_name.replace('.', '_')], hook_acts=sae_acts[hook_name])
-        else: # Run the whole model with SAEs if we're not doing layerwise training
+                sae_hook(
+                    value=orig_acts[hook_name].detach().clone(),
+                    hook=None,
+                    sae=model.saes[hook_name.replace(".", "_")],
+                    hook_acts=sae_acts[hook_name],
+                )
+        else:  # Run the whole model with SAEs if we're not doing layerwise training
             fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
                 (
                     hook_name,
-                    partial(sae_hook, sae=cast(SAE, model.saes[hook_name.replace('.', '_')]), hook_acts=sae_acts[hook_name]),
+                    partial(
+                        sae_hook,
+                        sae=cast(SAE, model.saes[hook_name.replace(".", "_")]),
+                        hook_acts=sae_acts[hook_name],
+                    ),
                 )
                 for hook_name in orig_acts
             ]
-            new_logits: Float[Tensor, "batch pos vocab"] = model.tlens_model.run_with_hooks(
+            new_logits = model.tlens_model.run_with_hooks(
                 tokens,
                 fwd_hooks=fwd_hooks,  # type: ignore
             )
@@ -237,18 +262,20 @@ def train(
                 if config.train.max_grad_norm is not None:
                     assert grad_norm is not None
                     wandb_log_info["grad_norm"] = grad_norm
-                
-                if (step == 0 or step % 5 == 0) and not config.train.layerwise:
-                    if orig_logits is not None:
-                        orig_logits_logging = orig_logits.detach().clone()
-                        orig_model_performance_loss = lm_cross_entropy_loss(
-                            orig_logits_logging, tokens, per_token=False
-                        )
-                    if new_logits is not None:
-                        new_logits_logging = new_logits.detach().clone()
-                        sae_model_performance_loss = lm_cross_entropy_loss(
-                            new_logits_logging, tokens, per_token=False
-                        )
+
+                if (
+                    (step == 0 or step % 5 == 0)
+                    and not config.train.layerwise
+                    and new_logits is not None
+                ):
+                    orig_logits_logging = orig_logits.detach().clone()
+                    orig_model_performance_loss = lm_cross_entropy_loss(
+                        orig_logits_logging, tokens, per_token=False
+                    )
+                    new_logits_logging = new_logits.detach().clone()
+                    sae_model_performance_loss = lm_cross_entropy_loss(
+                        new_logits_logging, tokens, per_token=False
+                    )
                     # flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
                     # flat_new_logits = new_logits.view(-1, new_logits.shape[-1])
                     # kl_div = torch.nn.functional.kl_div(
@@ -324,25 +351,17 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     tlens_model = load_tlens_model(config)
 
     model = SAETransformer(tlens_model, config).to(device=device)
-    print(f'Training {len(model.sae_position_names_explicit)} SAEs: at {model.sae_position_names_explicit}:')
+    print(
+        f"Training {len(model.sae_position_names_explicit)} SAEs: at {model.sae_position_names_explicit}:"
+    )
     # Train only one sae_position at a time if we're doing it layerwise
     if config.train.layerwise:
         for sae_position_name in model.sae_position_names_explicit:
-            print(f'Training the SAE at {sae_position_name}:')
+            print(f"Training the SAE at {sae_position_name}:")
             model.sae_positions_training_now = [sae_position_name]
-            train(
-                config=config,
-                model=model,
-                data_loader=data_loader,
-                device=device
-            )
-    else: # Train end-to-end rather than layerwise
-        train(
-            config=config,
-            model=model,
-            data_loader=data_loader,
-            device=device
-        )
+            train(config=config, model=model, data_loader=data_loader, device=device)
+    else:  # Train end-to-end rather than layerwise
+        train(config=config, model=model, data_loader=data_loader, device=device)
 
 
 if __name__ == "__main__":
