@@ -128,7 +128,8 @@ def calc_loss(
         f"{sae_acts.keys()}"
     )
 
-    loss: Float[Tensor, ""] = torch.zeros(1, device=orig_logits.device, dtype=orig_logits.dtype)
+    loss: Float[Tensor, ""] = torch.zeros(1, device=orig_acts[list(orig_acts.keys())[0]].device,
+                                             dtype=orig_acts[list(orig_acts.keys())[0]].dtype)
     loss_dict = {}
 
     if loss_configs.logits_kl and orig_logits is not None and new_logits is not None:

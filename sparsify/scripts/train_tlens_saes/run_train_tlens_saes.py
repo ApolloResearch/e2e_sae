@@ -45,7 +45,7 @@ from sparsify.utils import load_config, save_model, set_seed
 
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    layer_wise: bool = False
+    layerwise: bool = False
     save_dir: RootPath | None = Path(__file__).parent / "out"
     save_every_n_samples: PositiveInt | None
     n_samples: PositiveInt | None = None
@@ -72,7 +72,12 @@ class SparsifiersConfig(BaseModel):
     dict_size_to_input_ratio: PositiveFloat = 1.0
     k: PositiveInt | None = None  # Only used for codebook sparsifier
     sae_position_names: str | list[str] # for example 'hook_resid_post' or ['blocks.0.hook_resid_post','blocks.1.hook_resid_post'] or ['hook_mlp_out','hook_resid_post']
-
+    @model_validator(mode="before")
+    def make_sae_position_names_a_list(cls, values: dict[str, Any]) -> dict[str, Any]:
+        # Allow config.saes.sae_position_names to be input as a single string
+        if isinstance(values['sae_position_names'], str):
+            values['sae_position_names'] = [values['sae_position_names']]
+        return values
 
 class Config(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -94,7 +99,7 @@ class Config(BaseModel):
 
 
 def sae_hook(
-    value: Float[torch.Tensor, "... dim"], hook: HookPoint, sae: SAE, hook_acts: dict[str, Any]
+    value: Float[torch.Tensor, "... dim"], hook: HookPoint | None, sae: SAE, hook_acts: dict[str, Any]
 ) -> Float[torch.Tensor, "... dim"]:
     """Runs the SAE on the input and stores the output and c in hook_acts."""
     hook_acts["input"] = value
@@ -132,14 +137,23 @@ def train(
         n_gradient_accumulation_steps = config.train.effective_batch_size // config.train.batch_size
     else:
         n_gradient_accumulation_steps = 1
-        
-    sae_position_names = [tlens_hook_key for tlens_hook_key in model.tlens_model.hook_dict.keys() if any(sae_pos_name in tlens_hook_key for sae_pos_name in config.saes.sae_position_names)] # Finds any transformerlens hook keys which contain any config.saes.sae_position_names
+
+    # We don't need to run through the whole model if we're training layerwise (we won't need the later activations or logits)
+    stop_at_layer = None
+    if config.train.layerwise:
+        stop_at_layer = max([int(sae_position_name.split('.')[1]) for sae_position_name in model.sae_positions_training_now]) + 1
 
     # Initialize wandb
-    run_name = (
-        f"{config.saes.sae_position_name}_ratio-{config.saes.dict_size_to_input_ratio}_"
-        f"lpcoeff-{config.train.loss_configs.sparsity.coeff}"
-    )
+    if config.train.layerwise:
+        run_name = (
+            f"layerwise_{'-'.join(model.sae_positions_training_now)}_ratio-{config.saes.dict_size_to_input_ratio}_"
+            f"lpcoeff-{config.train.loss_configs.sparsity.coeff}"
+        )
+    else:
+        run_name = (
+            f"e2e_{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
+            f"lpcoeff-{config.train.loss_configs.sparsity.coeff}"
+        )
     if config.wandb_project:
         load_dotenv(override=True)
         wandb.init(
@@ -162,28 +176,33 @@ def train(
         # Run model without SAEs
         with torch.inference_mode():
             orig_logits, orig_acts = model.tlens_model.run_with_cache(
-                tokens, names_filter=sae_position_names, return_cache_object=False
+                tokens, names_filter=model.sae_positions_training_now,
+                return_cache_object=False, stop_at_layer=stop_at_layer,
             )
         assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
-
-        # Run model with SAEs
+        # Get SAE feature activations
         sae_acts = {hook_name: {} for hook_name in orig_acts}
-        fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
-            (
-                hook_name,
-                partial(sae_hook, sae=cast(SAE, model.saes[hook_name]), hook_acts=sae_acts[hook_name]),
+        if config.train.layerwise:
+            new_logits = None
+            for hook_name in orig_acts:
+                sae_hook(value=orig_acts[hook_name].detach().clone(), hook=None, sae=model.saes[hook_name.replace('.', '_')], hook_acts=sae_acts[hook_name])
+        else: # Run the whole model with SAEs if we're not doing layerwise training
+            fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
+                (
+                    hook_name,
+                    partial(sae_hook, sae=cast(SAE, model.saes[hook_name.replace('.', '_')]), hook_acts=sae_acts[hook_name]),
+                )
+                for hook_name in orig_acts
+            ]
+            new_logits: Float[Tensor, "batch pos vocab"] = model.tlens_model.run_with_hooks(
+                tokens,
+                fwd_hooks=fwd_hooks,  # type: ignore
             )
-            for hook_name in enumerate(orig_acts)
-        ]
-        new_logits: Float[Tensor, "batch pos vocab"] = model.tlens_model.run_with_hooks(
-            tokens,
-            fwd_hooks=fwd_hooks,  # type: ignore
-        )
         loss, loss_dict = calc_loss(
             orig_acts=orig_acts,
             sae_acts=sae_acts,
-            orig_logits=orig_logits,
-            new_logits=new_logits,
+            orig_logits=(None if config.train.layerwise else orig_logits),
+            new_logits=(None if config.train.layerwise else new_logits),
             loss_configs=config.train.loss_configs,
         )
 
@@ -218,15 +237,18 @@ def train(
                 if config.train.max_grad_norm is not None:
                     assert grad_norm is not None
                     wandb_log_info["grad_norm"] = grad_norm
-                if step == 0 or step % 5 == 0:
-                    orig_logits_logging = orig_logits.detach().clone()
-                    new_logits_logging = new_logits.detach().clone()
-                    orig_model_performance_loss = lm_cross_entropy_loss(
-                        orig_logits_logging, tokens, per_token=False
-                    )
-                    sae_model_performance_loss = lm_cross_entropy_loss(
-                        new_logits_logging, tokens, per_token=False
-                    )
+                
+                if (step == 0 or step % 5 == 0) and not config.train.layerwise:
+                    if orig_logits is not None:
+                        orig_logits_logging = orig_logits.detach().clone()
+                        orig_model_performance_loss = lm_cross_entropy_loss(
+                            orig_logits_logging, tokens, per_token=False
+                        )
+                    if new_logits is not None:
+                        new_logits_logging = new_logits.detach().clone()
+                        sae_model_performance_loss = lm_cross_entropy_loss(
+                            new_logits_logging, tokens, per_token=False
+                        )
                     # flat_orig_logits = orig_logits.view(-1, orig_logits.shape[-1])
                     # flat_new_logits = new_logits.view(-1, new_logits.shape[-1])
                     # kl_div = torch.nn.functional.kl_div(
@@ -302,13 +324,28 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     tlens_model = load_tlens_model(config)
 
     model = SAETransformer(tlens_model, config).to(device=device)
-    train(
-        config=config,
-        model=model,
-        data_loader=data_loader,
-        device=device,
-    )
+    print(f'Training {len(model.sae_position_names_explicit)} SAEs: at {model.sae_position_names_explicit}:')
+    # Train only one sae_position at a time if we're doing it layerwise
+    if config.train.layerwise:
+        for sae_position_name in model.sae_position_names_explicit:
+            print(f'Training the SAE at {sae_position_name}:')
+            model.sae_positions_training_now = [sae_position_name]
+            train(
+                config=config,
+                model=model,
+                data_loader=data_loader,
+                device=device
+            )
+    else: # Train end-to-end rather than layerwise
+        train(
+            config=config,
+            model=model,
+            data_loader=data_loader,
+            device=device
+        )
 
 
 if __name__ == "__main__":
     fire.Fire(main)
+    # Example use:
+    # python sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py sparsify/scripts/train_tlens_saes/tinystories_1M.yaml
