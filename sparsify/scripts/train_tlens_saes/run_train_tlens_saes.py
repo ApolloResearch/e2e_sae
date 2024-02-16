@@ -42,7 +42,7 @@ from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
 from sparsify.scripts.train_tlens.run_train_tlens import HookedTransformerPreConfig
 from sparsify.types import RootPath, Samples
-from sparsify.utils import load_config, save_model, set_seed
+from sparsify.utils import filter_names, load_config, save_model, set_seed
 
 
 class TrainConfig(BaseModel):
@@ -74,7 +74,7 @@ class SparsifiersConfig(BaseModel):
     dict_size_to_input_ratio: PositiveFloat = 1.0
     k: PositiveInt | None = None  # Only used for codebook sparsifier
     sae_position_names: Annotated[
-        list[str], BeforeValidator(lambda x: list(x) if isinstance(x, str) else x)
+        list[str], BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
     ] = Field(
         ...,
         description="The names of the SAE positions to train on. E.g. 'hook_resid_post' or "
@@ -172,7 +172,7 @@ def train(
         with torch.inference_mode():
             orig_logits, orig_acts = model.tlens_model.run_with_cache(
                 tokens,
-                names_filter=model.sae_positions_training_now,
+                names_filter=model.raw_sae_position_names,
                 return_cache_object=False,
             )
         assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
@@ -184,7 +184,7 @@ def train(
                 sae_hook(
                     value=orig_acts[hook_name].detach().clone(),
                     hook=None,
-                    sae=model.saes[hook_name.replace(".", "_")],
+                    sae=model.saes[hook_name.replace(".", "-")],
                     hook_acts=sae_acts[hook_name],
                 )
         else:  # Run the whole model with SAEs if we're not doing layerwise training
@@ -193,7 +193,7 @@ def train(
                     hook_name,
                     partial(
                         sae_hook,
-                        sae=cast(SAE, model.saes[hook_name.replace(".", "_")]),
+                        sae=cast(SAE, model.saes[hook_name.replace(".", "-")]),
                         hook_acts=sae_acts[hook_name],
                     ),
                 )
@@ -206,8 +206,8 @@ def train(
         loss, loss_dict = calc_loss(
             orig_acts=orig_acts,
             sae_acts=sae_acts,
-            orig_logits=(None if config.train.layerwise else orig_logits),
-            new_logits=(None if config.train.layerwise else new_logits),
+            orig_logits=None if config.train.layerwise else orig_logits,
+            new_logits=None if config.train.layerwise else new_logits,
             loss_configs=config.train.loss_configs,
         )
 
@@ -330,21 +330,24 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     data_loader, _ = create_data_loader(config.data, batch_size=config.train.batch_size)
     tlens_model = load_tlens_model(config)
 
-    model = SAETransformer(tlens_model, config).to(device=device)
-    print(
-        f"Training {len(model.sae_position_names_explicit)} SAEs: at {model.sae_position_names_explicit}:"
+    raw_sae_position_names = filter_names(
+        list(tlens_model.hook_dict.keys()), config.saes.sae_position_names
     )
-    # Train only one sae_position at a time if we're doing it layerwise
+
     if config.train.layerwise:
-        for sae_position_name in model.sae_position_names_explicit:
-            print(f"Training the SAE at {sae_position_name}:")
-            model.sae_positions_training_now = [sae_position_name]
+        # Train only one sae_position at a time
+        for sae_position_name in raw_sae_position_names:
+            model = SAETransformer(
+                config=config, tlens_model=tlens_model, raw_sae_position_names=[sae_position_name]
+            ).to(device=device)
             train(config=config, model=model, data_loader=data_loader, device=device)
-    else:  # Train end-to-end rather than layerwise
+    else:
+        # Train all sae_positions at once
+        model = SAETransformer(
+            config=config, tlens_model=tlens_model, raw_sae_position_names=raw_sae_position_names
+        ).to(device=device)
         train(config=config, model=model, data_loader=data_loader, device=device)
 
 
 if __name__ == "__main__":
     fire.Fire(main)
-    # Example use:
-    # python sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py sparsify/scripts/train_tlens_saes/tinystories_1M.yaml
