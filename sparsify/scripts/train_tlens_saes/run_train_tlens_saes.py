@@ -161,15 +161,18 @@ def train(
     # We don't need to run through the whole model if we're not using the logits
     stop_at_layer = None
     if config.train.loss_configs.logits_kl is None:
-        stop_at_layer = (
-            max(
-                [
-                    int(sae_position_name.split(".")[1])
-                    for sae_position_name in model.raw_sae_position_names
-                ]
+        try:
+            stop_at_layer = (
+                max(
+                    [
+                        model.tlens_model.hook_dict[sae_position_name].layer()
+                        for sae_position_name in model.raw_sae_position_names
+                    ]
+                )
+                + 1
             )
-            + 1
-        )
+        except ValueError:  # HookPoint.layer() will raise a ValueError if it's name doesn't start with "blocks" followed by an integer
+            stop_at_layer = None
 
     # Initialize wandb
     run_name = (
@@ -205,12 +208,13 @@ def train(
                 return_cache_object=False,
                 stop_at_layer=stop_at_layer,
             )
+            assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
         # Get SAE feature activations
         sae_acts = {hook_name: {} for hook_name in orig_acts}
         new_logits: Float[Tensor, "batch pos vocab"] | None = None
         if config.train.loss_configs.logits_kl is None:
             # Just run the already-stored activations through the SAEs
-            orig_logits = None
+            # orig_logits = None
             for hook_name in orig_acts:
                 sae_hook(
                     value=orig_acts[hook_name].detach().clone(),
@@ -220,7 +224,6 @@ def train(
                 )
         else:
             # Run the tokens through the whole SAE-augmented model
-            assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
             fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
                 (
                     hook_name,
@@ -303,7 +306,7 @@ def train(
                     sae_acts=sae_acts,
                     loss_dict=loss_dict,
                     grad_norm=grad_norm,
-                    orig_logits=orig_logits.detach().clone() if orig_logits is not None else None,
+                    orig_logits=orig_logits.detach().clone() if new_logits is not None else None,
                     new_logits=new_logits.detach().clone() if new_logits is not None else None,
                     tokens=tokens,
                 )
