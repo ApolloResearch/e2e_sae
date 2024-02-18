@@ -354,19 +354,10 @@ def main(config_path_or_obj: Path | str | Config) -> None:
         list(tlens_model.hook_dict.keys()), config.saes.sae_position_names
     )
 
-    if config.train.layerwise:
-        # Train only one sae_position at a time
-        for sae_position_name in raw_sae_position_names:
-            model = SAETransformer(
-                config=config, tlens_model=tlens_model, raw_sae_position_names=[sae_position_name]
-            ).to(device=device)
-            train(config=config, model=model, data_loader=data_loader, device=device)
-    else:
-        # Train all sae_positions at once
-        model = SAETransformer(
-            config=config, tlens_model=tlens_model, raw_sae_position_names=raw_sae_position_names
-        ).to(device=device)
-        train(config=config, model=model, data_loader=data_loader, device=device)
+    model = SAETransformer(
+        config=config, tlens_model=tlens_model, raw_sae_position_names=raw_sae_position_names
+    ).to(device=device)
+    train(config=config, model=model, data_loader=data_loader, device=device)
 
 
 if __name__ == "__main__":
