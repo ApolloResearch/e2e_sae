@@ -53,7 +53,6 @@ from sparsify.utils import (
 
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    layerwise: bool = False
     save_dir: RootPath | None = Path(__file__).parent / "out"
     save_every_n_samples: PositiveInt | None
     n_samples: PositiveInt | None = None
