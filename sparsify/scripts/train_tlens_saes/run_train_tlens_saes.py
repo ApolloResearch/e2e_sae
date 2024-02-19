@@ -71,6 +71,11 @@ class TrainConfig(BaseModel):
     discrete_metrics_n_tokens: PositiveInt = Field(
         100_000, description="The number of tokens to caclulate discrete metrics over."
     )
+    log_ce_loss: bool = Field(
+        True,
+        description="Whether to calculate and log the cross-entropy loss between the original and "
+        "SAE-augmented logits.",
+    )
     loss_configs: LossConfigs
 
     @model_validator(mode="after")
@@ -194,7 +199,7 @@ def train(
         # Get SAE feature activations
         sae_acts = {hook_name: {} for hook_name in orig_acts}
         new_logits: Float[Tensor, "batch pos vocab"] | None = None
-        if config.train.loss_configs.logits_kl is None:
+        if config.train.loss_configs.logits_kl is None and not config.train.log_ce_loss:
             # Just run the already-stored activations through the SAEs
             for hook_name in orig_acts:
                 sae_hook(
