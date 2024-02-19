@@ -157,6 +157,21 @@ def train(
     else:
         n_gradient_accumulation_steps = 1
 
+    # We don't need to run through the whole model if we're not using the logits
+    stop_at_layer = None
+    if config.train.loss_configs.logits_kl is None and all(
+        name.startswith("blocks.") for name in model.raw_sae_position_names
+    ):
+        stop_at_layer = (
+            max(
+                [
+                    int(sae_position_name.split(".")[1])
+                    for sae_position_name in model.raw_sae_position_names
+                ]
+            )
+            + 1
+        )
+
     # Initialize wandb
     run_name = (
         f"{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
@@ -189,8 +204,9 @@ def train(
                 tokens,
                 names_filter=model.raw_sae_position_names,
                 return_cache_object=False,
+                stop_at_layer=stop_at_layer,
             )
-        assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
+            assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
         # Get SAE feature activations
         sae_acts = {hook_name: {} for hook_name in orig_acts}
         new_logits: Float[Tensor, "batch pos vocab"] | None = None
