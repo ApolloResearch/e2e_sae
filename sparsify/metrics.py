@@ -1,7 +1,7 @@
 import torch
 import wandb
 from jaxtyping import Float
-from torch import Tensor
+from torch import Tensor, log10
 from transformer_lens.utils import lm_cross_entropy_loss
 
 
@@ -21,6 +21,9 @@ class DiscreteMetrics:
         self.dict_el_frequencies: dict[str, Float[Tensor, "dims"]] = {  # noqa: F821
             sae_pos: torch.zeros(dict_size, device=device)
             for sae_pos, dict_size in dict_sizes.items()
+        }
+        self.dict_el_frequencies_history: dict[str, list[Float[Tensor, "dims"]]] = {  # noqa: F821
+            sae_pos: [] for sae_pos, dict_size in dict_sizes.items()
         }
 
     def update_dict_el_frequencies(
@@ -55,6 +58,9 @@ class DiscreteMetrics:
         log_dict = {}
         for sae_pos in self.dict_el_frequencies:
             self.dict_el_frequencies[sae_pos] /= self.tokens_used
+            self.dict_el_frequencies_history[sae_pos].append(
+                self.dict_el_frequencies[sae_pos].detach().cpu()
+            )
 
             log_dict[f"sparsity/alive_dict_elements/{sae_pos}"] = (
                 self.dict_el_frequencies[sae_pos].gt(0).sum().item()
@@ -71,6 +77,14 @@ class DiscreteMetrics:
                 )
                 log_dict[f"sparsity/dict_el_frequencies_hist/{sae_pos}"] = plot
 
+                log_dict[
+                    f"sparsity/dict_el_frequencies_hist/over_time/{sae_pos}"
+                ] = wandb.Histogram(self.dict_el_frequencies_history[sae_pos])
+                log_dict[
+                    f"sparsity/dict_el_frequencies_hist/over_time/log10/{sae_pos}"
+                ] = wandb.Histogram(
+                    [log10(s + 1e-10) for s in self.dict_el_frequencies_history[sae_pos]]
+                )
         return log_dict
 
 
