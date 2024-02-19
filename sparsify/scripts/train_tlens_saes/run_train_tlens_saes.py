@@ -160,19 +160,16 @@ def train(
 
     # We don't need to run through the whole model if we're not using the logits
     stop_at_layer = None
-    if config.train.loss_configs.logits_kl is None:
-        try:
-            stop_at_layer = (
-                max(
-                    [
-                        model.tlens_model.hook_dict[sae_position_name].layer()
-                        for sae_position_name in model.raw_sae_position_names
-                    ]
-                )
-                + 1
+    if config.train.loss_configs.logits_kl is None and all(name.startswith("blocks.") for name in model.raw_sae_position_names):
+        stop_at_layer = (
+            max(
+                [
+                    int(sae_position_name.split(".")[1])
+                    for sae_position_name in model.raw_sae_position_names
+                ]
             )
-        except ValueError:  # HookPoint.layer() will raise a ValueError if it's name doesn't start with "blocks" followed by an integer
-            stop_at_layer = None
+            + 1
+        )
 
     # Initialize wandb
     run_name = (
@@ -214,7 +211,6 @@ def train(
         new_logits: Float[Tensor, "batch pos vocab"] | None = None
         if config.train.loss_configs.logits_kl is None:
             # Just run the already-stored activations through the SAEs
-            # orig_logits = None
             for hook_name in orig_acts:
                 sae_hook(
                     value=orig_acts[hook_name].detach().clone(),
