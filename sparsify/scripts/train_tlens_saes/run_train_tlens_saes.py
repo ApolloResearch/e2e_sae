@@ -160,7 +160,9 @@ def train(
 
     # We don't need to run through the whole model if we're not using the logits
     stop_at_layer = None
-    if config.train.loss_configs.logits_kl is None and all(name.startswith("blocks.") for name in model.raw_sae_position_names):
+    if config.train.loss_configs.logits_kl is None and all(
+        name.startswith("blocks.") for name in model.raw_sae_position_names
+    ):
         stop_at_layer = (
             max(
                 [
