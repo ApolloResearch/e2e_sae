@@ -80,8 +80,8 @@ def collect_wandb_metrics(
     sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]],
     loss_dict: dict[str, Float[Tensor, ""]],
     grad_norm: float | None,
-    orig_logits: Float[Tensor, "... dim"],
-    new_logits: Float[Tensor, "... dim"],
+    orig_logits: Float[Tensor, "... dim"] | None,
+    new_logits: Float[Tensor, "... dim"] | None,
     tokens: Float[Tensor, "... dim"],
 ) -> dict[str, int | float]:
     """Collect metrics for logging to wandb.
@@ -115,16 +115,17 @@ def collect_wandb_metrics(
     if grad_norm is not None:
         wandb_log_info["grad_norm"] = grad_norm
 
-    orig_model_performance_loss = lm_cross_entropy_loss(orig_logits, tokens, per_token=False)
-    sae_model_performance_loss = lm_cross_entropy_loss(new_logits, tokens, per_token=False)
+    if new_logits is not None and orig_logits is not None:
+        orig_model_performance_loss = lm_cross_entropy_loss(orig_logits, tokens, per_token=False)
+        sae_model_performance_loss = lm_cross_entropy_loss(new_logits, tokens, per_token=False)
 
-    wandb_log_info.update(
-        {
-            "performance/orig_model_ce_loss": orig_model_performance_loss.item(),
-            "performance/sae_model_ce_loss": sae_model_performance_loss.item(),
-            "performance/difference_loss": (
-                orig_model_performance_loss - sae_model_performance_loss
-            ).item(),
-        },
-    )
+        wandb_log_info.update(
+            {
+                "performance/orig_model_ce_loss": orig_model_performance_loss.item(),
+                "performance/sae_model_ce_loss": sae_model_performance_loss.item(),
+                "performance/difference_loss": (
+                    orig_model_performance_loss - sae_model_performance_loss
+                ).item(),
+            },
+        )
     return wandb_log_info

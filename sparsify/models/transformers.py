@@ -10,21 +10,35 @@ if TYPE_CHECKING:
 
 
 class SAETransformer(nn.Module):
-    def __init__(self, tlens_model: HookedTransformer, config: "Config") -> None:
+    """A transformer model with SAEs at various positions.
+
+    Args:
+        config: The config for the model.
+        tlens_model: The transformer model.
+        raw_sae_position_names: A list of all the positions in the tlens_mdoel where SAEs are to be
+            placed. These positions may have periods in them, which are replaced with hyphens in
+            the keys of the `saes` attribute.
+    """
+
+    def __init__(
+        self, config: "Config", tlens_model: HookedTransformer, raw_sae_position_names: list[str]
+    ):
         super().__init__()
         self.tlens_model = tlens_model.eval()
+        self.raw_sae_position_names = raw_sae_position_names
+        # ModuleDict keys can't have periods in them, so we replace them with hyphens
+        self.all_sae_position_names = [name.replace(".", "-") for name in raw_sae_position_names]
+
         self.saes = nn.ModuleDict()
-        for i in range(self.tlens_model.cfg.n_layers):
-            input_size = (
-                self.tlens_model.cfg.d_model
-            )  # TODO: Make this accommodate not just residual positions
-            n_dict_components = int(config.saes.dict_size_to_input_ratio * input_size)
-            self.saes[str(i)] = SAE(
+
+        for sae_position_name in self.all_sae_position_names:
+            # TODO: Make this accommodate not just residual positions
+            # https://github.com/ApolloResearch/sparsify/issues/19
+            input_size = self.tlens_model.cfg.d_model
+            self.saes[sae_position_name] = SAE(
                 input_size=input_size,
-                n_dict_components=n_dict_components,
+                n_dict_components=int(config.saes.dict_size_to_input_ratio * input_size),
             )
-        # TODO: find a better way to specify positions
-        self.sae_position_name = config.saes.sae_position_name
 
     def forward(self, x: Tensor) -> Tensor:
         return self.tlens_model(x)

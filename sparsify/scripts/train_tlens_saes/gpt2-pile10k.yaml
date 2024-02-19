@@ -28,5 +28,5 @@ data:
   n_ctx: 1024
   column_name: tokens
 saes:
-  sae_position_name: hook_resid_post
+  sae_position_names: hook_resid_post
 wandb_project: gpt2-small-pile10k

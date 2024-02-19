@@ -8,7 +8,7 @@ from collections.abc import Callable
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Any, Self, cast
+from typing import Annotated, Any, Self, cast
 
 import fire
 import torch
@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from jaxtyping import Float, Int
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     NonNegativeFloat,
@@ -43,6 +44,7 @@ from sparsify.models.transformers import SAETransformer
 from sparsify.scripts.train_tlens.run_train_tlens import HookedTransformerPreConfig
 from sparsify.types import RootPath, Samples
 from sparsify.utils import (
+    filter_names,
     load_config,
     save_model,
     set_seed,
@@ -85,7 +87,13 @@ class SparsifiersConfig(BaseModel):
     type_of_sparsifier: str | None = "sae"
     dict_size_to_input_ratio: PositiveFloat = 1.0
     k: PositiveInt | None = None  # Only used for codebook sparsifier
-    sae_position_name: str  # TODO will become List[str]
+    sae_position_names: Annotated[
+        list[str], BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
+    ] = Field(
+        ...,
+        description="The names of the SAE positions to train on. E.g. 'hook_resid_post' or "
+        "['hook_resid_post', 'hook_mlp_out'] or ['hook_mlp_out', 'hook_resid_post']",
+    )
 
 
 class Config(BaseModel):
@@ -108,7 +116,10 @@ class Config(BaseModel):
 
 
 def sae_hook(
-    value: Float[torch.Tensor, "... dim"], hook: HookPoint, sae: SAE, hook_acts: dict[str, Any]
+    value: Float[torch.Tensor, "... dim"],
+    hook: HookPoint | None,
+    sae: SAE | torch.nn.Module,
+    hook_acts: dict[str, Any],
 ) -> Float[torch.Tensor, "... dim"]:
     """Runs the SAE on the input and stores the output and c in hook_acts."""
     hook_acts["input"] = value
@@ -146,14 +157,10 @@ def train(
     else:
         n_gradient_accumulation_steps = 1
 
-    def orig_resid_names(name: str) -> bool:
-        return model.sae_position_name in name
-
     # Initialize wandb
     run_name = (
-        f"{config.saes.sae_position_name}_lr-{config.train.lr}_warm-{config.train.warmup_steps}_"
-        f"ratio-{config.saes.dict_size_to_input_ratio}_"
-        f"lpcoeff-{config.train.loss_configs.sparsity.coeff}"
+        f"{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
+        f"lr-{config.train.lr}_lpcoeff-{config.train.loss_configs.sparsity.coeff}"
     )
     if config.wandb_project:
         load_dotenv(override=True)
@@ -179,27 +186,44 @@ def train(
         # Run model without SAEs
         with torch.inference_mode():
             orig_logits, orig_acts = model.tlens_model.run_with_cache(
-                tokens, names_filter=orig_resid_names, return_cache_object=False
+                tokens,
+                names_filter=model.raw_sae_position_names,
+                return_cache_object=False,
             )
         assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
-
-        # Run model with SAEs
+        # Get SAE feature activations
         sae_acts = {hook_name: {} for hook_name in orig_acts}
-        fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
-            (
-                hook_name,
-                partial(sae_hook, sae=cast(SAE, model.saes[str(i)]), hook_acts=sae_acts[hook_name]),
+        new_logits: Float[Tensor, "batch pos vocab"] | None = None
+        if config.train.loss_configs.logits_kl is None:
+            # Just run the already-stored activations through the SAEs
+            for hook_name in orig_acts:
+                sae_hook(
+                    value=orig_acts[hook_name].detach().clone(),
+                    hook=None,
+                    sae=model.saes[hook_name.replace(".", "-")],
+                    hook_acts=sae_acts[hook_name],
+                )
+        else:
+            # Run the tokens through the whole SAE-augmented model
+            fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
+                (
+                    hook_name,
+                    partial(
+                        sae_hook,
+                        sae=cast(SAE, model.saes[hook_name.replace(".", "-")]),
+                        hook_acts=sae_acts[hook_name],
+                    ),
+                )
+                for hook_name in orig_acts
+            ]
+            new_logits = model.tlens_model.run_with_hooks(
+                tokens,
+                fwd_hooks=fwd_hooks,  # type: ignore
             )
-            for i, hook_name in enumerate(orig_acts)
-        ]
-        new_logits: Float[Tensor, "batch pos vocab"] = model.tlens_model.run_with_hooks(
-            tokens,
-            fwd_hooks=fwd_hooks,  # type: ignore
-        )
         loss, loss_dict = calc_loss(
             orig_acts=orig_acts,
             sae_acts=sae_acts,
-            orig_logits=orig_logits,
+            orig_logits=None if new_logits is None else orig_logits,
             new_logits=new_logits,
             loss_configs=config.train.loss_configs,
         )
@@ -263,8 +287,8 @@ def train(
                     sae_acts=sae_acts,
                     loss_dict=loss_dict,
                     grad_norm=grad_norm,
-                    orig_logits=orig_logits.detach().clone(),
-                    new_logits=new_logits.detach().clone(),
+                    orig_logits=orig_logits.detach().clone() if new_logits is not None else None,
+                    new_logits=new_logits.detach().clone() if new_logits is not None else None,
                     tokens=tokens,
                 )
                 wandb.log(wandb_log_info, step=total_samples)
@@ -325,13 +349,14 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     data_loader, _ = create_data_loader(config.data, batch_size=config.train.batch_size)
     tlens_model = load_tlens_model(config)
 
-    model = SAETransformer(tlens_model, config).to(device=device)
-    train(
-        config=config,
-        model=model,
-        data_loader=data_loader,
-        device=device,
+    raw_sae_position_names = filter_names(
+        list(tlens_model.hook_dict.keys()), config.saes.sae_position_names
     )
+
+    model = SAETransformer(
+        config=config, tlens_model=tlens_model, raw_sae_position_names=raw_sae_position_names
+    ).to(device=device)
+    train(config=config, model=model, data_loader=data_loader, device=device)
 
 
 if __name__ == "__main__":
