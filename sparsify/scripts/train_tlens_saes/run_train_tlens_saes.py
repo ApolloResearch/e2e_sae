@@ -8,7 +8,7 @@ from collections.abc import Callable
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-from typing import Annotated, Any, Self, cast
+from typing import Annotated, Any, Literal, Self, cast
 
 import fire
 import torch
@@ -45,6 +45,7 @@ from sparsify.scripts.train_tlens.run_train_tlens import HookedTransformerPreCon
 from sparsify.types import RootPath, Samples
 from sparsify.utils import (
     filter_names,
+    get_interpolation_schedule,
     load_config,
     save_model,
     set_seed,
@@ -76,14 +77,38 @@ class TrainConfig(BaseModel):
         description="Whether to calculate and log the cross-entropy loss between the original and "
         "SAE-augmented logits.",
     )
+    interpolate_n_steps: NonNegativeInt | Literal["all"] = Field(
+        0,
+        description="The number of steps to linearly interpolate between using the original model "
+        "activations and the SAE activations. If 0, only use the SAE activations. If 'all', "
+        "the interpolation schedule will progress linearly from 0 to 1 over all training steps.",
+    )
     loss_configs: LossConfigs
 
     @model_validator(mode="after")
     def check_effective_batch_size(self) -> Self:
-        if self.effective_batch_size is not None:
-            assert (
-                self.effective_batch_size % self.batch_size == 0
-            ), "effective_batch_size must be a multiple of batch_size."
+        if (
+            self.effective_batch_size is not None
+            and self.effective_batch_size % self.batch_size != 0
+        ):
+            raise ValueError("effective_batch_size must be a multiple of batch_size.")
+        return self
+
+    @model_validator(mode="after")
+    def validate_interpolate_n_steps(self) -> Self:
+        """Check that interpolate_n_steps is valid.
+
+        - If interpolate_n_steps is not 0, n_samples must be specified.
+        - If interpolate_n_steps is an int, it must be less than n_samples // batch_size.
+        """
+        if self.n_samples is None and self.interpolate_n_steps == "all":
+            raise ValueError("n_samples must be specified if interpolate_n_steps is 'all'.")
+        if (
+            isinstance(self.interpolate_n_steps, int)
+            and self.n_samples is not None
+            and self.interpolate_n_steps > self.n_samples // self.batch_size
+        ):
+            raise ValueError("interpolate_n_steps must be less than n_samples // batch_size.")
         return self
 
 
@@ -125,13 +150,29 @@ def sae_hook(
     hook: HookPoint | None,
     sae: SAE | torch.nn.Module,
     hook_acts: dict[str, Any],
+    percent_sae_acts: float,
+    orig_model_acts: Float[torch.Tensor, "... dim"],
 ) -> Float[torch.Tensor, "... dim"]:
-    """Runs the SAE on the input and stores the output and c in hook_acts."""
+    """Runs the SAE on the input and stores the output and c in hook_acts.
+
+    Args:
+        value: The input to the SAE.
+        hook: The hook object.
+        sae: The SAE to run on the input.
+        hook_acts: The dictionary to store the output and c in.
+        percent_sae_acts: The percentage of SAE activations to use vs the original model
+            activations.
+        orig_model_acts: The original model activations.
+
+    Returns:
+        The output of the SAE interpolated with orig_model_acts. i.e.
+        percent_sae_acts * sae_acts + (1 - percent_sae_acts) * orig_model_acts.
+    """
     hook_acts["input"] = value
     output, c = sae(value)
     hook_acts["output"] = output
     hook_acts["c"] = c
-    return output
+    return percent_sae_acts * output + (1 - percent_sae_acts) * orig_model_acts
 
 
 @logging_redirect_tqdm()
@@ -162,6 +203,15 @@ def train(
     else:
         n_gradient_accumulation_steps = 1
 
+    if config.train.interpolate_n_steps == "all":
+        assert n_batches is not None
+        interpolation_steps = n_batches
+    else:
+        interpolation_steps = config.train.interpolate_n_steps
+    interpolation_schedule: Callable[[int], float] = get_interpolation_schedule(
+        n_steps=interpolation_steps
+    )
+
     # We don't need to run through the whole model if we're not using the logits
     stop_at_layer = None
     if config.train.loss_configs.logits_kl is None and all(
@@ -178,10 +228,7 @@ def train(
         )
 
     # Initialize wandb
-    run_name = (
-        f"{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
-        f"lr-{config.train.lr}_lpcoeff-{config.train.loss_configs.sparsity.coeff}"
-    )
+    run_name = f"interpolate_n_steps-{config.train.interpolate_n_steps}"
     if config.wandb_project:
         load_dotenv(override=True)
         wandb.init(
@@ -215,6 +262,7 @@ def train(
         # Get SAE feature activations
         sae_acts = {hook_name: {} for hook_name in orig_acts}
         new_logits: Float[Tensor, "batch pos vocab"] | None = None
+        percent_sae_acts = interpolation_schedule(step)
         if config.train.loss_configs.logits_kl is None and not config.train.log_ce_loss:
             # Just run the already-stored activations through the SAEs
             for hook_name in orig_acts:
@@ -223,6 +271,8 @@ def train(
                     hook=None,
                     sae=model.saes[hook_name.replace(".", "-")],
                     hook_acts=sae_acts[hook_name],
+                    percent_sae_acts=percent_sae_acts,
+                    orig_model_acts=orig_acts[hook_name].detach().clone(),
                 )
         else:
             # Run the tokens through the whole SAE-augmented model
@@ -233,6 +283,8 @@ def train(
                         sae_hook,
                         sae=cast(SAE, model.saes[hook_name.replace(".", "-")]),
                         hook_acts=sae_acts[hook_name],
+                        percent_sae_acts=percent_sae_acts,
+                        orig_model_acts=orig_acts[hook_name].detach().clone(),
                     ),
                 )
                 for hook_name in orig_acts
@@ -311,6 +363,7 @@ def train(
                     orig_logits=orig_logits.detach().clone() if new_logits is not None else None,
                     new_logits=new_logits.detach().clone() if new_logits is not None else None,
                     tokens=tokens,
+                    percent_sae_acts=percent_sae_acts,
                 )
                 wandb.log(wandb_log_info, step=total_samples)
         if (

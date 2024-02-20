@@ -1,4 +1,5 @@
 import random
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -129,3 +130,28 @@ def filter_names(all_names: list[str], filter_names: list[str]) -> list[str]:
         The filtered names.
     """
     return [name for name in all_names if any(filter_name in name for filter_name in filter_names)]
+
+
+def get_interpolation_schedule(
+    n_steps: int, start_sae_percent: float = 0.0, end_sae_percent: float = 1.0
+) -> Callable[[int], float]:
+    """Create a function which takes in a step and returns the percentage of sae activations vs
+    original model activations to use at that step.
+
+    If n_steps is 0, the function will always return end_sae_percent.
+
+    Args:
+        n_steps: The number of steps in the interpolation.
+        start_sae_percent: Percentage of sae activations to use at step 0.
+        end_sae_percent: Percentage of sae activations to use at the final step.
+
+    Returns:
+        Function which takes in a step and returns the percentage of sae activations to use.
+    """
+
+    def _interpolation_schedule(step: int) -> float:
+        if step >= n_steps:
+            return end_sae_percent
+        return start_sae_percent + (end_sae_percent - start_sae_percent) * step / n_steps
+
+    return _interpolation_schedule

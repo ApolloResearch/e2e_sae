@@ -83,6 +83,7 @@ def collect_wandb_metrics(
     orig_logits: Float[Tensor, "... dim"] | None,
     new_logits: Float[Tensor, "... dim"] | None,
     tokens: Float[Tensor, "... dim"],
+    percent_sae_acts: float,
 ) -> dict[str, int | float]:
     """Collect metrics for logging to wandb.
 
@@ -95,11 +96,17 @@ def collect_wandb_metrics(
         orig_logits: The logits produced by the original model.
         new_logits: The logits produced by the SAE model.
         tokens: The tokens used to produce the logits and activations.
+        percent_sae_acts: The percentage of SAE activations vs original model activations used to
+            patch the activations at each SAE.
 
     Returns:
         Dictionary of metrics to log to wandb.
     """
-    wandb_log_info = {"loss": loss, "grad_updates": grad_updates}
+    wandb_log_info = {
+        "loss": loss,
+        "grad_updates": grad_updates,
+        "percent_sae_acts": percent_sae_acts,
+    }
     for name, sae_act in sae_acts.items():
         # Record L_0 norm of the cs
         l_0_norm = torch.norm(sae_act["c"], p=0, dim=-1).mean().item()
