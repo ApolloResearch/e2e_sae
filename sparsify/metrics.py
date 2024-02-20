@@ -91,6 +91,7 @@ class DiscreteMetrics:
 def collect_wandb_metrics(
     loss: float,
     grad_updates: int,
+    total_tokens: int,
     sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]],
     loss_dict: dict[str, Float[Tensor, ""]],
     grad_norm: float | None,
@@ -113,7 +114,7 @@ def collect_wandb_metrics(
     Returns:
         Dictionary of metrics to log to wandb.
     """
-    wandb_log_info = {"loss": loss, "grad_updates": grad_updates}
+    wandb_log_info = {"loss": loss, "grad_updates": grad_updates, "total_tokens": total_tokens}
     for name, sae_act in sae_acts.items():
         # Record L_0 norm of the cs
         l_0_norm = torch.norm(sae_act["c"], p=0, dim=-1).mean().item()

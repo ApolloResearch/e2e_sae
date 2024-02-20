@@ -196,6 +196,7 @@ def train(
 
     total_samples = 0
     total_samples_at_last_save = 0
+    total_tokens = 0
     grad_updates = 0
     grad_norm: float | None = None
     samples_since_discrete_metric_collection: int = 0
@@ -266,6 +267,7 @@ def train(
                 scheduler.step()
 
         total_samples += tokens.shape[0]
+        total_tokens += tokens.shape[0] * tokens.shape[1]
         samples_since_discrete_metric_collection += tokens.shape[0]
 
         if discrete_metrics is None and (
@@ -289,6 +291,7 @@ def train(
             if discrete_metrics.tokens_used >= config.train.discrete_metrics_n_tokens:
                 # Finished collecting discrete metrics
                 metrics = discrete_metrics.collect_for_logging()
+                metrics["total_tokens"] = total_tokens
                 if config.wandb_project:
                     # TODO: Log when not using wandb too
                     wandb.log(metrics, step=total_samples)
@@ -305,6 +308,7 @@ def train(
                 wandb_log_info = collect_wandb_metrics(
                     loss=loss.item(),
                     grad_updates=grad_updates,
+                    total_tokens=total_tokens,
                     sae_acts=sae_acts,
                     loss_dict=loss_dict,
                     grad_norm=grad_norm,
