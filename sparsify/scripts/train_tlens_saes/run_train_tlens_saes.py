@@ -61,6 +61,8 @@ class TrainConfig(BaseModel):
     lr: PositiveFloat
     scheduler: str | None = None
     warmup_steps: NonNegativeFloat = 0
+    warmup_starting_lr_factor: NonNegativeFloat = 0.01
+    warmup_logistic: bool = False
     max_grad_norm: PositiveFloat | None = None
     log_every_n_steps: PositiveInt = 20
     collect_discrete_metrics_every_n_samples: PositiveInt = Field(
@@ -144,23 +146,41 @@ def train(
     model.saes.train()
     optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
 
+    if config.train.effective_batch_size is not None:
+        n_gradient_accumulation_steps = config.train.effective_batch_size // config.train.batch_size
+        effective_batch_size = config.train.effective_batch_size
+    else:
+        n_gradient_accumulation_steps = 1
+        effective_batch_size = config.train.batch_size
+
     scheduler = None
     if config.train.warmup_steps > 0:
-        scheduler = torch.optim.lr_scheduler.LambdaLR(
-            optimizer,
-            lr_lambda=lambda step: min(1.0, (step + 1) / config.train.warmup_steps),
-        )
+        if config.train.warmup_logistic:
+
+            def lr_lambda(step: int) -> float:
+                return 1.0 / (
+                    1.0
+                    + pow(
+                        config.train.warmup_starting_lr_factor,
+                        (((step * effective_batch_size) / config.train.warmup_steps) - 1.0),
+                    )
+                )
+        else:
+
+            def lr_lambda(step: int) -> float:
+                return min(
+                    1.0,
+                    config.train.warmup_starting_lr_factor
+                    + ((step * effective_batch_size) / config.train.warmup_steps),
+                )
+
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_lambda)
 
     if config.train.n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
         n_batches = None if isinstance(data_loader.dataset, IterableDataset) else len(data_loader)
     else:
         n_batches = config.train.n_samples // config.train.batch_size
-
-    if config.train.effective_batch_size is not None:
-        n_gradient_accumulation_steps = config.train.effective_batch_size // config.train.batch_size
-    else:
-        n_gradient_accumulation_steps = 1
 
     # We don't need to run through the whole model if we're not using the logits
     stop_at_layer = None
@@ -316,6 +336,8 @@ def train(
                     new_logits=new_logits.detach().clone() if new_logits is not None else None,
                     tokens=tokens,
                 )
+                if scheduler is not None:
+                    wandb_log_info["lr"] = scheduler.get_last_lr()[0]
                 wandb.log(wandb_log_info, step=total_samples)
         if (
             save_dir
