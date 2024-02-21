@@ -110,6 +110,9 @@ class Config(BaseModel):
     data: DataConfig
     saes: SparsifiersConfig
     wandb_project: str | None = None  # If None, don't log to Weights & Biases
+    wandb_run_name: str | None = None
+    wandb_run_name_prefix: str = ""
+    wandb_run_name_suffix: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -178,10 +181,17 @@ def train(
         )
 
     # Initialize wandb
-    run_name = (
-        f"{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
-        f"lr-{config.train.lr}_lpcoeff-{config.train.loss_configs.sparsity.coeff}"
-    )
+    if config.wandb_run_name is not None:
+        run_name = (
+            config.wandb_run_name_prefix + config.wandb_run_name + config.wandb_run_name_suffix
+        )
+    else:
+        run_name = (
+            config.wandb_run_name_prefix
+            + f"{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
+            f"lr-{config.train.lr}_lpcoeff-{config.train.loss_configs.sparsity.coeff}"
+            + config.wandb_run_name_suffix
+        )
     if config.wandb_project:
         load_dotenv(override=True)
         wandb.init(
@@ -316,6 +326,8 @@ def train(
                     new_logits=new_logits.detach().clone() if new_logits is not None else None,
                     tokens=tokens,
                 )
+                if scheduler is not None:
+                    wandb_log_info["lr"] = scheduler.get_last_lr()[0]
                 wandb.log(wandb_log_info, step=total_samples)
         if (
             save_dir
