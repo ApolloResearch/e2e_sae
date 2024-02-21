@@ -27,7 +27,7 @@ from tqdm import tqdm
 from transformer_lens import HookedTransformer, HookedTransformerConfig, evals
 
 from sparsify.types import RootPath, TorchDtype
-from sparsify.utils import load_config, save_model, set_seed
+from sparsify.utils import load_config, save_module, set_seed
 
 
 class HookedTransformerPreConfig(BaseModel):
@@ -140,10 +140,10 @@ def train(config: Config, model: HookedTransformer, device: torch.device) -> Non
             (config.train.save_every_n_epochs and epoch % config.train.save_every_n_epochs == 0)
             or epoch == config.train.n_epochs  # Save the last epoch
         ):
-            save_model(
+            save_module(
                 config_dict=config.model_dump(mode="json"),
                 save_dir=save_dir,
-                model=model,
+                module=model,
                 model_filename=f"epoch_{epoch}.pt",
             )
             # TODO: Add evaluation loop

@@ -46,7 +46,7 @@ from sparsify.types import RootPath, Samples
 from sparsify.utils import (
     filter_names,
     load_config,
-    save_model,
+    save_module,
     set_seed,
 )
 
@@ -319,20 +319,20 @@ def train(
             and total_samples - total_samples_at_last_save >= config.train.save_every_n_samples
         ):
             total_samples_at_last_save = total_samples
-            save_model(
+            save_module(
                 config_dict=config.model_dump(mode="json"),
                 save_dir=save_dir,
-                model=model,
+                module=model.saes,
                 model_filename=f"samples_{total_samples}.pt",
             )
         if config.train.n_samples is not None and total_samples >= config.train.n_samples:
             break
 
     if save_dir:
-        save_model(
+        save_module(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
-            model=model,
+            module=model.saes,
             model_filename=f"samples_{total_samples}.pt",
         )
     if config.wandb_project:
