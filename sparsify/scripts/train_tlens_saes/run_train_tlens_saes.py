@@ -167,15 +167,7 @@ def train(
     if config.train.loss_configs.logits_kl is None and all(
         name.startswith("blocks.") for name in model.raw_sae_position_names
     ):
-        stop_at_layer = (
-            max(
-                [
-                    int(sae_position_name.split(".")[1])
-                    for sae_position_name in model.raw_sae_position_names
-                ]
-            )
-            + 1
-        )
+        stop_at_layer = max([int(name.split(".")[1]) for name in model.raw_sae_position_names]) + 1
 
     # Initialize wandb
     run_name = (
