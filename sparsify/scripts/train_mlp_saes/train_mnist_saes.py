@@ -136,6 +136,10 @@ def train(config: Config) -> None:
     model, model_mod, activations = get_models(config, device)
 
     model_mod.sparsifiers.train()
+
+    for param in model.layers.parameters():
+        param.requires_grad = False
+
     # Define the loss and optimizer
     criterion = nn.MSELoss()
     # Note: only pass the SAE parameters to the optimizer
