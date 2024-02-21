@@ -142,6 +142,9 @@ def train(
     device: torch.device,
 ) -> None:
     model.saes.train()
+
+    for param in model.tlens_model.parameters():
+        param.requires_grad = False
     optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
 
     scheduler = None
