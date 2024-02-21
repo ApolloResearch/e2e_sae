@@ -4,6 +4,7 @@ Usage:
     python run_train_tlens_saes.py <path/to/config.yaml>
 """
 import os
+from collections import OrderedDict
 from collections.abc import Callable
 from datetime import datetime
 from functools import partial
@@ -92,6 +93,10 @@ class SparsifiersConfig(BaseModel):
     type_of_sparsifier: str | None = "sae"
     dict_size_to_input_ratio: PositiveFloat = 1.0
     k: PositiveInt | None = None  # Only used for codebook sparsifier
+    pretrained_sae_path: RootPath | None = Field(
+        None, description="Path to a pretrained SAE model " "to load in."
+    )
+    retrain_saes: bool = Field(False, description="Whether to retrain the pretrained SAEs.")
     sae_position_names: Annotated[
         list[str], BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
     ] = Field(
@@ -139,13 +144,19 @@ def train(
     config: Config,
     model: SAETransformer,
     data_loader: DataLoader[Samples],
+    trainable_param_names: list[str],
     device: torch.device,
 ) -> None:
     model.saes.train()
 
-    for param in model.tlens_model.parameters():
-        param.requires_grad = False
-    optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
+    for name, param in model.named_parameters():
+        if name.startswith("saes.") and name.split("saes.")[1] in trainable_param_names:
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
+    optimizer = torch.optim.Adam(
+        filter(lambda p: p.requires_grad, model.parameters()), lr=config.train.lr
+    )
 
     scheduler = None
     if config.train.warmup_steps > 0:
@@ -372,7 +383,29 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     model = SAETransformer(
         config=config, tlens_model=tlens_model, raw_sae_position_names=raw_sae_position_names
     ).to(device=device)
-    train(config=config, model=model, data_loader=data_loader, device=device)
+
+    trainable_param_names = [name for name, _ in model.saes.named_parameters()]
+    if config.saes.pretrained_sae_path is not None:
+        # Load in the pretrained SAEs
+        pretrained_saes: OrderedDict[str, torch.Tensor] = torch.load(
+            config.saes.pretrained_sae_path
+        )
+        sae_state_dict = {**dict(model.saes.named_parameters()), **pretrained_saes}
+        model.saes.load_state_dict(sae_state_dict)
+        if not config.saes.retrain_saes:
+            # Don't retrain the pretrained SAEs
+            trainable_param_names = [
+                name for name in trainable_param_names if name not in pretrained_saes
+            ]
+            assert len(trainable_param_names) > 0, "No trainable parameters found."
+
+    train(
+        config=config,
+        model=model,
+        data_loader=data_loader,
+        trainable_param_names=trainable_param_names,
+        device=device,
+    )
 
 
 if __name__ == "__main__":
