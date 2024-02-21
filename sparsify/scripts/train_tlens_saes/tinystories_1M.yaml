@@ -8,8 +8,8 @@ train:
   collect_discrete_metrics_every_n_samples: 10000
   discrete_metrics_n_tokens: 500_000  #500k tokens is ~977 samples
   log_ce_loss: true
-  batch_size: 12
-  effective_batch_size: 12
+  batch_size: 10
+  effective_batch_size: 10
   lr: 5e-3
   warmup_steps: 500
   max_grad_norm: 1.0
