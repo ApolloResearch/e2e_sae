@@ -60,7 +60,7 @@ class TrainConfig(BaseModel):
     effective_batch_size: PositiveInt | None = None
     lr: PositiveFloat
     scheduler: str | None = None
-    warmup_steps: NonNegativeFloat = 0
+    warmup_samples: NonNegativeFloat = 0
     max_grad_norm: PositiveFloat | None = None
     log_every_n_steps: PositiveInt = 20
     collect_discrete_metrics_every_n_samples: PositiveInt = Field(
@@ -147,11 +147,16 @@ def train(
         param.requires_grad = False
     optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
 
+    effective_batch_size = config.train.effective_batch_size or config.train.batch_size
+    n_gradient_accumulation_steps = effective_batch_size // config.train.batch_size
+
     scheduler = None
-    if config.train.warmup_steps > 0:
+    if config.train.warmup_samples > 0:
         scheduler = torch.optim.lr_scheduler.LambdaLR(
             optimizer,
-            lr_lambda=lambda step: min(1.0, (step + 1) / config.train.warmup_steps),
+            lr_lambda=lambda step: min(
+                1.0, (step + 1) / (config.train.warmup_samples // effective_batch_size)
+            ),
         )
 
     if config.train.n_samples is None:
@@ -159,11 +164,6 @@ def train(
         n_batches = None if isinstance(data_loader.dataset, IterableDataset) else len(data_loader)
     else:
         n_batches = config.train.n_samples // config.train.batch_size
-
-    if config.train.effective_batch_size is not None:
-        n_gradient_accumulation_steps = config.train.effective_batch_size // config.train.batch_size
-    else:
-        n_gradient_accumulation_steps = 1
 
     # We don't need to run through the whole model if we're not using the logits
     stop_at_layer = None
@@ -264,7 +264,7 @@ def train(
             optimizer.zero_grad()
             grad_updates += 1
 
-            if config.train.warmup_steps > 0:
+            if config.train.warmup_samples > 0:
                 assert scheduler is not None
                 scheduler.step()
 
@@ -314,6 +314,7 @@ def train(
                     orig_logits=orig_logits.detach().clone() if new_logits is not None else None,
                     new_logits=new_logits.detach().clone() if new_logits is not None else None,
                     tokens=tokens,
+                    lr=optimizer.param_groups[0]["lr"],
                 )
                 wandb.log(wandb_log_info, step=total_samples)
         if (
