@@ -271,9 +271,13 @@ def train(
         total_samples += tokens.shape[0]
         samples_since_discrete_metric_collection += tokens.shape[0]
 
-        if discrete_metrics is None and (
-            samples_since_discrete_metric_collection
-            >= config.train.collect_discrete_metrics_every_n_samples
+        if (
+            step == 0
+            or discrete_metrics is None
+            and (
+                samples_since_discrete_metric_collection
+                >= config.train.collect_discrete_metrics_every_n_samples
+            )
         ):
             # Start collecting discrete metrics for next config.train.discrete_metrics_n_tokens
             discrete_metrics = DiscreteMetrics(
