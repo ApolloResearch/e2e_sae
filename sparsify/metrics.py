@@ -21,6 +21,9 @@ class DiscreteMetrics:
             sae_pos: torch.zeros(dict_size, device=device)
             for sae_pos, dict_size in dict_sizes.items()
         }
+        self.dict_el_frequencies_history: dict[str, list[Float[Tensor, "dims"]]] = {  # noqa: F821
+            sae_pos: [] for sae_pos, dict_size in dict_sizes.items()
+        }
 
     def update_dict_el_frequencies(
         self, sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]], batch_tokens: int
@@ -55,6 +58,9 @@ class DiscreteMetrics:
         log_dict = {}
         for sae_pos in self.dict_el_frequencies:
             self.dict_el_frequencies[sae_pos] /= self.tokens_used
+            self.dict_el_frequencies_history[sae_pos].append(
+                self.dict_el_frequencies[sae_pos].detach().cpu()
+            )
 
             log_dict[f"sparsity/alive_dict_elements/{sae_pos}"] = (
                 self.dict_el_frequencies[sae_pos].gt(0).sum().item()
@@ -71,12 +77,21 @@ class DiscreteMetrics:
                 )
                 log_dict[f"sparsity/dict_el_frequencies_hist/{sae_pos}"] = plot
 
+                log_dict[
+                    f"sparsity/dict_el_frequencies_hist/over_time/{sae_pos}"
+                ] = wandb.Histogram(self.dict_el_frequencies_history[sae_pos])
+                log_dict[
+                    f"sparsity/dict_el_frequencies_hist/over_time/log10/{sae_pos}"
+                ] = wandb.Histogram(
+                    [torch.log10(s + 1e-10) for s in self.dict_el_frequencies_history[sae_pos]]
+                )
         return log_dict
 
 
 def collect_wandb_metrics(
     loss: float,
     grad_updates: int,
+    total_tokens: int,
     sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]],
     loss_dict: dict[str, Float[Tensor, ""]],
     grad_norm: float | None,
@@ -99,7 +114,7 @@ def collect_wandb_metrics(
     Returns:
         Dictionary of metrics to log to wandb.
     """
-    wandb_log_info = {"loss": loss, "grad_updates": grad_updates}
+    wandb_log_info = {"loss": loss, "grad_updates": grad_updates, "total_tokens": total_tokens}
     for name, sae_act in sae_acts.items():
         # Record L_0 norm of the cs
         l_0_norm = torch.norm(sae_act["c"], p=0, dim=-1).mean().item()

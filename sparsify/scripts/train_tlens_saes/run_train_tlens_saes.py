@@ -110,6 +110,9 @@ class Config(BaseModel):
     data: DataConfig
     saes: SparsifiersConfig
     wandb_project: str | None = None  # If None, don't log to Weights & Biases
+    wandb_run_name: str | None = None
+    wandb_run_name_prefix: str = ""
+    wandb_run_name_suffix: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -181,10 +184,11 @@ def train(
         )
 
     # Initialize wandb
-    run_name = (
+    run_name = config.wandb_run_name or (
         f"{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
         f"lr-{config.train.lr}_lpcoeff-{config.train.loss_configs.sparsity.coeff}"
     )
+    run_name = config.wandb_run_name_prefix + run_name + config.wandb_run_name_suffix
     if config.wandb_project:
         load_dotenv(override=True)
         wandb.init(
@@ -199,6 +203,7 @@ def train(
 
     total_samples = 0
     total_samples_at_last_save = 0
+    total_tokens = 0
     grad_updates = 0
     grad_norm: float | None = None
     samples_since_discrete_metric_collection: int = 0
@@ -269,6 +274,7 @@ def train(
                 scheduler.step()
 
         total_samples += tokens.shape[0]
+        total_tokens += tokens.shape[0] * tokens.shape[1]
         samples_since_discrete_metric_collection += tokens.shape[0]
 
         if (
@@ -295,6 +301,7 @@ def train(
             if discrete_metrics.tokens_used >= config.train.discrete_metrics_n_tokens:
                 # Finished collecting discrete metrics
                 metrics = discrete_metrics.collect_for_logging()
+                metrics["total_tokens"] = total_tokens
                 if config.wandb_project:
                     # TODO: Log when not using wandb too
                     wandb.log(metrics, step=total_samples)
@@ -311,6 +318,7 @@ def train(
                 wandb_log_info = collect_wandb_metrics(
                     loss=loss.item(),
                     grad_updates=grad_updates,
+                    total_tokens=total_tokens,
                     sae_acts=sae_acts,
                     loss_dict=loss_dict,
                     grad_norm=grad_norm,
