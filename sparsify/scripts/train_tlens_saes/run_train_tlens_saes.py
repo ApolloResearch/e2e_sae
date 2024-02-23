@@ -53,7 +53,6 @@ from sparsify.utils import (
 
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    layerwise: bool = False
     save_dir: RootPath | None = Path(__file__).parent / "out"
     save_every_n_samples: PositiveInt | None
     n_samples: PositiveInt | None = None
@@ -71,6 +70,11 @@ class TrainConfig(BaseModel):
     )
     discrete_metrics_n_tokens: PositiveInt = Field(
         100_000, description="The number of tokens to caclulate discrete metrics over."
+    )
+    log_ce_loss: bool = Field(
+        True,
+        description="Whether to calculate and log the cross-entropy loss between the original and "
+        "SAE-augmented logits.",
     )
     loss_configs: LossConfigs
 
@@ -138,6 +142,9 @@ def train(
     device: torch.device,
 ) -> None:
     model.saes.train()
+
+    for param in model.tlens_model.parameters():
+        param.requires_grad = False
     optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
 
     scheduler = None
@@ -157,6 +164,21 @@ def train(
         n_gradient_accumulation_steps = config.train.effective_batch_size // config.train.batch_size
     else:
         n_gradient_accumulation_steps = 1
+
+    # We don't need to run through the whole model if we're not using the logits
+    stop_at_layer = None
+    if config.train.loss_configs.logits_kl is None and all(
+        name.startswith("blocks.") for name in model.raw_sae_position_names
+    ):
+        stop_at_layer = (
+            max(
+                [
+                    int(sae_position_name.split(".")[1])
+                    for sae_position_name in model.raw_sae_position_names
+                ]
+            )
+            + 1
+        )
 
     # Initialize wandb
     run_name = (
@@ -190,12 +212,13 @@ def train(
                 tokens,
                 names_filter=model.raw_sae_position_names,
                 return_cache_object=False,
+                stop_at_layer=stop_at_layer,
             )
-        assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
+            assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
         # Get SAE feature activations
         sae_acts = {hook_name: {} for hook_name in orig_acts}
         new_logits: Float[Tensor, "batch pos vocab"] | None = None
-        if config.train.loss_configs.logits_kl is None:
+        if config.train.loss_configs.logits_kl is None and not config.train.log_ce_loss:
             # Just run the already-stored activations through the SAEs
             for hook_name in orig_acts:
                 sae_hook(
@@ -248,9 +271,13 @@ def train(
         total_samples += tokens.shape[0]
         samples_since_discrete_metric_collection += tokens.shape[0]
 
-        if discrete_metrics is None and (
-            samples_since_discrete_metric_collection
-            >= config.train.collect_discrete_metrics_every_n_samples
+        if (
+            step == 0
+            or discrete_metrics is None
+            and (
+                samples_since_discrete_metric_collection
+                >= config.train.collect_discrete_metrics_every_n_samples
+            )
         ):
             # Start collecting discrete metrics for next config.train.discrete_metrics_n_tokens
             discrete_metrics = DiscreteMetrics(
@@ -354,19 +381,10 @@ def main(config_path_or_obj: Path | str | Config) -> None:
         list(tlens_model.hook_dict.keys()), config.saes.sae_position_names
     )
 
-    if config.train.layerwise:
-        # Train only one sae_position at a time
-        for sae_position_name in raw_sae_position_names:
-            model = SAETransformer(
-                config=config, tlens_model=tlens_model, raw_sae_position_names=[sae_position_name]
-            ).to(device=device)
-            train(config=config, model=model, data_loader=data_loader, device=device)
-    else:
-        # Train all sae_positions at once
-        model = SAETransformer(
-            config=config, tlens_model=tlens_model, raw_sae_position_names=raw_sae_position_names
-        ).to(device=device)
-        train(config=config, model=model, data_loader=data_loader, device=device)
+    model = SAETransformer(
+        config=config, tlens_model=tlens_model, raw_sae_position_names=raw_sae_position_names
+    ).to(device=device)
+    train(config=config, model=model, data_loader=data_loader, device=device)
 
 
 if __name__ == "__main__":
