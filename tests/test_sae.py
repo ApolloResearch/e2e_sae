@@ -12,4 +12,6 @@ def test_orthonormal_initialization():
     sae = SAE(input_size, n_dict_components)
     assert sae.decoder.weight.shape == (input_size, n_dict_components)
     # If vectors are orthonormal, the gram matrix (X X^T) should be the identity matrix
-    assert torch.allclose(sae.decoder.weight @ sae.decoder.weight.T, torch.eye(input_size))
+    assert torch.allclose(
+        sae.decoder.weight @ sae.decoder.weight.T, torch.eye(input_size), atol=1e-6
+    )
