@@ -116,7 +116,12 @@ def collect_wandb_metrics(
     Returns:
         Dictionary of metrics to log to wandb.
     """
-    wandb_log_info = {"loss": loss, "grad_updates": grad_updates, "total_tokens": total_tokens}
+    wandb_log_info = {
+        "loss": loss,
+        "grad_updates": grad_updates,
+        "total_tokens": total_tokens,
+        "lr": lr,
+    }
     for name, sae_act in sae_acts.items():
         # Record L_0 norm of the cs
         l_0_norm = torch.norm(sae_act["c"], p=0, dim=-1).mean().item()
