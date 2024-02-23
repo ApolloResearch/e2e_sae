@@ -14,8 +14,8 @@ class SAE(nn.Module):
     def __init__(self, input_size: int, n_dict_components: int):
         super().__init__()
 
-        self.encoder = nn.Sequential(nn.Linear(input_size, n_dict_components), nn.ReLU())
-        self.decoder = nn.Linear(n_dict_components, input_size, bias=False)
+        self.encoder = nn.Sequential(nn.Linear(input_size, n_dict_components, bias=True), nn.ReLU())
+        self.decoder = nn.Linear(n_dict_components, input_size, bias=True)
         self.n_dict_components = n_dict_components
         self.input_size = input_size
 
