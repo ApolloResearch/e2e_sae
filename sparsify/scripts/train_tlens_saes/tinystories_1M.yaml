@@ -11,7 +11,7 @@ train:
   batch_size: 10
   effective_batch_size: 10
   lr: 5e-3
-  warmup_steps: 500
+  warmup_samples: 10000
   max_grad_norm: 1.0
   loss_configs:
     sparsity:

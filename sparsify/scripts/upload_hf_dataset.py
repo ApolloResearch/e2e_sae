@@ -384,7 +384,8 @@ if __name__ == "__main__":
     datasets: list[DatasetToPreprocess] = [
         DatasetToPreprocess(
             source_path="roneneldan/TinyStories",
-            # Paper says gpt-neo tokenizer, gpt-neo says gpt2 (https://github.com/EleutherAI/gpt-neo)
+            # Paper says gpt-neo tokenizer, and e.g. EleutherAI/gpt-neo-125M uses the same tokenizer
+            # as gpt2. They also suggest using gpt2 in (https://github.com/EleutherAI/gpt-neo).
             tokenizer_name="gpt2",
             hugging_face_username="apollo-research",
             context_size=512,

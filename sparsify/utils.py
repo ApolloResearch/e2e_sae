@@ -8,6 +8,8 @@ import yaml
 from pydantic import BaseModel
 from pydantic.v1.utils import deep_update
 from torch import nn
+from transformer_lens import HookedTransformer
+from transformer_lens.hook_points import HookPoint
 
 from sparsify.log import logger
 from sparsify.settings import REPO_ROOT
@@ -129,3 +131,24 @@ def filter_names(all_names: list[str], filter_names: list[str]) -> list[str]:
         The filtered names.
     """
     return [name for name in all_names if any(filter_name in name for filter_name in filter_names)]
+
+
+def get_hook_shapes(tlens_model: HookedTransformer, hook_names: list[str]) -> dict[str, list[int]]:
+    """Get the shapes of activations at the hook points labelled by hook_names"""
+    # Sadly I can't see any way to easily get the shapes of activations at hook_points without
+    # actually running the model.
+    hook_shapes = {}
+
+    def get_activation_shape_hook_function(activation: torch.Tensor, hook: HookPoint) -> None:
+        hook_shapes[hook.name] = activation.shape
+
+    def hook_names_filter(name: str) -> bool:
+        return name in hook_names
+
+    test_prompt = ""
+    tlens_model.run_with_hooks(
+        test_prompt,
+        return_type=None,
+        fwd_hooks=[(hook_names_filter, get_activation_shape_hook_function)],
+    )
+    return hook_shapes

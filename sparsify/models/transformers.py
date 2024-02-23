@@ -4,6 +4,7 @@ from torch import Tensor, nn
 from transformer_lens import HookedTransformer
 
 from sparsify.models.sparsifiers import SAE
+from sparsify.utils import get_hook_shapes
 
 if TYPE_CHECKING:
     from sparsify.scripts.train_tlens_saes.run_train_tlens_saes import Config
@@ -26,16 +27,17 @@ class SAETransformer(nn.Module):
         super().__init__()
         self.tlens_model = tlens_model.eval()
         self.raw_sae_position_names = raw_sae_position_names
+        self.hook_shapes: dict[str, list[int]] = get_hook_shapes(
+            self.tlens_model, self.raw_sae_position_names
+        )
         # ModuleDict keys can't have periods in them, so we replace them with hyphens
         self.all_sae_position_names = [name.replace(".", "-") for name in raw_sae_position_names]
 
         self.saes = nn.ModuleDict()
-
-        for sae_position_name in self.all_sae_position_names:
-            # TODO: Make this accommodate not just residual positions
-            # https://github.com/ApolloResearch/sparsify/issues/19
-            input_size = self.tlens_model.cfg.d_model
-            self.saes[sae_position_name] = SAE(
+        for i in range(len(self.all_sae_position_names)):
+            input_size = self.hook_shapes[self.raw_sae_position_names[i]][-1]
+            # TODO: allow choosing which activation dimension (or dimensions) to train the SAE on
+            self.saes[self.all_sae_position_names[i]] = SAE(
                 input_size=input_size,
                 n_dict_components=int(config.saes.dict_size_to_input_ratio * input_size),
             )

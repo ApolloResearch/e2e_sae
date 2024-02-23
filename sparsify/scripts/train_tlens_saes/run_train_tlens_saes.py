@@ -61,7 +61,7 @@ class TrainConfig(BaseModel):
     effective_batch_size: PositiveInt | None = None
     lr: PositiveFloat
     scheduler: str | None = None
-    warmup_steps: NonNegativeFloat = 0
+    warmup_samples: NonNegativeFloat = 0
     max_grad_norm: PositiveFloat | None = None
     log_every_n_steps: PositiveInt = 20
     collect_discrete_metrics_every_n_samples: PositiveInt = Field(
@@ -115,6 +115,9 @@ class Config(BaseModel):
     data: DataConfig
     saes: SparsifiersConfig
     wandb_project: str | None = None  # If None, don't log to Weights & Biases
+    wandb_run_name: str | None = None
+    wandb_run_name_prefix: str = ""
+    wandb_run_name_suffix: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -158,11 +161,16 @@ def train(
         filter(lambda p: p.requires_grad, model.parameters()), lr=config.train.lr
     )
 
+    effective_batch_size = config.train.effective_batch_size or config.train.batch_size
+    n_gradient_accumulation_steps = effective_batch_size // config.train.batch_size
+
     scheduler = None
-    if config.train.warmup_steps > 0:
+    if config.train.warmup_samples > 0:
         scheduler = torch.optim.lr_scheduler.LambdaLR(
             optimizer,
-            lr_lambda=lambda step: min(1.0, (step + 1) / config.train.warmup_steps),
+            lr_lambda=lambda step: min(
+                1.0, (step + 1) / (config.train.warmup_samples // effective_batch_size)
+            ),
         )
 
     if config.train.n_samples is None:
@@ -170,11 +178,6 @@ def train(
         n_batches = None if isinstance(data_loader.dataset, IterableDataset) else len(data_loader)
     else:
         n_batches = config.train.n_samples // config.train.batch_size
-
-    if config.train.effective_batch_size is not None:
-        n_gradient_accumulation_steps = config.train.effective_batch_size // config.train.batch_size
-    else:
-        n_gradient_accumulation_steps = 1
 
     # We don't need to run through the whole model if we're not using the logits
     stop_at_layer = None
@@ -184,10 +187,11 @@ def train(
         stop_at_layer = max([int(name.split(".")[1]) for name in model.raw_sae_position_names]) + 1
 
     # Initialize wandb
-    run_name = (
+    run_name = config.wandb_run_name or (
         f"{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
         f"lr-{config.train.lr}_lpcoeff-{config.train.loss_configs.sparsity.coeff}"
     )
+    run_name = config.wandb_run_name_prefix + run_name + config.wandb_run_name_suffix
     if config.wandb_project:
         load_dotenv(override=True)
         wandb.init(
@@ -202,6 +206,7 @@ def train(
 
     total_samples = 0
     total_samples_at_last_save = 0
+    total_tokens = 0
     grad_updates = 0
     grad_norm: float | None = None
     samples_since_discrete_metric_collection: int = 0
@@ -267,23 +272,27 @@ def train(
             optimizer.zero_grad()
             grad_updates += 1
 
-            if config.train.warmup_steps > 0:
+            if config.train.warmup_samples > 0:
                 assert scheduler is not None
                 scheduler.step()
 
         total_samples += tokens.shape[0]
+        total_tokens += tokens.shape[0] * tokens.shape[1]
         samples_since_discrete_metric_collection += tokens.shape[0]
 
-        if discrete_metrics is None and (
-            samples_since_discrete_metric_collection
-            >= config.train.collect_discrete_metrics_every_n_samples
+        if (
+            step == 0
+            or discrete_metrics is None
+            and (
+                samples_since_discrete_metric_collection
+                >= config.train.collect_discrete_metrics_every_n_samples
+            )
         ):
             # Start collecting discrete metrics for next config.train.discrete_metrics_n_tokens
             discrete_metrics = DiscreteMetrics(
                 dict_sizes={
                     hook_name: sae_acts[hook_name]["c"].shape[-1] for hook_name in sae_acts
                 },
-                has_pos_dim=True,
                 device=device,
             )
             samples_since_discrete_metric_collection = 0
@@ -294,7 +303,10 @@ def train(
             )
             if discrete_metrics.tokens_used >= config.train.discrete_metrics_n_tokens:
                 # Finished collecting discrete metrics
-                metrics = discrete_metrics.collect_for_logging()
+                metrics = discrete_metrics.collect_for_logging(
+                    log_wandb_histogram=config.wandb_project is not None
+                )
+                metrics["total_tokens"] = total_tokens
                 if config.wandb_project:
                     # TODO: Log when not using wandb too
                     wandb.log(metrics, step=total_samples)
@@ -311,12 +323,14 @@ def train(
                 wandb_log_info = collect_wandb_metrics(
                     loss=loss.item(),
                     grad_updates=grad_updates,
+                    total_tokens=total_tokens,
                     sae_acts=sae_acts,
                     loss_dict=loss_dict,
                     grad_norm=grad_norm,
                     orig_logits=orig_logits.detach().clone() if new_logits is not None else None,
                     new_logits=new_logits.detach().clone() if new_logits is not None else None,
                     tokens=tokens,
+                    lr=optimizer.param_groups[0]["lr"],
                 )
                 wandb.log(wandb_log_info, step=total_samples)
         if (

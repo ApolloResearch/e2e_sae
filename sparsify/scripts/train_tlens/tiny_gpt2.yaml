@@ -14,6 +14,6 @@ train:
   batch_size: 16
   effective_batch_size: null
   lr: 1e-3
-  warmup_steps: 0
+  warmup_samples: 0
   save_every_n_epochs: 1
 wandb_project: sparsify-custom
