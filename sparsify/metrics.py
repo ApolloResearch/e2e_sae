@@ -1,7 +1,7 @@
 import torch
 import wandb
 from jaxtyping import Float
-from torch import Tensor, log10
+from torch import Tensor
 from transformer_lens.utils import lm_cross_entropy_loss
 
 
@@ -83,7 +83,7 @@ class DiscreteMetrics:
                 log_dict[
                     f"sparsity/dict_el_frequencies_hist/over_time/log10/{sae_pos}"
                 ] = wandb.Histogram(
-                    [log10(s + 1e-10) for s in self.dict_el_frequencies_history[sae_pos]]
+                    [torch.log10(s + 1e-10) for s in self.dict_el_frequencies_history[sae_pos]]
                 )
         return log_dict
 
