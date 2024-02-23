@@ -50,7 +50,7 @@ class TrainConfig(BaseModel):
     batch_size: PositiveInt
     effective_batch_size: PositiveInt | None = None
     lr: PositiveFloat
-    warmup_steps: NonNegativeInt = 0
+    warmup_samples: NonNegativeInt = 0
     save_dir: RootPath | None = Path(__file__).parent / "out"
     save_every_n_epochs: PositiveInt | None
 
@@ -76,19 +76,19 @@ def train(config: Config, model: HookedTransformer, device: torch.device) -> Non
     model.train()
     optimizer = torch.optim.Adam(model.parameters(), lr=config.train.lr)
 
+    effective_batch_size = config.train.effective_batch_size or config.train.batch_size
+    n_gradient_accumulation_steps = effective_batch_size // config.train.batch_size
+
     scheduler = None
-    if config.train.warmup_steps > 0:
+    if config.train.warmup_samples > 0:
         scheduler = torch.optim.lr_scheduler.LambdaLR(
             optimizer,
-            lr_lambda=lambda step: min(1.0, step / config.train.warmup_steps),
+            lr_lambda=lambda step: min(
+                1.0, (step + 1) / (config.train.warmup_samples // effective_batch_size)
+            ),
         )
 
     train_loader = evals.make_pile_data_loader(model.tokenizer, batch_size=config.train.batch_size)
-
-    if config.train.effective_batch_size is not None:
-        n_gradient_accumulation_steps = config.train.effective_batch_size // config.train.batch_size
-    else:
-        n_gradient_accumulation_steps = 1
 
     # Initialize wandb
     run_name = f"{config.name}_lr-{config.train.lr}_bs-{config.train.batch_size}"
@@ -120,7 +120,7 @@ def train(config: Config, model: HookedTransformer, device: torch.device) -> Non
                 optimizer.zero_grad()
                 grad_updates += 1
 
-                if config.train.warmup_steps > 0:
+                if config.train.warmup_samples > 0:
                     assert scheduler is not None
                     scheduler.step()
 
@@ -133,7 +133,12 @@ def train(config: Config, model: HookedTransformer, device: torch.device) -> Non
 
             if config.wandb_project:
                 wandb.log(
-                    {"train_loss": loss.item(), "epoch": epoch, "grad_updates": grad_updates},
+                    {
+                        "train_loss": loss.item(),
+                        "epoch": epoch,
+                        "grad_updates": grad_updates,
+                        "lr": optimizer.param_groups[0]["lr"],
+                    },
                     step=samples,
                 )
         if save_dir and (

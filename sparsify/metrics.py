@@ -98,6 +98,7 @@ def collect_wandb_metrics(
     orig_logits: Float[Tensor, "... dim"] | None,
     new_logits: Float[Tensor, "... dim"] | None,
     tokens: Float[Tensor, "... dim"],
+    lr: float,
 ) -> dict[str, int | float]:
     """Collect metrics for logging to wandb.
 
@@ -110,6 +111,7 @@ def collect_wandb_metrics(
         orig_logits: The logits produced by the original model.
         new_logits: The logits produced by the SAE model.
         tokens: The tokens used to produce the logits and activations.
+        lr: The learning rate used for the current update.
 
     Returns:
         Dictionary of metrics to log to wandb.
