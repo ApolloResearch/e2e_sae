@@ -1,5 +1,6 @@
 import torch
 import wandb
+from einops import einsum
 from jaxtyping import Float
 from torch import Tensor
 from transformer_lens.utils import lm_cross_entropy_loss
@@ -8,15 +9,13 @@ from transformer_lens.utils import lm_cross_entropy_loss
 class DiscreteMetrics:
     """Manages metrics such as dict activation frequencies and alive dictionary elements."""
 
-    def __init__(self, dict_sizes: dict[str, int], has_pos_dim: bool, device: torch.device) -> None:
+    def __init__(self, dict_sizes: dict[str, int], device: torch.device) -> None:
         """Initialize the DiscreteMetrics object.
 
         Args:
             dict_sizes: Sizes of the dictionaries for each sae position.
-            has_pos_dim: Whether the sae activations have a position dimension.
             device: Device to store the dictionary element frequencies on.
         """
-        self.has_pos_dim = has_pos_dim
         self.tokens_used = 0  # Number of tokens used in dict_el_frequencies
         self.dict_el_frequencies: dict[str, Float[Tensor, "dims"]] = {  # noqa: F821
             sae_pos: torch.zeros(dict_size, device=device)
@@ -32,9 +31,10 @@ class DiscreteMetrics:
             sae_acts: Dictionary of activations for each SAE position.
             batch_tokens: Number of tokens used to produce the sae acts.
         """
-        sum_dims = (0, 1) if self.has_pos_dim else (0,)
         for sae_pos in self.dict_el_frequencies:
-            self.dict_el_frequencies[sae_pos] += (sae_acts[sae_pos]["c"] != 0).sum(dim=sum_dims)
+            self.dict_el_frequencies[sae_pos] += einsum(
+                sae_acts[sae_pos]["c"] != 0, "... dim -> dim"
+            )
         self.tokens_used += batch_tokens
 
     def collect_for_logging(self, log_wandb_histogram: bool = True) -> dict[str, list[float] | int]:
