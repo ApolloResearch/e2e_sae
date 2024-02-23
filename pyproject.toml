@@ -89,3 +89,9 @@ reportUnusedExpression = true
 reportMatchNotExhaustive = true
 reportShadowedImports = true
 reportPrivateImportUsage = false
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    # https://github.com/google/python-fire/pull/447
+    "ignore::DeprecationWarning:fire:59",
+]

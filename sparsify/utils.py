@@ -145,7 +145,7 @@ def get_hook_shapes(tlens_model: HookedTransformer, hook_names: list[str]) -> di
     def hook_names_filter(name: str) -> bool:
         return name in hook_names
 
-    test_prompt = ""
+    test_prompt = torch.tensor([0])
     tlens_model.run_with_hooks(
         test_prompt,
         return_type=None,
