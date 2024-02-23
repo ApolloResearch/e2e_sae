@@ -300,7 +300,9 @@ def train(
             )
             if discrete_metrics.tokens_used >= config.train.discrete_metrics_n_tokens:
                 # Finished collecting discrete metrics
-                metrics = discrete_metrics.collect_for_logging()
+                metrics = discrete_metrics.collect_for_logging(
+                    log_wandb_histogram=config.wandb_project is not None
+                )
                 metrics["total_tokens"] = total_tokens
                 if config.wandb_project:
                     # TODO: Log when not using wandb too
