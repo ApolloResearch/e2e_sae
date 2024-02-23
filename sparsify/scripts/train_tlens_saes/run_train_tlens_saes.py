@@ -110,9 +110,12 @@ class Config(BaseModel):
     data: DataConfig
     saes: SparsifiersConfig
     wandb_project: str | None = None  # If None, don't log to Weights & Biases
-    wandb_run_name: str | None = None
-    wandb_run_name_prefix: str = ""
-    wandb_run_name_suffix: str = ""
+    wandb_run_name: str | None = Field(
+        None,
+        description="If None, a run_name is generated based on (typically) important config "
+        "parameters.",
+    )
+    wandb_run_name_prefix: str = Field("", description="Name that is prepended to the run name")
 
     @model_validator(mode="before")
     @classmethod
@@ -184,11 +187,14 @@ def train(
         )
 
     # Initialize wandb
-    run_name = config.wandb_run_name or (
-        f"{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
-        f"lr-{config.train.lr}_lpcoeff-{config.train.loss_configs.sparsity.coeff}"
+    run_name = config.wandb_run_name_prefix + (
+        config.wandb_run_name
+        or (
+            f"{'-'.join(config.saes.sae_position_names)}_"
+            f"ratio-{config.saes.dict_size_to_input_ratio}_"
+            f"lr-{config.train.lr}_lpcoeff-{config.train.loss_configs.sparsity.coeff}"
+        )
     )
-    run_name = config.wandb_run_name_prefix + run_name + config.wandb_run_name_suffix
     if config.wandb_project:
         load_dotenv(override=True)
         wandb.init(
