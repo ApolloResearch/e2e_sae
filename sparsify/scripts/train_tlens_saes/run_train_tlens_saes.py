@@ -284,7 +284,6 @@ def train(
                 dict_sizes={
                     hook_name: sae_acts[hook_name]["c"].shape[-1] for hook_name in sae_acts
                 },
-                has_pos_dim=True,
                 device=device,
             )
             samples_since_discrete_metric_collection = 0
