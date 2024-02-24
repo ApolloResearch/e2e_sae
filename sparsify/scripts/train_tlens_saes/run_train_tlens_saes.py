@@ -386,6 +386,7 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     else:
         trainable_param_names = all_param_names
 
+    assert len(trainable_param_names) > 0, "No trainable parameters found."
     logger.info(f"Trainable parameters: {trainable_param_names}")
     train(
         config=config,

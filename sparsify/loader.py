@@ -63,6 +63,5 @@ def load_pretrained_saes(
         ]
     else:
         trainable_param_names = all_param_names
-    assert len(trainable_param_names) > 0, "No trainable parameters found."
 
     return trainable_param_names
