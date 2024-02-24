@@ -41,7 +41,7 @@ def load_pretrained_saes(
     """Load in the pretrained SAEs to saes (in place) and return the trainable param names.
 
     Args:
-        saes: The SAEs to load the pretrained SAEs into. Updated in place.
+        saes: The base SAEs to load the pretrained SAEs into. Updated in place.
         pretrained_sae_paths: List of paths to the pretrained SAEs.
         all_param_names: List of all the parameter names in saes.
         retrain_saes: Whether to retrain the pretrained SAEs.
