@@ -378,7 +378,7 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     all_param_names = [name for name, _ in model.saes.named_parameters()]
     if config.saes.pretrained_sae_paths is not None:
         trainable_param_names = load_pretrained_saes(
-            model_saes=model.saes,
+            saes=model.saes,
             pretrained_sae_paths=config.saes.pretrained_sae_paths,
             all_param_names=all_param_names,
             retrain_saes=config.saes.retrain_saes,

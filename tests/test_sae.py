@@ -81,7 +81,7 @@ def test_load_single_pretrained_sae(tmp_path: Path, retrain_saes: bool):
 
     # Now load in the pretrained SAE to the new model
     trainable_param_names = load_pretrained_saes(
-        model_saes=new_model.saes,
+        saes=new_model.saes,
         pretrained_sae_paths=new_config.saes.pretrained_sae_paths,
         all_param_names=[name for name, _ in new_model.saes.named_parameters()],
         retrain_saes=retrain_saes,
@@ -174,7 +174,7 @@ def test_load_multiple_pretrained_sae(tmp_path: Path):
     assert isinstance(new_config.saes.pretrained_sae_paths, list)
     # Now load in the pretrained SAE to the new model
     trainable_param_names = load_pretrained_saes(
-        model_saes=new_model.saes,
+        saes=new_model.saes,
         pretrained_sae_paths=new_config.saes.pretrained_sae_paths,
         all_param_names=[name for name, _ in new_model.saes.named_parameters()],
         retrain_saes=False,
