@@ -68,8 +68,8 @@ class LogitsKLLossConfig(BaseLossConfig):
     def calc_loss(
         self,
         *args: Any,
-        new_logits: Float[Tensor, "... dim"],
-        orig_logits: Float[Tensor, "... dim"],
+        new_logits: Float[Tensor, "... vocab"],
+        orig_logits: Float[Tensor, "... vocab"],
         **kwargs: Any,
     ) -> Float[Tensor, ""]:
         """Calculate KL divergence between SAE-augmented and non-SAE-augmented logits.

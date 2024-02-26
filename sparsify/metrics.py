@@ -8,8 +8,8 @@ from transformer_lens.utils import lm_cross_entropy_loss
 
 
 def topk_accuracy(
-    logits: Float[Tensor, "... dim"],
-    tokens: Int[torch.Tensor, "batch pos"],
+    logits: Float[Tensor, "... vocab"],
+    tokens: Int[Tensor, "batch pos"] | Int[Tensor, "pos"],
     k: int = 1,
     per_token: bool = False,
 ) -> Tensor:
@@ -24,8 +24,8 @@ def topk_accuracy(
 
 
 def top1_consistency(
-    orig_logits: Float[Tensor, "... dim"],
-    new_logits: Float[Tensor, "... dim"],
+    orig_logits: Float[Tensor, "... vocab"],
+    new_logits: Float[Tensor, "... vocab"],
     per_token: bool = False,
 ) -> Tensor:
     """The proportion of the time the original model and the SAE-model predict the same most likely next token"""
@@ -39,7 +39,7 @@ def top1_consistency(
 
 
 def statistical_distance(
-    orig_logits: Float[Tensor, "... dim"], new_logits: Float[Tensor, "... dim"]
+    orig_logits: Float[Tensor, "... vocab"], new_logits: Float[Tensor, "... vocab"]
 ) -> Tensor:
     """The sum of absolute differences between the probabilities given by the original model and the SAE-model"""
     orig_probs = torch.exp(F.log_softmax(orig_logits, dim=-1))
@@ -136,9 +136,9 @@ def collect_wandb_metrics(
     sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]],
     loss_dict: dict[str, Float[Tensor, ""]],
     grad_norm: float | None,
-    orig_logits: Float[Tensor, "... dim"] | None,
-    new_logits: Float[Tensor, "... dim"] | None,
-    tokens: Float[Tensor, "... dim"],
+    orig_logits: Float[Tensor, "... vocab"] | None,
+    new_logits: Float[Tensor, "... vocab"] | None,
+    tokens: Int[Tensor, "batch pos"] | Int[Tensor, "pos"],
     lr: float,
 ) -> dict[str, int | float]:
     """Collect metrics for logging to wandb.
