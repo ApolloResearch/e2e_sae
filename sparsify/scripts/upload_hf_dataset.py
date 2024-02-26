@@ -89,6 +89,7 @@ class TextDataset:
         tokenizer: PreTrainedTokenizerBase,
         buffer_size: PositiveInt = 1000,
         context_size: PositiveInt = 256,
+        load_revision: str = "main",
         dataset_dir: str | None = None,
         dataset_files: str | Sequence[str] | Mapping[str, str | Sequence[str]] | None = None,
         dataset_split: str = "train",
@@ -113,6 +114,7 @@ class TextDataset:
             context_size: The context size to use when returning a list of tokenized prompts.
                 *Towards Monosemanticity: Decomposing Language Models With Dictionary Learning* used
                 a context size of 250.
+            load_revision: The commit hash or branch name to download from the source dataset.
             dataset_dir: Defining the `data_dir` of the dataset configuration.
             dataset_files: Path(s) to source data file(s).
             dataset_split: Dataset split (e.g., 'train').
@@ -130,6 +132,7 @@ class TextDataset:
         should_stream = not pre_download
         dataset = load_dataset(
             dataset_path,
+            revision=load_revision,
             streaming=should_stream,
             split=dataset_split,
             data_dir=dataset_dir,
@@ -274,10 +277,13 @@ class DatasetToPreprocess:
     """Dataset to preprocess info."""
 
     source_path: str
-    """Source path from HF (e.g. `roneneldan/TinyStories`)."""
+    """Source path from HF (e.g. `skeskinen/TinyStories-hf`)."""
 
     tokenizer_name: str
     """HF tokenizer name (e.g. `gpt2`)."""
+
+    load_revision: str = "main"
+    """Commit hash or branch name to download from the source dataset."""
 
     data_dir: str | None = None
     """Data directory to download from the source dataset."""
@@ -358,6 +364,7 @@ def upload_datasets(datasets_to_preprocess: list[DatasetToPreprocess]) -> None:
             dataset_files=dataset.data_files,
             dataset_dir=dataset.data_dir,
             context_size=dataset.context_size,
+            load_revision=dataset.load_revision,
         )
         print("Size: ", text_dataset.dataset.size_in_bytes)
         print("Info: ", text_dataset.dataset.info)
@@ -383,13 +390,15 @@ if __name__ == "__main__":
 
     datasets: list[DatasetToPreprocess] = [
         DatasetToPreprocess(
-            source_path="roneneldan/TinyStories",
+            # Note that roneneldan/TinyStories has dataset loading issues, so we use skeskinen's
+            # which fixes the issue (and explains the issue in the README.md of the repo)
+            source_path="skeskinen/TinyStories-hf",
+            load_revision="5e877826c63d00ec32d0a93e1110cd764402e9b9",
             # Paper says gpt-neo tokenizer, and e.g. EleutherAI/gpt-neo-125M uses the same tokenizer
             # as gpt2. They also suggest using gpt2 in (https://github.com/EleutherAI/gpt-neo).
             tokenizer_name="gpt2",
             hugging_face_username="apollo-research",
             context_size=512,
-            data_files=["TinyStories-train.txt", "TinyStories-valid.txt"],
         ),
         DatasetToPreprocess(
             source_path="Skylion007/openwebtext",
