@@ -12,9 +12,10 @@ import fire
 import torch
 
 from sparsify.data import create_data_loader
+from sparsify.loader import load_tlens_model
 from sparsify.log import logger
 from sparsify.models.transformers import SAETransformer
-from sparsify.scripts.train_tlens_saes.run_train_tlens_saes import Config, load_tlens_model, train
+from sparsify.scripts.train_tlens_saes.run_train_tlens_saes import Config, train
 from sparsify.utils import filter_names, load_config, replace_pydantic_model, set_seed
 
 
@@ -24,7 +25,7 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     set_seed(raw_config.seed)
 
     data_loader, _ = create_data_loader(raw_config.data, batch_size=raw_config.train.batch_size)
-    tlens_model = load_tlens_model(raw_config)
+    tlens_model = load_tlens_model(raw_config.tlens_model_name, raw_config.tlens_model_path)
 
     raw_sae_position_names = filter_names(
         list(tlens_model.hook_dict.keys()), raw_config.saes.sae_position_names
@@ -41,7 +42,15 @@ def main(config_path_or_obj: Path | str | Config) -> None:
         model = SAETransformer(
             config=config, tlens_model=tlens_model, raw_sae_position_names=[sae_position_name]
         ).to(device=device)
-        train(config=config, model=model, data_loader=data_loader, device=device)
+
+        trainable_param_names = [name for name, _ in model.saes.named_parameters()]
+        train(
+            config=config,
+            model=model,
+            data_loader=data_loader,
+            trainable_param_names=trainable_param_names,
+            device=device,
+        )
 
 
 if __name__ == "__main__":

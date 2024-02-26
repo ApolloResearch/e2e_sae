@@ -30,7 +30,10 @@ data:
   split: train
   n_ctx: 512
 saes:
+  retrain_saes: false
+  pretrained_sae_paths: null
   sae_position_names: hook_resid_post
   dict_size_to_input_ratio: 10.0
 wandb_project: tinystories-1m
-
+wandb_run_name: null
+wandb_run_name_prefix: ""

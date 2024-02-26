@@ -33,7 +33,7 @@ from sparsify.log import logger
 from sparsify.models.mlp import MLP, MLPMod
 from sparsify.settings import REPO_ROOT
 from sparsify.types import RootPath
-from sparsify.utils import load_config, save_model, set_seed
+from sparsify.utils import load_config, save_module, set_seed
 
 
 class TrainConfig(BaseModel):
@@ -293,10 +293,10 @@ def train(config: Config) -> None:
         model_mod.sparsifiers.train()
 
     if save_dir:
-        save_model(
+        save_module(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
-            model=model_mod,
+            module=model_mod.sparsifiers,
             model_filename=f"epoch_{config.train.n_epochs}.pt",
         )  # TODO Figure out how to save only saes
     if config.wandb_project:

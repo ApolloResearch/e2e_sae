@@ -13,7 +13,6 @@ from typing import Annotated, Any, Self, cast
 import fire
 import torch
 import wandb
-import yaml
 from dotenv import load_dotenv
 from jaxtyping import Float, Int
 from pydantic import (
@@ -32,21 +31,20 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataset import IterableDataset
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
-from transformer_lens import HookedTransformer, HookedTransformerConfig
 from transformer_lens.hook_points import HookPoint
 
 from sparsify.data import DataConfig, create_data_loader
+from sparsify.loader import load_pretrained_saes, load_tlens_model
 from sparsify.log import logger
 from sparsify.losses import LossConfigs, calc_loss
 from sparsify.metrics import DiscreteMetrics, collect_wandb_metrics
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
-from sparsify.scripts.train_tlens.run_train_tlens import HookedTransformerPreConfig
 from sparsify.types import RootPath, Samples
 from sparsify.utils import (
     filter_names,
     load_config,
-    save_model,
+    save_module,
     set_seed,
 )
 
@@ -92,6 +90,10 @@ class SparsifiersConfig(BaseModel):
     type_of_sparsifier: str | None = "sae"
     dict_size_to_input_ratio: PositiveFloat = 1.0
     k: PositiveInt | None = None  # Only used for codebook sparsifier
+    pretrained_sae_paths: Annotated[
+        list[RootPath] | None, BeforeValidator(lambda x: [x] if isinstance(x, str | Path) else x)
+    ] = Field(None, description="Path to a pretrained SAE model to load. If None, don't load any.")
+    retrain_saes: bool = Field(False, description="Whether to retrain the pretrained SAEs.")
     sae_position_names: Annotated[
         list[str], BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
     ] = Field(
@@ -145,13 +147,19 @@ def train(
     config: Config,
     model: SAETransformer,
     data_loader: DataLoader[Samples],
+    trainable_param_names: list[str],
     device: torch.device,
 ) -> None:
     model.saes.train()
 
-    for param in model.tlens_model.parameters():
-        param.requires_grad = False
-    optimizer = torch.optim.Adam(model.saes.parameters(), lr=config.train.lr)
+    for name, param in model.named_parameters():
+        if name.startswith("saes.") and name.split("saes.")[1] in trainable_param_names:
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
+    optimizer = torch.optim.Adam(
+        filter(lambda p: p.requires_grad, model.parameters()), lr=config.train.lr
+    )
 
     effective_batch_size = config.train.effective_batch_size or config.train.batch_size
     n_gradient_accumulation_steps = effective_batch_size // config.train.batch_size
@@ -176,15 +184,7 @@ def train(
     if config.train.loss_configs.logits_kl is None and all(
         name.startswith("blocks.") for name in model.raw_sae_position_names
     ):
-        stop_at_layer = (
-            max(
-                [
-                    int(sae_position_name.split(".")[1])
-                    for sae_position_name in model.raw_sae_position_names
-                ]
-            )
-            + 1
-        )
+        stop_at_layer = max([int(name.split(".")[1]) for name in model.raw_sae_position_names]) + 1
 
     # Initialize wandb
     run_name = config.wandb_run_name_prefix + (
@@ -342,46 +342,24 @@ def train(
             and total_samples - total_samples_at_last_save >= config.train.save_every_n_samples
         ):
             total_samples_at_last_save = total_samples
-            save_model(
+            save_module(
                 config_dict=config.model_dump(mode="json"),
                 save_dir=save_dir,
-                model=model,
+                module=model.saes,
                 model_filename=f"samples_{total_samples}.pt",
             )
         if config.train.n_samples is not None and total_samples >= config.train.n_samples:
             break
 
     if save_dir:
-        save_model(
+        save_module(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
-            model=model,
+            module=model.saes,
             model_filename=f"samples_{total_samples}.pt",
         )
     if config.wandb_project:
         wandb.finish()
-
-
-def load_tlens_model(config: Config) -> HookedTransformer:
-    """Load transformerlens model from either HuggingFace or local path."""
-    if config.tlens_model_name is not None:
-        tlens_model = HookedTransformer.from_pretrained(config.tlens_model_name)
-    else:
-        assert config.tlens_model_path is not None, "tlens_model_path is None."
-        # Load the tlens_config
-        with open(config.tlens_model_path / "config.yaml") as f:
-            tlens_config = HookedTransformerPreConfig(**yaml.safe_load(f)["tlens_config"])
-        hooked_transformer_config = HookedTransformerConfig(**tlens_config.model_dump())
-
-        # Load the model
-        tlens_model = HookedTransformer(hooked_transformer_config)
-        latest_model_path = max(
-            config.tlens_model_path.glob("*.pt"), key=lambda x: int(x.stem.split("_")[-1])
-        )
-        tlens_model.load_state_dict(torch.load(latest_model_path))
-
-    assert tlens_model.tokenizer is not None
-    return tlens_model
 
 
 def main(config_path_or_obj: Path | str | Config) -> None:
@@ -391,7 +369,9 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     set_seed(config.seed)
 
     data_loader, _ = create_data_loader(config.data, batch_size=config.train.batch_size)
-    tlens_model = load_tlens_model(config)
+    tlens_model = load_tlens_model(
+        tlens_model_name=config.tlens_model_name, tlens_model_path=config.tlens_model_path
+    )
 
     raw_sae_position_names = filter_names(
         list(tlens_model.hook_dict.keys()), config.saes.sae_position_names
@@ -400,7 +380,27 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     model = SAETransformer(
         config=config, tlens_model=tlens_model, raw_sae_position_names=raw_sae_position_names
     ).to(device=device)
-    train(config=config, model=model, data_loader=data_loader, device=device)
+
+    all_param_names = [name for name, _ in model.saes.named_parameters()]
+    if config.saes.pretrained_sae_paths is not None:
+        trainable_param_names = load_pretrained_saes(
+            saes=model.saes,
+            pretrained_sae_paths=config.saes.pretrained_sae_paths,
+            all_param_names=all_param_names,
+            retrain_saes=config.saes.retrain_saes,
+        )
+    else:
+        trainable_param_names = all_param_names
+
+    assert len(trainable_param_names) > 0, "No trainable parameters found."
+    logger.info(f"Trainable parameters: {trainable_param_names}")
+    train(
+        config=config,
+        model=model,
+        data_loader=data_loader,
+        trainable_param_names=trainable_param_names,
+        device=device,
+    )
 
 
 if __name__ == "__main__":

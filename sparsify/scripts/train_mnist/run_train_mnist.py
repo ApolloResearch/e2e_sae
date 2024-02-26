@@ -24,7 +24,7 @@ from sparsify.log import logger
 from sparsify.models.mlp import MLP
 from sparsify.settings import REPO_ROOT
 from sparsify.types import RootPath
-from sparsify.utils import load_config, save_model, set_seed
+from sparsify.utils import load_config, save_module, set_seed
 
 
 class ModelConfig(BaseModel):
@@ -173,10 +173,10 @@ def train(config: Config) -> None:
     model.train()
 
     if save_dir:
-        save_model(
+        save_module(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
-            model=model,
+            module=model,
             model_filename=f"epoch_{config.train.n_epochs}.pt",
         )
     if config.wandb_project:

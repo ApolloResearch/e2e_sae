@@ -22,22 +22,22 @@ def to_root_path(path: str | Path):
     return Path(path) if Path(path).is_absolute() else Path(REPO_ROOT / path)
 
 
-def save_model(
+def save_module(
     config_dict: dict[str, Any],
     save_dir: Path,
-    model: nn.Module,
+    module: nn.Module,
     model_filename: str,
 ) -> None:
-    """Save the model and config to the save_dir.
+    """Save the pytorch module and config to the save_dir.
 
-    The config will only be saved if the save_dir doesn't exist (i.e. the first time the model is
-    saved assuming the save_dir is unique to the model).
+    The config will only be saved if the save_dir doesn't exist (i.e. the first time the module is
+    saved assuming the save_dir is unique to the module).
 
     Args:
         config_dict: Dictionary representation of the config to save.
-        save_dir: Directory to save the model and config to.
-        model: The model to save.
-        model_filename: The name of the file to save the model to.
+        save_dir: Directory to save the module.
+        module: The module to save.
+        model_filename: The name of the file to save the module to.
 
     """
     # If the save_dir doesn't exist, create it and save the config
@@ -48,7 +48,7 @@ def save_model(
         with open(filename, "w") as f:
             yaml.dump(config_dict, f)
 
-    torch.save(model.state_dict(), save_dir / model_filename)
+    torch.save(module.state_dict(), save_dir / model_filename)
     logger.info("Saved model to %s", save_dir / model_filename)
 
 
@@ -145,7 +145,7 @@ def get_hook_shapes(tlens_model: HookedTransformer, hook_names: list[str]) -> di
     def hook_names_filter(name: str) -> bool:
         return name in hook_names
 
-    test_prompt = ""
+    test_prompt = torch.tensor([0])
     tlens_model.run_with_hooks(
         test_prompt,
         return_type=None,
