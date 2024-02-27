@@ -9,11 +9,11 @@ from transformer_lens.utils import lm_cross_entropy_loss
 
 def topk_accuracy(
     logits: Float[Tensor, "... vocab"],
-    tokens: Int[Tensor, "batch pos"] | Int[Tensor, "pos"],
+    tokens: Int[Tensor, "batch pos"] | Int[Tensor, "pos"],  # noqa: F821
     k: int = 1,
     per_token: bool = False,
 ) -> Tensor:
-    """The proportion of the time that the true token lies anywhere within the top k predicted tokens"""
+    """The proportion of the time that the true token lies within the top k predicted tokens."""
     top_predictions = logits.topk(k=k, dim=-1).indices
     tokens_repeated = repeat(tokens, "... -> ... k", k=k)
     correct_matches = (top_predictions == tokens_repeated).any(dim=-1)
@@ -28,7 +28,7 @@ def top1_consistency(
     new_logits: Float[Tensor, "... vocab"],
     per_token: bool = False,
 ) -> Tensor:
-    """The proportion of the time the original model and the SAE-model predict the same most likely next token"""
+    """The proportion of the time the original model and SAE-model predict the same next token."""
     orig_prediction = orig_logits.argmax(dim=-1)
     sae_prediction = new_logits.argmax(dim=-1)
     correct_matches = orig_prediction == sae_prediction
@@ -41,7 +41,7 @@ def top1_consistency(
 def statistical_distance(
     orig_logits: Float[Tensor, "... vocab"], new_logits: Float[Tensor, "... vocab"]
 ) -> Tensor:
-    """The sum of absolute differences between the probabilities given by the original model and the SAE-model"""
+    """The sum of absolute differences between the original model and SAE-model probabilities."""
     orig_probs = torch.exp(F.log_softmax(orig_logits, dim=-1))
     new_probs = torch.exp(F.log_softmax(new_logits, dim=-1))
     return 0.5 * torch.abs(orig_probs - new_probs).sum(dim=-1).mean()
@@ -129,6 +129,7 @@ class DiscreteMetrics:
         return log_dict
 
 
+@torch.inference_mode()
 def collect_wandb_metrics(
     loss: float,
     grad_updates: int,
@@ -138,7 +139,7 @@ def collect_wandb_metrics(
     grad_norm: float | None,
     orig_logits: Float[Tensor, "... vocab"] | None,
     new_logits: Float[Tensor, "... vocab"] | None,
-    tokens: Int[Tensor, "batch pos"] | Int[Tensor, "pos"],
+    tokens: Int[Tensor, "batch pos"] | Int[Tensor, "pos"],  # noqa: F821
     lr: float,
 ) -> dict[str, int | float]:
     """Collect metrics for logging to wandb.
@@ -185,7 +186,7 @@ def collect_wandb_metrics(
         orig_model_top1_accuracy = topk_accuracy(orig_logits, tokens, k=1, per_token=False)
         sae_model_top1_accuracy = topk_accuracy(new_logits, tokens, k=1, per_token=False)
         orig_vs_sae_top1_consistency = top1_consistency(orig_logits, new_logits, per_token=False)
-        orig_vs_sae_statistical_distance = statistical_distance(orig_logits, new_logits)
+        orig_vs_sae_stat_distance = statistical_distance(orig_logits, new_logits)
 
         wandb_log_info.update(
             {
@@ -200,7 +201,7 @@ def collect_wandb_metrics(
                     orig_model_top1_accuracy - sae_model_top1_accuracy
                 ).item(),
                 "performance/orig_vs_sae_top1_consistency": orig_vs_sae_top1_consistency.item(),
-                "performance/orig_vs_sae_statistical_distance": orig_vs_sae_statistical_distance.item(),
+                "performance/orig_vs_sae_statistical_distance": orig_vs_sae_stat_distance.item(),
             },
         )
     return wandb_log_info
