@@ -137,7 +137,7 @@ def calc_loss(
 
     if loss_configs.logits_kl and orig_logits is not None and new_logits is not None:
         loss_dict["loss/logits_kl"] = loss_configs.logits_kl.calc_loss(
-            new_logits=new_logits, orig_logits=orig_logits.detach().clone()
+            new_logits=new_logits, orig_logits=orig_logits
         )
         loss = loss + loss_configs.logits_kl.coeff * loss_dict["loss/logits_kl"]
     # TODO Future: Maintain a record of batch-element-wise losses
