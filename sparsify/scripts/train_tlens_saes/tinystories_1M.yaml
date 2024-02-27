@@ -12,7 +12,6 @@ train:
   effective_batch_size: 10
   lr: 1e-3
   warmup_samples: 20000
-  cooldown_samples: 20000
   max_grad_norm: 1.0
   loss_configs:
     sparsity:
