@@ -3,15 +3,16 @@ tlens_model_name: roneneldan/TinyStories-1M
 tlens_model_path: null
 train:
   save_every_n_samples: null
-  n_samples: 200000  # 918604 samples of 512 tokens
+  n_samples: 100000  # 918604 samples of 512 tokens
   log_every_n_steps: 20
   collect_discrete_metrics_every_n_samples: 10000
   discrete_metrics_n_tokens: 500_000  #500k tokens is ~977 samples
   log_ce_loss: true
   batch_size: 10
   effective_batch_size: 10
-  lr: 5e-3
-  warmup_samples: 10000
+  lr: 1e-3
+  warmup_samples: 20000
+  cooldown_samples: 20000
   max_grad_norm: 1.0
   loss_configs:
     sparsity:
@@ -32,7 +33,7 @@ data:
 saes:
   retrain_saes: false
   pretrained_sae_paths: null
-  sae_position_names: hook_resid_post
+  sae_position_names: blocks.1.hook_resid_post
   dict_size_to_input_ratio: 10.0
 wandb_project: tinystories-1m
 wandb_run_name: null
