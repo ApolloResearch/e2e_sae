@@ -112,9 +112,12 @@ class Config(BaseModel):
     data: DataConfig
     saes: SparsifiersConfig
     wandb_project: str | None = None  # If None, don't log to Weights & Biases
-    wandb_run_name: str | None = None
-    wandb_run_name_prefix: str = ""
-    wandb_run_name_suffix: str = ""
+    wandb_run_name: str | None = Field(
+        None,
+        description="If None, a run_name is generated based on (typically) important config "
+        "parameters.",
+    )
+    wandb_run_name_prefix: str = Field("", description="Name that is prepended to the run name")
 
     @model_validator(mode="before")
     @classmethod
@@ -177,18 +180,22 @@ def train(
         n_batches = config.train.n_samples // config.train.batch_size
 
     # We don't need to run through the whole model if we're not using the logits
+    need_entire_model = config.train.loss_configs.logits_kl is not None or config.train.log_ce_loss
     stop_at_layer = None
-    if config.train.loss_configs.logits_kl is None and all(
+    if not need_entire_model and all(
         name.startswith("blocks.") for name in model.raw_sae_position_names
     ):
         stop_at_layer = max([int(name.split(".")[1]) for name in model.raw_sae_position_names]) + 1
 
     # Initialize wandb
-    run_name = config.wandb_run_name or (
-        f"{'-'.join(config.saes.sae_position_names)}_ratio-{config.saes.dict_size_to_input_ratio}_"
-        f"lr-{config.train.lr}_lpcoeff-{config.train.loss_configs.sparsity.coeff}"
+    run_name = config.wandb_run_name_prefix + (
+        config.wandb_run_name
+        or (
+            f"{'-'.join(config.saes.sae_position_names)}_"
+            f"ratio-{config.saes.dict_size_to_input_ratio}_"
+            f"lr-{config.train.lr}_lpcoeff-{config.train.loss_configs.sparsity.coeff}"
+        )
     )
-    run_name = config.wandb_run_name_prefix + run_name + config.wandb_run_name_suffix
     if config.wandb_project:
         load_dotenv(override=True)
         wandb.init(
@@ -223,7 +230,7 @@ def train(
         # Get SAE feature activations
         sae_acts = {hook_name: {} for hook_name in orig_acts}
         new_logits: Float[Tensor, "batch pos vocab"] | None = None
-        if config.train.loss_configs.logits_kl is None and not config.train.log_ce_loss:
+        if not need_entire_model:
             # Just run the already-stored activations through the SAEs
             for hook_name in orig_acts:
                 sae_hook(
@@ -252,7 +259,7 @@ def train(
         loss, loss_dict = calc_loss(
             orig_acts=orig_acts,
             sae_acts=sae_acts,
-            orig_logits=None if new_logits is None else orig_logits,
+            orig_logits=None if new_logits is None else orig_logits.detach().clone(),
             new_logits=new_logits,
             loss_configs=config.train.loss_configs,
         )
