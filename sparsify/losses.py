@@ -8,6 +8,15 @@ from pydantic import BaseModel, ConfigDict
 from torch import Tensor
 
 
+def mse_loss(x: Float[Tensor, "... dim"], orig: Float[Tensor, "... dim"], normalize: bool = True):
+    if normalize:
+        x_centred = x - x.mean(dim=0, keepdim=True)
+        norm = (x_centred**2).sum(dim=-1, keepdim=True).sqrt()
+    else:
+        norm = 1.0
+    return (torch.pow((orig - x.float()), 2) / norm).mean()
+
+
 class BaseLossConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     coeff: float
@@ -34,10 +43,11 @@ class InpToOrigLossConfig(BaseLossConfig):
         *args: Any,
         input: Float[Tensor, "... dim"],
         orig: Float[Tensor, "... dim"],
+        normalize_mse: bool = True,
         **kwargs: Any,
     ) -> Float[Tensor, ""]:
         """Calculate loss between the input of the SAE and the non-SAE-augmented activations."""
-        return F.mse_loss(input, orig)
+        return mse_loss(input, orig, normalize=normalize_mse)
 
 
 class OutToOrigLossConfig(BaseLossConfig):
@@ -46,10 +56,11 @@ class OutToOrigLossConfig(BaseLossConfig):
         *args: Any,
         output: Float[Tensor, "... dim"],
         orig: Float[Tensor, "... dim"],
+        normalize_mse: bool = True,
         **kwargs: Any,
     ) -> Float[Tensor, ""]:
         """Calculate loss between the output of the SAE and the non-SAE-augmented activations."""
-        return F.mse_loss(output, orig)
+        return mse_loss(output, orig, normalize=normalize_mse)
 
 
 class InpToOutLossConfig(BaseLossConfig):
@@ -58,10 +69,11 @@ class InpToOutLossConfig(BaseLossConfig):
         *args: Any,
         input: Float[Tensor, "... dim"],
         output: Float[Tensor, "... dim"],
+        normalize_mse: bool = True,
         **kwargs: Any,
     ) -> Float[Tensor, ""]:
         """Calculate loss between the input and output of the SAE."""
-        return F.mse_loss(input, output)
+        return mse_loss(input, output, normalize=normalize_mse)
 
 
 class LogitsKLLossConfig(BaseLossConfig):
@@ -97,6 +109,7 @@ class LossConfigs(BaseModel):
     out_to_orig: OutToOrigLossConfig | None
     inp_to_out: InpToOutLossConfig | None
     logits_kl: LogitsKLLossConfig | None
+    normalize_mse: bool = True
 
 
 def calc_loss(
@@ -155,6 +168,7 @@ def calc_loss(
                     output=sae_act["output"],
                     orig=orig_act,
                     c=sae_act["c"],
+                    normalize_mse=loss_configs.normalize_mse,
                 )
                 loss = loss + loss_config.coeff * loss_dict[f"loss/{config_type}/{name}"]
 
