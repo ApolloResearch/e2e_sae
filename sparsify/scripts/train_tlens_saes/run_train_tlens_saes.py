@@ -57,7 +57,6 @@ class TrainConfig(BaseModel):
     batch_size: PositiveInt
     effective_batch_size: PositiveInt | None = None
     lr: PositiveFloat
-    scheduler: str | None = None
     warmup_samples: NonNegativeInt = 0
     cooldown_samples: NonNegativeInt = 0
     max_grad_norm: PositiveFloat | None = None
@@ -172,9 +171,7 @@ def train(
         effective_batch_size=effective_batch_size,
     )
 
-    scheduler = None
-    if config.train.warmup_samples > 0:
-        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_schedule)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_schedule)
 
     if config.train.n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
@@ -278,10 +275,7 @@ def train(
             optimizer.step()
             optimizer.zero_grad()
             grad_updates += 1
-
-            if config.train.warmup_samples > 0:
-                assert scheduler is not None
-                scheduler.step()
+            scheduler.step()
 
         total_samples += tokens.shape[0]
         total_tokens += tokens.shape[0] * tokens.shape[1]
