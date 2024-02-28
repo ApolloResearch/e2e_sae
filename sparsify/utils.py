@@ -1,4 +1,5 @@
 import random
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -152,3 +153,57 @@ def get_hook_shapes(tlens_model: HookedTransformer, hook_names: list[str]) -> di
         fwd_hooks=[(hook_names_filter, get_activation_shape_hook_function)],
     )
     return hook_shapes
+
+
+def get_linear_lr_schedule(
+    warmup_samples: int, cooldown_samples: int, n_samples: int | None, effective_batch_size: int
+) -> Callable[[int], float]:
+    """
+    Generates a linear learning rate schedule function that incorporates warmup and cooldown phases.
+
+    If warmup_samples and cooldown_samples are both 0, the learning rate will be constant at 1.0
+    throughout training.
+
+    Args:
+        warmup_samples: The number of samples to use for warmup.
+        cooldown_samples: The number of samples to use for cooldown.
+        effective_batch_size: The effective batch size used during training.
+
+    Returns:
+        A function that takes a training step as input and returns the corresponding learning rate.
+
+    Raises:
+        ValueError: If the cooldown period starts before the warmup period ends.
+        AssertionError: If a cooldown is requested but the total number of samples is not provided.
+    """
+    warmup_steps = warmup_samples // effective_batch_size
+    cooldown_steps = cooldown_samples // effective_batch_size
+
+    if n_samples is None:
+        assert cooldown_samples == 0, "Cooldown requested but total number of samples not provided."
+        cooldown_start = float("inf")
+    else:
+        total_steps = n_samples // effective_batch_size
+        # Calculate the start step for cooldown
+        cooldown_start = total_steps - cooldown_steps
+
+        # Check for overlap between warmup and cooldown
+        assert (
+            cooldown_start > warmup_steps
+        ), "Cooldown starts before warmup ends. Adjust your parameters."
+
+    def lr_schedule(step: int) -> float:
+        if step < warmup_steps:
+            # Warmup phase: linearly increase learning rate
+            return (step + 1) / warmup_steps
+        elif step >= cooldown_start:
+            # Cooldown phase: linearly decrease learning rate
+            # Calculate how many steps have been taken in the cooldown phase
+            steps_into_cooldown = step - cooldown_start
+            # Linearly decrease the learning rate
+            return max(0.0, 1 - (steps_into_cooldown / cooldown_steps))
+        else:
+            # Maintain maximum learning rate after warmup and before cooldown
+            return 1.0
+
+    return lr_schedule

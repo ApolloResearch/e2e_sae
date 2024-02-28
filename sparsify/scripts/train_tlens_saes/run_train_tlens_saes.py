@@ -20,7 +20,6 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
-    NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
@@ -43,6 +42,7 @@ from sparsify.models.transformers import SAETransformer
 from sparsify.types import RootPath, Samples
 from sparsify.utils import (
     filter_names,
+    get_linear_lr_schedule,
     load_config,
     save_module,
     set_seed,
@@ -58,7 +58,8 @@ class TrainConfig(BaseModel):
     effective_batch_size: PositiveInt | None = None
     lr: PositiveFloat
     scheduler: str | None = None
-    warmup_samples: NonNegativeFloat = 0
+    warmup_samples: NonNegativeInt = 0
+    cooldown_samples: NonNegativeInt = 0
     max_grad_norm: PositiveFloat | None = None
     log_every_n_steps: PositiveInt = 20
     collect_discrete_metrics_every_n_samples: PositiveInt = Field(
@@ -164,14 +165,16 @@ def train(
     effective_batch_size = config.train.effective_batch_size or config.train.batch_size
     n_gradient_accumulation_steps = effective_batch_size // config.train.batch_size
 
+    lr_schedule = get_linear_lr_schedule(
+        warmup_samples=config.train.warmup_samples,
+        cooldown_samples=config.train.cooldown_samples,
+        n_samples=config.train.n_samples,
+        effective_batch_size=effective_batch_size,
+    )
+
     scheduler = None
     if config.train.warmup_samples > 0:
-        scheduler = torch.optim.lr_scheduler.LambdaLR(
-            optimizer,
-            lr_lambda=lambda step: min(
-                1.0, (step + 1) / (config.train.warmup_samples // effective_batch_size)
-            ),
-        )
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_schedule)
 
     if config.train.n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
