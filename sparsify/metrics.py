@@ -109,14 +109,23 @@ class DiscreteMetrics:
 
             if log_wandb_histogram:
                 data = [[s] for s in self.dict_el_frequencies[sae_pos]]
-                table = wandb.Table(data=data, columns=["dict element activation frequency"])
+                data_log = [[torch.log10(s + 1e-10)] for s in self.dict_el_frequencies[sae_pos]]
                 plot = wandb.plot.histogram(
-                    table,
+                    wandb.Table(data=data, columns=["dict element activation frequency"]),
                     "dict element activation frequency",
                     title=f"{sae_pos} (most_recent_n_tokens={self.tokens_used} "
                     f"dict_size={self.dict_el_frequencies[sae_pos].shape[0]})",
                 )
+                plot_log10 = wandb.plot.histogram(
+                    wandb.Table(
+                        data=data_log, columns=["log10(dict element activation frequency)"]
+                    ),
+                    "log10(dict element activation frequency)",
+                    title=f"{sae_pos} (most_recent_n_tokens={self.tokens_used} "
+                    f"dict_size={self.dict_el_frequencies[sae_pos].shape[0]})",
+                )
                 log_dict[f"sparsity/dict_el_frequencies_hist/{sae_pos}"] = plot
+                log_dict[f"sparsity/dict_el_frequencies_hist/log10/{sae_pos}"] = plot_log10
 
                 log_dict[
                     f"sparsity/dict_el_frequencies_hist/over_time/{sae_pos}"
