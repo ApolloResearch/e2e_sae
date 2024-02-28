@@ -19,6 +19,7 @@ train:
     inp_to_out: null
     logits_kl:
       coeff: 1.0
+    normalize_mse: True
 data:
   dataset_name: apollo-research/sae-Skylion007-openwebtext-tokenizer-gpt2
   is_tokenized: true

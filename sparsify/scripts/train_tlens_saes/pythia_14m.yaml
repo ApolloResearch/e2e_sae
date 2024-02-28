@@ -18,6 +18,7 @@ train:
       coeff: 1.0
     inp_to_out: null
     logits_kl: null
+    normalize_mse: True
 data:
   dataset_name: apollo-research/sae-monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b
   is_tokenized: true
