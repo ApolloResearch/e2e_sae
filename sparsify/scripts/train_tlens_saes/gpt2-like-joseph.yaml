@@ -1,0 +1,90 @@
+seed: 42
+tlens_model_name: gpt2-small
+tlens_model_path: null
+train:
+  save_every_n_samples: 300_000
+  n_samples: 300_000 
+  collect_discrete_metrics_every_n_samples: 8192
+  discrete_metrics_n_tokens: 524_288 # = 128 * 128 * 32 = joseph_context_size * joseph_n_batches_in_buffer * joseph_store_batch_size
+  log_every_n_steps: 50
+  log_ce_loss: true
+  batch_size: 10
+  effective_batch_size: 500 # ~ 1024 = 4096 * 128 / 1024 = joseph_train_batch_size * joseph_context_size / our_context_size 
+  lr: 0.0004 
+  warmup_samples: 5_000
+  max_grad_norm: 1.0
+  loss_configs:
+    sparsity:
+      p_norm: 1.0
+      coeff: 0.00008
+    inp_to_orig: null
+    out_to_orig:
+      coeff: 1.0
+    inp_to_out: null
+    logits_kl: null
+data:
+  dataset_name: apollo-research/sae-Skylion007-openwebtext-tokenizer-gpt2
+  is_tokenized: true
+  tokenizer_name: gpt2
+  streaming: true
+  split: train
+  n_ctx: 1024
+saes:
+  sae_position_names: blocks.2.hook_resid_pre
+  dict_size_to_input_ratio: 32
+wandb_project: gpt2-small_compare-with-joseph_layerwise_2024_02_27
+
+# Joseph's parameters: https://wandb.ai/jbloom/mats_sae_training_gpt2_small_resid_pre_5/runs/7kldeaeh/files/code/research/generate_saes.py 
+    # cfg = LanguageModelSAERunnerConfig(
+
+    #     # Data Generating Function (Model + Training Distibuion)
+    #     model_name = "gpt2-small",
+    #     hook_point = f"blocks.{layer}.hook_resid_pre",
+    #     hook_point_layer = layer,
+    #     d_in = 768,
+    #     dataset_path = "Skylion007/openwebtext",
+    #     is_dataset_tokenized=False,
+        
+    #     # SAE Parameters
+    #     expansion_factor = 32, # determines the dimension of the SAE.
+    #     b_dec_init_method = "geometric_median",
+        
+    #     # Training Parameters
+    #     lr = 0.0004,
+    #     l1_coefficient = 0.00008,
+    #     lr_scheduler_name=None,
+    #     train_batch_size = 4096,
+    #     context_size = 128,
+    #     lr_warm_up_steps=5000,
+        
+    #     # Activation Store Parameters
+    #     n_batches_in_buffer = 128,
+    #     total_training_tokens = 1_000_000 * 300, # 200M tokens seems doable overnight.
+    #     store_batch_size = 32,
+        
+    #     # Resampling protocol
+    #     # feature_sampling_method = 'anthropic',
+    #     use_ghost_grads=True,
+    #     feature_sampling_method = None,
+    #     feature_sampling_window = 1000,
+    #     feature_reinit_scale = 0.2,
+    #     resample_batches=1028,
+    #     dead_feature_window=5000,
+    #     # dead_feature_window=50000,
+    #     dead_feature_threshold = 1e-8,
+        
+    #     # WANDB
+    #     log_to_wandb = True,
+    #     wandb_project= "mats_sae_training_gpt2_small_resid_pre_5",
+    #     wandb_entity = None,
+    #     wandb_log_frequency=100,
+        
+    #     # Misc
+    #     device = "cuda",
+    #     seed = 42,
+    #     n_checkpoints = 10,
+    #     checkpoint_path = "checkpoints",
+    #     dtype = torch.float32,
+    #     )
+
+    # sparse_autoencoder = language_model_sae_runner(cfg)
