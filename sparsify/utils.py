@@ -1,3 +1,4 @@
+import math
 import random
 from collections.abc import Callable
 from pathlib import Path
@@ -183,7 +184,9 @@ def get_linear_lr_schedule(
         assert cooldown_samples == 0, "Cooldown requested but total number of samples not provided."
         cooldown_start = float("inf")
     else:
-        total_steps = n_samples // effective_batch_size
+        # NOTE: There may be 1 fewer steps if batch_size < effective_batch_size, but this won't
+        # make a big difference for most learning setups.
+        total_steps = math.ceil(n_samples / effective_batch_size)
         # Calculate the start step for cooldown
         cooldown_start = total_steps - cooldown_steps
 

@@ -3,6 +3,7 @@
 Usage:
     python run_train_tlens_saes.py <path/to/config.yaml>
 """
+import math
 import os
 from collections.abc import Callable
 from datetime import datetime
@@ -177,7 +178,7 @@ def train(
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
         n_batches = None if isinstance(data_loader.dataset, IterableDataset) else len(data_loader)
     else:
-        n_batches = config.train.n_samples // config.train.batch_size
+        n_batches = math.ceil(config.train.n_samples / config.train.batch_size)
 
     # We don't need to run through the whole model if we're not using the logits
     need_entire_model = config.train.loss_configs.logits_kl is not None or config.train.log_ce_loss
@@ -216,7 +217,7 @@ def train(
     samples_since_discrete_metric_collection: int = 0
     discrete_metrics: DiscreteMetrics | None = None
 
-    for step, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
+    for batch_idx, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
         tokens: Int[Tensor, "batch pos"] = batch[config.data.column_name].to(device=device)
         # Run model without SAEs
         with torch.inference_mode():
@@ -271,7 +272,7 @@ def train(
                 model.parameters(), config.train.max_grad_norm
             ).item()
 
-        if (step + 1) % n_gradient_accumulation_steps == 0:
+        if (batch_idx + 1) % n_gradient_accumulation_steps == 0:
             optimizer.step()
             optimizer.zero_grad()
             grad_updates += 1
@@ -282,7 +283,7 @@ def train(
         samples_since_discrete_metric_collection += tokens.shape[0]
 
         if (
-            step == 0
+            batch_idx == 0
             or discrete_metrics is None
             and (
                 samples_since_discrete_metric_collection
@@ -314,9 +315,9 @@ def train(
                 discrete_metrics = None
                 samples_since_discrete_metric_collection = 0
 
-        if step == 0 or step % config.train.log_every_n_steps == 0:
+        if batch_idx == 0 or batch_idx % config.train.log_every_n_steps == 0:
             tqdm.write(
-                f"Samples {total_samples} Step {step} GradUpdates {grad_updates} "
+                f"Samples {total_samples} Batch_idx {batch_idx} GradUpdates {grad_updates} "
                 f"Loss {loss.item():.5f}"
             )
 
