@@ -36,8 +36,8 @@ class TestLinearLRSchedule:
         [
             (100, 0, None, 10, 5, 0.6),  # During warmup
             (100, 200, 1000, 10, 50, 1.0),  # After warmup, before cooldown
-            (100, 100, 1000, 10, 91, 0.9),  # During cooldown
-            (100, 100, 1000, 10, 100, 0.0),  # After cooldown
+            (100, 100, 1000, 10, 92, 0.9),  # During cooldown
+            (100, 100, 1000, 10, 101, 0.0),  # After cooldown
         ],
     )
     def test_learning_rate_transitions(
@@ -49,6 +49,7 @@ class TestLinearLRSchedule:
         step: int,
         expected_lr: float,
     ):
+        # Note that a `step` corresponds to the upcoming sample.
         lr_schedule = get_linear_lr_schedule(
             warmup_samples, cooldown_samples, n_samples, effective_batch_size
         )

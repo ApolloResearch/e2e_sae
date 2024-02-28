@@ -185,8 +185,9 @@ def get_linear_lr_schedule(
         cooldown_start = float("inf")
     else:
         # NOTE: There may be 1 fewer steps if batch_size < effective_batch_size, but this won't
-        # make a big difference for most learning setups.
-        total_steps = math.ceil(n_samples / effective_batch_size)
+        # make a big difference for most learning setups. The + 1 is to account for the scheduler
+        # step that occurs after training has finished
+        total_steps = math.ceil(n_samples / effective_batch_size) + 1
         # Calculate the start step for cooldown
         cooldown_start = total_steps - cooldown_steps
 
