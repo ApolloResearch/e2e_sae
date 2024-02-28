@@ -218,6 +218,9 @@ def train(
 
     for step, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
         tokens: Int[Tensor, "batch pos"] = batch[config.data.column_name].to(device=device)
+        # Clip the n_ctx to config.data.n_ctx
+        tokens = tokens[:, : config.data.n_ctx]
+
         # Run model without SAEs
         with torch.inference_mode():
             orig_logits, orig_acts = model.tlens_model.run_with_cache(

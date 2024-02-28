@@ -8,6 +8,7 @@ from torch.utils.data import Dataset as TorchDataset
 from transformer_lens.utils import tokenize_and_concatenate
 from transformers import AutoTokenizer
 
+from sparsify.log import logger
 from sparsify.types import Samples
 
 
@@ -42,7 +43,15 @@ def create_data_loader(
         assert (
             isinstance(sample, torch.Tensor) and sample.ndim == 1
         ), "Expected the dataset to be tokenized."
-        assert len(sample) == data_config.n_ctx, "n_ctx does not match the tokenized length."
+        if len(sample) < data_config.n_ctx:
+            raise ValueError(
+                f"n_ctx ({data_config.n_ctx}) is greater than the tokenized length ({len(sample)})"
+            )
+        elif len(sample) > data_config.n_ctx:
+            logger.warning(
+                f"n_ctx ({data_config.n_ctx}) is less than the tokenized length ({len(sample)}). "
+                f"Will take the first {data_config.n_ctx} tokens from each sample."
+            )
 
     else:
         torch_dataset = tokenize_and_concatenate(
