@@ -219,7 +219,9 @@ def train(
     samples_since_output_metric_collection: int = 0
 
     for batch_idx, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
-        run_entire_model = not layerwise
+        run_entire_model: bool = not layerwise
+        is_grad_step: bool = (batch_idx + 1) % n_gradient_accumulation_steps == 0
+
         if config.train.collect_output_metrics_every_n_samples > 0 and (
             batch_idx == 0
             or (
@@ -230,6 +232,12 @@ def train(
             # Run entire model to collect output metrics
             run_entire_model = True
             samples_since_output_metric_collection = 0
+
+        is_log_step: bool = (
+            batch_idx == 0
+            or (is_grad_step and (grad_updates + 1) % config.train.log_every_n_grad_steps == 0)
+            or (layerwise and run_entire_model)
+        )
 
         tokens: Int[Tensor, "batch pos"] = batch[config.data.column_name].to(device=device)
         # Run model without SAEs
@@ -276,6 +284,7 @@ def train(
             orig_logits=None if new_logits is None else orig_logits.detach().clone(),
             new_logits=new_logits,
             loss_configs=config.train.loss_configs,
+            is_log_step=is_log_step,
         )
 
         loss = loss / n_gradient_accumulation_steps
@@ -285,8 +294,7 @@ def train(
                 model.parameters(), config.train.max_grad_norm
             ).item()
 
-        grad_step: bool = (batch_idx + 1) % n_gradient_accumulation_steps == 0
-        if grad_step:
+        if is_grad_step:
             optimizer.step()
             optimizer.zero_grad()
             grad_updates += 1
@@ -330,11 +338,7 @@ def train(
                 discrete_metrics = None
                 samples_since_discrete_metric_collection = 0
 
-        if (
-            batch_idx == 0
-            or (grad_step and grad_updates % config.train.log_every_n_grad_steps == 0)
-            or (layerwise and run_entire_model)
-        ):
+        if is_log_step:
             tqdm.write(
                 f"Samples {total_samples} Batch_idx {batch_idx} GradUpdates {grad_updates} "
                 f"Loss {loss.item():.5f}"
