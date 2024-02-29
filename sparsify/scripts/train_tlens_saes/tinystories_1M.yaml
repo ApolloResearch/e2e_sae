@@ -2,12 +2,12 @@ seed: 0
 tlens_model_name: roneneldan/TinyStories-1M
 tlens_model_path: null
 train:
-  save_every_n_samples: null
-  n_samples: 100000  # 918604 samples of 512 tokens
+  save_every_n_samples: 25_000
+  n_samples: 100_000  # 918604 samples of 512 tokens
   log_every_n_steps: 20
   collect_discrete_metrics_every_n_samples: 10000
   discrete_metrics_n_tokens: 500_000  #500k tokens is ~977 samples
-  log_ce_loss: true
+  log_ce_loss: false
   batch_size: 10
   effective_batch_size: 10
   lr: 1e-3
@@ -18,17 +18,17 @@ train:
       p_norm: 0.6
       coeff: 5e-6
     inp_to_orig: null
-    out_to_orig: null
-    inp_to_out: null
-    logits_kl:
+    out_to_orig: 
       coeff: 1.0
+    inp_to_out: null
+    logits_kl: null
 data:
   dataset_name: apollo-research/sae-skeskinen-TinyStories-hf-tokenizer-gpt2
   is_tokenized: true
   tokenizer_name: gpt2
   streaming: true
   split: train
-  n_ctx: 512
+  n_ctx: 128
 saes:
   retrain_saes: false
   pretrained_sae_paths: null

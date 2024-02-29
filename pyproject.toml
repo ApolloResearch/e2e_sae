@@ -7,6 +7,7 @@ readme = "README.md"
 dependencies = [
     "torch~=2.2.0",
     "torchvision~=0.17.0",
+    "einops~=0.7.0",
     "pydantic~=2.0",
     "wandb~=0.16.2",
     "fire~=0.5.0",
@@ -17,6 +18,9 @@ dependencies = [
     "jaxtyping~=0.2.25",
     "python-dotenv~=1.0.1",
     "zstandard~=0.22.0",
+    "matplotlib~=3.8.3",
+    "matplotlib-inline~=0.1.6",
+    # "sae_vis@git+https://github.com/callummcdougall/sae_vis"
 ]
 
 [project.urls]

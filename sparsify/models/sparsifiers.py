@@ -22,6 +22,9 @@ class SAE(nn.Module):
         # Initialize so that there are n_dict_components orthonormal vectors
         self.decoder.weight.data = nn.init.orthogonal_(self.decoder.weight.data.T).T
 
+        self.W_enc = self.encoder[0].weight
+        self.W_dec = self.decoder.weight
+
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         c = self.encoder(x)
 

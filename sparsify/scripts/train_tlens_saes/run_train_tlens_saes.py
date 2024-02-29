@@ -85,7 +85,6 @@ class TrainConfig(BaseModel):
             ), "effective_batch_size must be a multiple of batch_size."
         return self
 
-
 class SparsifiersConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     type_of_sparsifier: str | None = "sae"
@@ -133,7 +132,7 @@ def sae_hook(
     value: Float[torch.Tensor, "... dim"],
     hook: HookPoint | None,
     sae: SAE | torch.nn.Module,
-    hook_acts: dict[str, Any],
+    hook_acts: dict[str, Tensor],
 ) -> Float[torch.Tensor, "... dim"]:
     """Runs the SAE on the input and stores the output and c in hook_acts."""
     hook_acts["input"] = value
