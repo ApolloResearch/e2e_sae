@@ -18,7 +18,7 @@ def explained_variance(
         target: The target to compare the prediction to.
 
     Returns:
-        The explained variance of the prediction and target.
+        The explained variance between the prediction and target for each batch and sequence pos.
     """
     sample_dims = tuple(range(pred.ndim - 1))
     per_token_l2_loss = (pred - target).pow(2).sum(dim=-1)
@@ -42,6 +42,9 @@ class SparsityLossConfig(BaseLossConfig):
 
         Args:
             c: The activations after the non-linearity in the SAE.
+
+        Returns:
+            The L_p norm of the activations.
         """
         return torch.norm(c, p=self.p_norm, dim=-1).mean()
 
