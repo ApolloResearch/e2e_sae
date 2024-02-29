@@ -61,8 +61,8 @@ class TrainConfig(BaseModel):
     warmup_samples: NonNegativeInt = 0
     cooldown_samples: NonNegativeInt = 0
     max_grad_norm: PositiveFloat | None = None
-    log_every_n_steps: PositiveInt = 20
-    collect_discrete_metrics_every_n_samples: PositiveInt = Field(
+    log_every_n_grad_steps: PositiveInt = 20
+    collect_discrete_metrics_every_n_samples: NonNegativeInt = Field(
         20_000,
         description="Metrics such as activation frequency and alive neurons, are calculated over "
         "discrete periods. This parameter specifies how often to calculate these metrics.",
@@ -70,10 +70,11 @@ class TrainConfig(BaseModel):
     discrete_metrics_n_tokens: PositiveInt = Field(
         100_000, description="The number of tokens to caclulate discrete metrics over."
     )
-    log_ce_loss: bool = Field(
-        True,
-        description="Whether to calculate and log the cross-entropy loss between the original and "
-        "SAE-augmented logits.",
+    collect_output_metrics_every_n_samples: NonNegativeInt = Field(
+        0,
+        description="How many samples between calculating metrics like the cross-entropy loss and "
+        "kl divergence between the original and SAE-augmented logits. If training with logits_kl, "
+        "these will be calculated every batch regardless of this parameter.",
     )
     loss_configs: LossConfigs
 
@@ -153,6 +154,8 @@ def train(
 ) -> None:
     model.saes.train()
 
+    layerwise = config.train.loss_configs.logits_kl is None
+
     for name, param in model.named_parameters():
         if name.startswith("saes.") and name.split("saes.")[1] in trainable_param_names:
             param.requires_grad = True
@@ -180,13 +183,10 @@ def train(
     else:
         n_batches = math.ceil(config.train.n_samples / config.train.batch_size)
 
-    # We don't need to run through the whole model if we're not using the logits
-    need_entire_model = config.train.loss_configs.logits_kl is not None or config.train.log_ce_loss
-    stop_at_layer = None
-    if not need_entire_model and all(
-        name.startswith("blocks.") for name in model.raw_sae_position_names
-    ):
-        stop_at_layer = max([int(name.split(".")[1]) for name in model.raw_sae_position_names]) + 1
+    final_layer = None
+    if all(name.startswith("blocks.") for name in model.raw_sae_position_names) and layerwise:
+        # We don't need to run through the whole model for layerwise runs
+        final_layer = max([int(name.split(".")[1]) for name in model.raw_sae_position_names]) + 1
 
     # Initialize wandb
     run_name = config.wandb_run_name_prefix + (
@@ -216,8 +216,21 @@ def train(
     grad_norm: float | None = None
     samples_since_discrete_metric_collection: int = 0
     discrete_metrics: DiscreteMetrics | None = None
+    samples_since_output_metric_collection: int = 0
 
     for batch_idx, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
+        run_entire_model = not layerwise
+        if config.train.collect_output_metrics_every_n_samples > 0 and (
+            batch_idx == 0
+            or (
+                samples_since_output_metric_collection
+                >= config.train.collect_output_metrics_every_n_samples
+            )
+        ):
+            # Run entire model to collect output metrics
+            run_entire_model = True
+            samples_since_output_metric_collection = 0
+
         tokens: Int[Tensor, "batch pos"] = batch[config.data.column_name].to(device=device)
         # Run model without SAEs
         with torch.inference_mode():
@@ -225,13 +238,13 @@ def train(
                 tokens,
                 names_filter=model.raw_sae_position_names,
                 return_cache_object=False,
-                stop_at_layer=stop_at_layer,
+                stop_at_layer=None if run_entire_model else final_layer,
             )
             assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
         # Get SAE feature activations
         sae_acts = {hook_name: {} for hook_name in orig_acts}
         new_logits: Float[Tensor, "batch pos vocab"] | None = None
-        if not need_entire_model:
+        if not run_entire_model:
             # Just run the already-stored activations through the SAEs
             for hook_name in orig_acts:
                 sae_hook(
@@ -272,7 +285,8 @@ def train(
                 model.parameters(), config.train.max_grad_norm
             ).item()
 
-        if (batch_idx + 1) % n_gradient_accumulation_steps == 0:
+        grad_step: bool = (batch_idx + 1) % n_gradient_accumulation_steps == 0
+        if grad_step:
             optimizer.step()
             optimizer.zero_grad()
             grad_updates += 1
@@ -281,6 +295,7 @@ def train(
         total_samples += tokens.shape[0]
         total_tokens += tokens.shape[0] * tokens.shape[1]
         samples_since_discrete_metric_collection += tokens.shape[0]
+        samples_since_output_metric_collection += tokens.shape[0]
 
         if (
             batch_idx == 0
@@ -315,7 +330,11 @@ def train(
                 discrete_metrics = None
                 samples_since_discrete_metric_collection = 0
 
-        if batch_idx == 0 or batch_idx % config.train.log_every_n_steps == 0:
+        if (
+            batch_idx == 0
+            or (grad_step and grad_updates % config.train.log_every_n_grad_steps == 0)
+            or (layerwise and run_entire_model)
+        ):
             tqdm.write(
                 f"Samples {total_samples} Batch_idx {batch_idx} GradUpdates {grad_updates} "
                 f"Loss {loss.item():.5f}"
