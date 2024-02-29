@@ -61,7 +61,7 @@ class TrainConfig(BaseModel):
     warmup_samples: NonNegativeInt = 0
     cooldown_samples: NonNegativeInt = 0
     max_grad_norm: PositiveFloat | None = None
-    log_every_n_batches: PositiveInt = 20
+    log_every_n_grad_steps: PositiveInt = 20
     collect_discrete_metrics_every_n_samples: NonNegativeInt = Field(
         20_000,
         description="Metrics such as activation frequency and alive neurons, are calculated over "
@@ -285,7 +285,8 @@ def train(
                 model.parameters(), config.train.max_grad_norm
             ).item()
 
-        if (batch_idx + 1) % n_gradient_accumulation_steps == 0:
+        grad_step: bool = (batch_idx + 1) % n_gradient_accumulation_steps == 0
+        if grad_step:
             optimizer.step()
             optimizer.zero_grad()
             grad_updates += 1
@@ -331,7 +332,7 @@ def train(
 
         if (
             batch_idx == 0
-            or batch_idx % config.train.log_every_n_batches == 0
+            or (grad_step and grad_updates % config.train.log_every_n_grad_steps == 0)
             or (layerwise and run_entire_model)
         ):
             tqdm.write(
