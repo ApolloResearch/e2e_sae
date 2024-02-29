@@ -23,8 +23,8 @@ check:
 
 .PHONY: test
 test:
-	python -m pytest
+	python -m pytest tests/
 
 .PHONY: test-all
 test-all:
-	python -m pytest --runslow
+	python -m pytest tests/ --runslow
