@@ -86,6 +86,7 @@ class TrainConfig(BaseModel):
             ), "effective_batch_size must be a multiple of batch_size."
         return self
 
+
 class SparsifiersConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     type_of_sparsifier: str | None = "sae"

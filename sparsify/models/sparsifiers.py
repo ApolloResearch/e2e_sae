@@ -13,6 +13,8 @@ class SAE(nn.Module):
 
     def __init__(self, input_size: int, n_dict_components: int):
         super().__init__()
+        # self.encoder[0].weight has shape: (n_dict_components, input_size)
+        # self.decoder.weight has shape:    (input_size, n_dict_components)
 
         self.encoder = nn.Sequential(nn.Linear(input_size, n_dict_components, bias=True), nn.ReLU())
         self.decoder = nn.Linear(n_dict_components, input_size, bias=True)
@@ -21,9 +23,6 @@ class SAE(nn.Module):
 
         # Initialize so that there are n_dict_components orthonormal vectors
         self.decoder.weight.data = nn.init.orthogonal_(self.decoder.weight.data.T).T
-
-        self.W_enc = self.encoder[0].weight
-        self.W_dec = self.decoder.weight
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         c = self.encoder(x)
