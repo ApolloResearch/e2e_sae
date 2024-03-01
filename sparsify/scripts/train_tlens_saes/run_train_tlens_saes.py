@@ -21,6 +21,7 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
+    NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
@@ -58,6 +59,7 @@ class TrainConfig(BaseModel):
     batch_size: PositiveInt
     effective_batch_size: PositiveInt | None = None
     lr: PositiveFloat
+    adam_beta1: NonNegativeFloat
     warmup_samples: NonNegativeInt = 0
     cooldown_samples: NonNegativeInt = 0
     max_grad_norm: PositiveFloat | None = None
@@ -162,7 +164,9 @@ def train(
         else:
             param.requires_grad = False
     optimizer = torch.optim.Adam(
-        filter(lambda p: p.requires_grad, model.parameters()), lr=config.train.lr
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr=config.train.lr,
+        betas=(config.train.adam_beta1, 0.999),
     )
 
     effective_batch_size = config.train.effective_batch_size or config.train.batch_size
