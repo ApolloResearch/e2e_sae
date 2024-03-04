@@ -68,6 +68,3 @@ def test_compute_feature_acts():
                     feature_acts_prev[sae_position].to_dense(),
                 )
             feature_acts_prev = feature_acts
-
-
-test_compute_feature_acts()
