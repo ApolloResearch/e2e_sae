@@ -1,7 +1,7 @@
 from typing import Literal
 
 import torch
-from datasets import load_dataset
+from datasets import IterableDataset, load_dataset
 from pydantic import BaseModel, ConfigDict
 from torch.utils.data import DataLoader
 from torch.utils.data import Dataset as TorchDataset
@@ -19,6 +19,7 @@ class DataConfig(BaseModel):
     streaming: bool = True
     split: Literal["train"]
     n_ctx: int
+    seed: int = 0
     column_name: str = "input_ids"
     """The name of the column in the dataset that contains the tokenized samples. Typically
     "input_ids" for datasets stored with sparsify/upload_hf_dataset.py, or "tokens" for datasets
@@ -26,12 +27,19 @@ class DataConfig(BaseModel):
 
 
 def create_data_loader(
-    data_config: DataConfig, batch_size: int
+    data_config: DataConfig, batch_size: int, buffer_size: int = 1000
 ) -> tuple[DataLoader[Samples], AutoTokenizer]:
     """Create a DataLoader for the given dataset."""
     dataset = load_dataset(
         data_config.dataset_name, streaming=data_config.streaming, split=data_config.split
     )
+
+    if data_config.streaming:
+        assert isinstance(dataset, IterableDataset)
+        dataset = dataset.shuffle(seed=data_config.seed, buffer_size=buffer_size)
+    else:
+        dataset = dataset.shuffle(seed=data_config.seed)
+
     tokenizer = AutoTokenizer.from_pretrained(data_config.tokenizer_name)
     torch_dataset: TorchDataset[Samples]
     if data_config.is_tokenized:
