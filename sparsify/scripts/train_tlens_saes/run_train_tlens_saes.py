@@ -372,8 +372,11 @@ def train(
                 config_dict=config.model_dump(mode="json"),
                 save_dir=save_dir,
                 module=model.saes,
-                model_filename=f"samples_{total_samples}.pt",
+                model_path=save_dir / f"samples_{total_samples}.pt",
             )
+            if config.wandb_project:
+                wandb.save(save_dir / f"samples_{total_samples}.pt")
+
         if config.train.n_samples is not None and total_samples >= config.train.n_samples:
             break
 
@@ -382,8 +385,11 @@ def train(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             module=model.saes,
-            model_filename=f"samples_{total_samples}.pt",
+            model_path=save_dir / f"samples_{total_samples}.pt",
         )
+        if config.wandb_project:
+            wandb.save(save_dir / f"samples_{total_samples}.pt")
+
     if config.wandb_project:
         wandb.finish()
 
