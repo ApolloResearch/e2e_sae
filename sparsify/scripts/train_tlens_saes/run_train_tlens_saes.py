@@ -199,19 +199,34 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
     orig_vs_sae_top1_consistency = 0.0
     orig_vs_sae_stat_distance = 0.0
     total_tokens = 0
+    loss_dict: dict[str, float] = {}
 
     for batch_idx, batch in tqdm(enumerate(eval_loader), total=n_batches, desc="Eval Steps"):
         if n_batches is not None and batch_idx >= n_batches:
             break
+
         tokens = batch[config.eval_data.column_name].to(device=device)
         n_tokens = tokens.shape[0] * tokens.shape[1]
         total_tokens += n_tokens
 
         # Get logits and activations for the original and SAE-augmented models
-        orig_logits, _, new_logits, _ = model.forward_both(
+        orig_logits, orig_acts, new_logits, sae_acts = model.forward_both(
             tokens=tokens, run_entire_model=True, final_layer=None, sae_hook=sae_hook
         )
         assert new_logits is not None, "new_logits should not be None during evaluation."
+
+        batch_loss_dict = calc_loss(
+            orig_acts=orig_acts,
+            sae_acts=sae_acts,
+            orig_logits=orig_logits,
+            new_logits=new_logits,
+            loss_configs=config.loss,
+            is_log_step=True,
+            train=False,
+        )[1]
+        # Update the global loss_dict
+        for key, value in batch_loss_dict.items():
+            loss_dict[key] = loss_dict.get(key, 0) + value.item() * n_tokens
 
         orig_model_performance_loss += lm_cross_entropy_loss(orig_logits, tokens).item() * n_tokens
         sae_model_performance_loss += lm_cross_entropy_loss(new_logits, tokens).item() * n_tokens
@@ -221,8 +236,12 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
         orig_vs_sae_top1_consistency += top1_consistency(orig_logits, new_logits).item() * n_tokens
         orig_vs_sae_stat_distance += statistical_distance(orig_logits, new_logits).item() * n_tokens
 
+    # Get the mean for all metrics over the loss_dicts
+    for key in loss_dict:
+        loss_dict[key] /= total_tokens
+
     prefix = "performance/eval"
-    metrics = {
+    performance_metrics = {
         f"{prefix}/orig_model_ce_loss": orig_model_performance_loss / total_tokens,
         f"{prefix}/sae_model_ce_loss": sae_model_performance_loss / total_tokens,
         f"{prefix}/difference_ce_loss": (
@@ -237,7 +256,7 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
         f"{prefix}/orig_vs_sae_statistical_distance": orig_vs_sae_stat_distance / total_tokens,
     }
     model.saes.train()
-    return metrics
+    return {**loss_dict, **performance_metrics}
 
 
 @logging_redirect_tqdm()
@@ -442,9 +461,9 @@ def train(
                     log_info.update(train_performance_metrics)
 
                 if is_eval_step:
-                    eval_performance_metrics = evaluate(config=config, model=model, device=device)
+                    eval_metrics = evaluate(config=config, model=model, device=device)
                     total_samples_at_last_eval = total_samples
-                    log_info.update(eval_performance_metrics)
+                    log_info.update(eval_metrics)
 
                 wandb.log(log_info, step=total_samples)
 
