@@ -31,7 +31,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from transformer_lens.hook_points import HookPoint
-from transformer_lens.utils import lm_cross_entropy_loss
 
 from sparsify.data import DatasetConfig, create_data_loader
 from sparsify.loader import load_pretrained_saes, load_tlens_model
@@ -41,9 +40,6 @@ from sparsify.metrics import (
     DiscreteMetrics,
     calc_performance_metrics,
     calc_standard_metrics,
-    statistical_distance,
-    top1_consistency,
-    topk_accuracy,
 )
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
@@ -181,7 +177,13 @@ def sae_hook(
 
 @torch.inference_mode()
 def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dict[str, float]:
-    """Evaluate the model on the eval dataset."""
+    """Evaluate the model on the eval dataset.
+
+    Accumulates metrics over the entire eval dataset and then divides by the total number of tokens.
+
+    Returns:
+        Dictionary of loss_dict and performance metrics.
+    """
     assert config.eval_data is not None, "No eval dataset specified in the config."
     model.saes.eval()
     eval_loader = create_data_loader(config.eval_data, batch_size=config.batch_size)[0]
@@ -192,14 +194,9 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
     else:
         n_batches = math.ceil(config.eval_n_samples / config.batch_size)
 
-    orig_model_performance_loss = 0.0
-    sae_model_performance_loss = 0.0
-    orig_model_top1_accuracy = 0.0
-    sae_model_top1_accuracy = 0.0
-    orig_vs_sae_top1_consistency = 0.0
-    orig_vs_sae_stat_distance = 0.0
     total_tokens = 0
-    loss_dict: dict[str, float] = {}
+    # Accumulate metrics over the entire eval dataset and later divide by the total number of tokens
+    metrics: dict[str, float] = {}
 
     for batch_idx, batch in tqdm(enumerate(eval_loader), total=n_batches, desc="Eval Steps"):
         if n_batches is not None and batch_idx >= n_batches:
@@ -224,39 +221,22 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
             is_log_step=True,
             train=False,
         )[1]
-        # Update the global loss_dict
+        batch_performance_metrics = calc_performance_metrics(
+            tokens=tokens, orig_logits=orig_logits, new_logits=new_logits
+        )
+
+        # Update the global metric dictionaries
         for key, value in batch_loss_dict.items():
-            loss_dict[key] = loss_dict.get(key, 0) + value.item() * n_tokens
+            metrics[key] = metrics.get(key, 0.0) + value.item() * n_tokens
+        for key, value in batch_performance_metrics.items():
+            metrics[key] = metrics.get(key, 0.0) + value * n_tokens
 
-        orig_model_performance_loss += lm_cross_entropy_loss(orig_logits, tokens).item() * n_tokens
-        sae_model_performance_loss += lm_cross_entropy_loss(new_logits, tokens).item() * n_tokens
+    # Get the mean for all metrics
+    for key in metrics:
+        metrics[key] /= total_tokens
 
-        orig_model_top1_accuracy += topk_accuracy(orig_logits, tokens, k=1).item() * n_tokens
-        sae_model_top1_accuracy += topk_accuracy(new_logits, tokens, k=1).item() * n_tokens
-        orig_vs_sae_top1_consistency += top1_consistency(orig_logits, new_logits).item() * n_tokens
-        orig_vs_sae_stat_distance += statistical_distance(orig_logits, new_logits).item() * n_tokens
-
-    # Get the mean for all metrics over the loss_dicts
-    for key in loss_dict:
-        loss_dict[key] /= total_tokens
-
-    prefix = "performance/eval"
-    performance_metrics = {
-        f"{prefix}/orig_model_ce_loss": orig_model_performance_loss / total_tokens,
-        f"{prefix}/sae_model_ce_loss": sae_model_performance_loss / total_tokens,
-        f"{prefix}/difference_ce_loss": (
-            (orig_model_performance_loss - sae_model_performance_loss) / total_tokens
-        ),
-        f"{prefix}/orig_model_top1_accuracy": orig_model_top1_accuracy / total_tokens,
-        f"{prefix}/sae_model_top1_accuracy": sae_model_top1_accuracy / total_tokens,
-        f"{prefix}/difference_top1_accuracy": (
-            orig_model_top1_accuracy - sae_model_top1_accuracy / total_tokens
-        ),
-        f"{prefix}/orig_vs_sae_top1_consistency": orig_vs_sae_top1_consistency / total_tokens,
-        f"{prefix}/orig_vs_sae_statistical_distance": orig_vs_sae_stat_distance / total_tokens,
-    }
     model.saes.train()
-    return {**loss_dict, **performance_metrics}
+    return metrics
 
 
 @logging_redirect_tqdm()

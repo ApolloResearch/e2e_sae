@@ -185,6 +185,7 @@ def calc_performance_metrics(
     tokens: Int[Tensor, "batch pos"] | Int[Tensor, "pos"],  # noqa: F821
     orig_logits: Float[Tensor, "... vocab"],
     new_logits: Float[Tensor, "... vocab"],
+    train: bool = True,
 ) -> dict[str, float]:
     """Get performance metrics of the SAE-augmented model compared to the original model.
 
@@ -192,6 +193,7 @@ def calc_performance_metrics(
         tokens: The tokens used to produce the logits.
         orig_logits: The logits produced by the original model.
         new_logits: The logits produced by the SAE model.
+        train: Whether in train or evaluation mode. Only affects the keys of the metrics.
 
     Returns:
         Dictionary of performance metrics.
@@ -204,7 +206,7 @@ def calc_performance_metrics(
     orig_vs_sae_top1_consistency = top1_consistency(orig_logits, new_logits, per_token=False).item()
     orig_vs_sae_stat_distance = statistical_distance(orig_logits, new_logits).item()
 
-    prefix = "performance/train"
+    prefix = "performance/train" if train else "performance/eval"
     metrics = {
         f"{prefix}/orig_model_ce_loss": orig_model_performance_loss,
         f"{prefix}/sae_model_ce_loss": sae_model_performance_loss,
