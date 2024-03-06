@@ -5,11 +5,9 @@ Usage:
 """
 import math
 import os
-from collections.abc import Callable
 from datetime import datetime
-from functools import partial
 from pathlib import Path
-from typing import Annotated, Any, Self, cast
+from typing import Annotated, Any, Self
 
 import fire
 import torch
@@ -213,34 +211,12 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
         n_tokens = tokens.shape[0] * tokens.shape[1]
         total_tokens += n_tokens
 
-        # Run model without SAEs
-        with torch.inference_mode():
-            orig_logits, orig_acts = model.tlens_model.run_with_cache(
-                tokens,
-                names_filter=model.raw_sae_position_names,
-                return_cache_object=False,
-                stop_at_layer=None,
-            )
-            assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
-        # Get SAE feature activations
-        sae_acts = {hook_name: {} for hook_name in orig_acts}
-
-        # Run the tokens through the whole SAE-augmented model
-        fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
-            (
-                hook_name,
-                partial(
-                    sae_hook,
-                    sae=cast(SAE, model.saes[hook_name.replace(".", "-")]),
-                    hook_acts=sae_acts[hook_name],
-                ),
-            )
-            for hook_name in orig_acts
-        ]
-        new_logits: Float[Tensor, "batch pos vocab"] = model.tlens_model.run_with_hooks(
-            tokens,
-            fwd_hooks=fwd_hooks,  # type: ignore
+        # Get logits and activations for the original and SAE-augmented models
+        orig_logits, _, new_logits, _ = model.forward_both(
+            tokens=tokens, run_entire_model=True, final_layer=None, sae_hook=sae_hook
         )
+        assert new_logits is not None, "new_logits should not be None during evaluation."
+
         orig_model_performance_loss += lm_cross_entropy_loss(orig_logits, tokens).item() * n_tokens
         sae_model_performance_loss += lm_cross_entropy_loss(new_logits, tokens).item() * n_tokens
 
@@ -383,44 +359,14 @@ def train(
             or is_last_batch
         )
 
-        # Run model without SAEs
-        with torch.inference_mode():
-            orig_logits, orig_acts = model.tlens_model.run_with_cache(
-                tokens,
-                names_filter=model.raw_sae_position_names,
-                return_cache_object=False,
-                stop_at_layer=None if run_entire_model else final_layer,
-            )
-            assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
-        # Get SAE feature activations
-        sae_acts = {hook_name: {} for hook_name in orig_acts}
-        new_logits: Float[Tensor, "batch pos vocab"] | None = None
-        if not run_entire_model:
-            # Just run the already-stored activations through the SAEs
-            for hook_name in orig_acts:
-                sae_hook(
-                    value=orig_acts[hook_name].detach().clone(),
-                    hook=None,
-                    sae=model.saes[hook_name.replace(".", "-")],
-                    hook_acts=sae_acts[hook_name],
-                )
-        else:
-            # Run the tokens through the whole SAE-augmented model
-            fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
-                (
-                    hook_name,
-                    partial(
-                        sae_hook,
-                        sae=cast(SAE, model.saes[hook_name.replace(".", "-")]),
-                        hook_acts=sae_acts[hook_name],
-                    ),
-                )
-                for hook_name in orig_acts
-            ]
-            new_logits = model.tlens_model.run_with_hooks(
-                tokens,
-                fwd_hooks=fwd_hooks,  # type: ignore
-            )
+        # Get logits and activations for the original and SAE-augmented models
+        orig_logits, orig_acts, new_logits, sae_acts = model.forward_both(
+            tokens=tokens,
+            run_entire_model=run_entire_model,
+            final_layer=final_layer,
+            sae_hook=sae_hook,
+        )
+
         loss, loss_dict = calc_loss(
             orig_acts=orig_acts,
             sae_acts=sae_acts,

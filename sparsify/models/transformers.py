@@ -1,5 +1,9 @@
-from typing import TYPE_CHECKING, Any
+from collections.abc import Callable
+from functools import partial
+from typing import TYPE_CHECKING, Any, cast
 
+import torch
+from jaxtyping import Float, Int
 from torch import Tensor, nn
 from transformer_lens import HookedTransformer
 
@@ -44,6 +48,77 @@ class SAETransformer(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.tlens_model(x)
+
+    def forward_both(
+        self,
+        tokens: Int[Tensor, "batch pos"],
+        run_entire_model: bool,
+        final_layer: int | None,
+        sae_hook: Callable,  # type: ignore
+    ) -> tuple[
+        Float[torch.Tensor, "batch pos d_vocab"],
+        dict[str, Float[torch.Tensor, "batch pos dim"]],
+        Float[Tensor, "batch pos vocab"] | None,
+        dict[str, dict[str, Float[torch.Tensor, "batch pos dim"]]],
+    ]:
+        """Forward pass through both the original tlens_model and the SAE-augmented model.
+
+        If `run_entire_model` is False, the forward pass will stop at `final_layer` in the original
+        model and not compute the logits of the SAE-augmented model. Otherwise, the entire model
+        will be run.
+
+        Args:
+            tokens: The input tokens.
+            run_entire_model: Whether to run the entire model or stop at `final_layer`.
+            final_layer: The layer to stop at if `run_entire_model` is False.
+            sae_hook: The hook function to use for the SAEs.
+
+        Returns:
+            - The logits of the original model.
+            - The activations of the original model.
+            - The logits of the SAE-augmented model, if `run_entire_model` is True.
+            - The activations of the SAE-augmented model.
+        """
+        # Run model without SAEs
+        with torch.inference_mode():
+            orig_logits, orig_acts = self.tlens_model.run_with_cache(
+                tokens,
+                names_filter=self.raw_sae_position_names,
+                return_cache_object=False,
+                stop_at_layer=None if run_entire_model else final_layer,
+            )
+            assert isinstance(orig_logits, torch.Tensor)
+
+        # Get SAE feature activations
+        sae_acts = {hook_name: {} for hook_name in orig_acts}
+        new_logits: Float[Tensor, "batch pos vocab"] | None = None
+        if not run_entire_model:
+            # Just run the already-stored activations through the SAEs
+            for hook_name in orig_acts:
+                sae_hook(
+                    value=orig_acts[hook_name].detach().clone(),
+                    hook=None,
+                    sae=self.saes[hook_name.replace(".", "-")],
+                    hook_acts=sae_acts[hook_name],
+                )
+        else:
+            # Run the tokens through the whole SAE-augmented model
+            fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
+                (
+                    hook_name,
+                    partial(
+                        sae_hook,
+                        sae=cast(SAE, self.saes[hook_name.replace(".", "-")]),
+                        hook_acts=sae_acts[hook_name],
+                    ),
+                )
+                for hook_name in orig_acts
+            ]
+            new_logits = self.tlens_model.run_with_hooks(
+                tokens,
+                fwd_hooks=fwd_hooks,  # type: ignore
+            )
+        return orig_logits, orig_acts, new_logits, sae_acts
 
     def to(
         self,
