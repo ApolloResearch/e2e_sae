@@ -19,7 +19,7 @@ train:
     inp_to_out: null
     logits_kl: null
 data:
-  dataset_name: apollo-research/sae-monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b
+  dataset_name: apollo-research/monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b
   is_tokenized: true
   tokenizer_name: EleutherAI/gpt-neox-20B
   streaming: true
