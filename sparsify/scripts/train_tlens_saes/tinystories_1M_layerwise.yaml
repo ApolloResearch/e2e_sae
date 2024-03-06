@@ -25,7 +25,7 @@ train:
       coeff: 1.0
     logits_kl: null
 data:
-  dataset_name: apollo-research/sae-skeskinen-TinyStories-hf-tokenizer-gpt2
+  dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
   is_tokenized: true
   tokenizer_name: gpt2
   streaming: true
