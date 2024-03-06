@@ -138,9 +138,15 @@ def get_run_name(config: Config) -> str:
         run_suffix = config.wandb_run_name
     else:
         coeff_info = f"lpcoeff-{config.train.loss_configs.sparsity.coeff}_"
-        if config.train.loss_configs.inp_to_out is not None:
+        if (
+            config.train.loss_configs.inp_to_out is not None
+            and config.train.loss_configs.inp_to_out.coeff > 0
+        ):
             coeff_info += f"inp-to-out-{config.train.loss_configs.inp_to_out.coeff}_"
-        if config.train.loss_configs.logits_kl is not None:
+        if (
+            config.train.loss_configs.logits_kl is not None
+            and config.train.loss_configs.logits_kl.coeff > 0
+        ):
             coeff_info += f"logits-kl-{config.train.loss_configs.logits_kl.coeff}_"
 
         run_suffix = config.wandb_run_name_prefix + (
