@@ -23,7 +23,7 @@ def main(config_path_str: str) -> None:
 
     for value in values:
         update_dict = {
-            "train": {"loss_configs": {"sparsity": {"coeff": value}}},
+            "train": {"loss": {"sparsity": {"coeff": value}}},
             "wandb_project": sweep_name,
         }
         new_config = replace_pydantic_model(base_config, update_dict)

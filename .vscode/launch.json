@@ -45,7 +45,7 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/run_train_tlens_saes_layerwise.py",
-            "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/tinystories_1M.yaml",
+            "args": "${workspaceFolder}/sparsify/scripts/train_tlens_saes/tinystories_1M_layerwise.yaml",
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {

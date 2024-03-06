@@ -4,7 +4,7 @@ tlens_model_path: sparsify/scripts/train_tlens/out/tiny-gpt2_lr-0.001_bs-16_2024
 train:
   batch_size: 3
   lr: 1e-3
-  loss_configs:
+  loss:
     sparsity:
       p_norm: 0.5
       coeff: 0.001

@@ -17,6 +17,7 @@ class DatasetConfig(BaseModel):
     streaming: bool = True
     split: str
     n_ctx: int
+    seed: int = 0
     column_name: str = "input_ids"
     """The name of the column in the dataset that contains the tokenized samples. Typically
     'input_ids' for datasets stored with sparsify/upload_hf_dataset.py, or "tokens" for datasets
@@ -27,11 +28,10 @@ class DataConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     train: DatasetConfig
     eval: DatasetConfig | None = None
-    seed: int = 0
 
 
 def create_data_loader(
-    dataset_config: DatasetConfig, batch_size: int, seed: int, buffer_size: int = 1000
+    dataset_config: DatasetConfig, batch_size: int, buffer_size: int = 1000
 ) -> tuple[DataLoader[Samples], AutoTokenizer]:
     """Create a DataLoader for the given dataset."""
     dataset = load_dataset(
@@ -40,9 +40,9 @@ def create_data_loader(
 
     if dataset_config.streaming:
         assert isinstance(dataset, IterableDataset)
-        dataset = dataset.shuffle(seed=seed, buffer_size=buffer_size)
+        dataset = dataset.shuffle(seed=dataset_config.seed, buffer_size=buffer_size)
     else:
-        dataset = dataset.shuffle(seed=seed)
+        dataset = dataset.shuffle(seed=dataset_config.seed)
 
     tokenizer = AutoTokenizer.from_pretrained(dataset_config.tokenizer_name)
     torch_dataset: TorchDataset[Samples]

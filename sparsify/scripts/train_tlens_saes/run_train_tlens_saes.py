@@ -57,8 +57,36 @@ from sparsify.utils import (
 )
 
 
-class TrainConfig(BaseModel):
+class SparsifiersConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+    type_of_sparsifier: str | None = "sae"
+    dict_size_to_input_ratio: PositiveFloat = 1.0
+    k: PositiveInt | None = None  # Only used for codebook sparsifier
+    pretrained_sae_paths: Annotated[
+        list[RootPath] | None, BeforeValidator(lambda x: [x] if isinstance(x, str | Path) else x)
+    ] = Field(None, description="Path to a pretrained SAE model to load. If None, don't load any.")
+    retrain_saes: bool = Field(False, description="Whether to retrain the pretrained SAEs.")
+    sae_position_names: Annotated[
+        list[str], BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
+    ] = Field(
+        ...,
+        description="The names of the SAE positions to train on. E.g. 'hook_resid_post' or "
+        "['hook_resid_post', 'hook_mlp_out'] or ['hook_mlp_out', 'hook_resid_post']",
+    )
+
+
+class Config(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    wandb_project: str | None = None  # If None, don't log to Weights & Biases
+    wandb_run_name: str | None = Field(
+        None,
+        description="If None, a run_name is generated based on (typically) important config "
+        "parameters.",
+    )
+    wandb_run_name_prefix: str = Field("", description="Name that is prepended to the run name")
+    seed: NonNegativeInt = 0
+    tlens_model_name: str | None = None
+    tlens_model_path: RootPath | None = None
     save_dir: RootPath | None = Path(__file__).parent / "out"
     n_samples: PositiveInt | None = None
     save_every_n_samples: PositiveInt | None
@@ -88,7 +116,17 @@ class TrainConfig(BaseModel):
         "kl divergence between the original and SAE-augmented logits. If training with logits_kl, "
         "these will be calculated every batch regardless of this parameter.",
     )
-    loss_configs: LossConfigs
+    loss: LossConfigs
+    data: DataConfig
+    saes: SparsifiersConfig
+
+    @model_validator(mode="before")
+    @classmethod
+    def check_only_one_model_definition(cls, values: dict[str, Any]) -> dict[str, Any]:
+        assert (values.get("tlens_model_name") is not None) + (
+            values.get("tlens_model_path") is not None
+        ) == 1, "Must specify exactly one of tlens_model_name or tlens_model_path."
+        return values
 
     @model_validator(mode="after")
     def check_effective_batch_size(self) -> Self:
@@ -99,70 +137,20 @@ class TrainConfig(BaseModel):
         return self
 
 
-class SparsifiersConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    type_of_sparsifier: str | None = "sae"
-    dict_size_to_input_ratio: PositiveFloat = 1.0
-    k: PositiveInt | None = None  # Only used for codebook sparsifier
-    pretrained_sae_paths: Annotated[
-        list[RootPath] | None, BeforeValidator(lambda x: [x] if isinstance(x, str | Path) else x)
-    ] = Field(None, description="Path to a pretrained SAE model to load. If None, don't load any.")
-    retrain_saes: bool = Field(False, description="Whether to retrain the pretrained SAEs.")
-    sae_position_names: Annotated[
-        list[str], BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
-    ] = Field(
-        ...,
-        description="The names of the SAE positions to train on. E.g. 'hook_resid_post' or "
-        "['hook_resid_post', 'hook_mlp_out'] or ['hook_mlp_out', 'hook_resid_post']",
-    )
-
-
-class Config(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    seed: NonNegativeInt = 0
-    tlens_model_name: str | None = None
-    tlens_model_path: RootPath | None = None
-    train: TrainConfig
-    data: DataConfig
-    saes: SparsifiersConfig
-    wandb_project: str | None = None  # If None, don't log to Weights & Biases
-    wandb_run_name: str | None = Field(
-        None,
-        description="If None, a run_name is generated based on (typically) important config "
-        "parameters.",
-    )
-    wandb_run_name_prefix: str = Field("", description="Name that is prepended to the run name")
-
-    @model_validator(mode="before")
-    @classmethod
-    def check_only_one_model_definition(cls, values: dict[str, Any]) -> dict[str, Any]:
-        assert (values.get("tlens_model_name") is not None) + (
-            values.get("tlens_model_path") is not None
-        ) == 1, "Must specify exactly one of tlens_model_name or tlens_model_path."
-        return values
-
-
 def get_run_name(config: Config) -> str:
     """Generate a run name based on the config."""
     if config.wandb_run_name:
         run_suffix = config.wandb_run_name
     else:
-        coeff_info = f"lpcoeff-{config.train.loss_configs.sparsity.coeff}_"
-        if (
-            config.train.loss_configs.inp_to_out is not None
-            and config.train.loss_configs.inp_to_out.coeff > 0
-        ):
-            coeff_info += f"inp-to-out-{config.train.loss_configs.inp_to_out.coeff}_"
-        if (
-            config.train.loss_configs.logits_kl is not None
-            and config.train.loss_configs.logits_kl.coeff > 0
-        ):
-            coeff_info += f"logits-kl-{config.train.loss_configs.logits_kl.coeff}_"
+        coeff_info = f"lpcoeff-{config.loss.sparsity.coeff}_"
+        if config.loss.inp_to_out is not None and config.loss.inp_to_out.coeff > 0:
+            coeff_info += f"inp-to-out-{config.loss.inp_to_out.coeff}_"
+        if config.loss.logits_kl is not None and config.loss.logits_kl.coeff > 0:
+            coeff_info += f"logits-kl-{config.loss.logits_kl.coeff}_"
 
         run_suffix = config.wandb_run_name_prefix + (
             f"{'-'.join(config.saes.sae_position_names)}_"
-            f"ratio-{config.saes.dict_size_to_input_ratio}_"
-            f"lr-{config.train.lr}_{coeff_info}"
+            f"ratio-{config.saes.dict_size_to_input_ratio}_lr-{config.lr}_{coeff_info}"
         )
     return config.wandb_run_name_prefix + run_suffix
 
@@ -186,15 +174,13 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
     """Evaluate the model on the eval dataset."""
     assert config.data.eval is not None, "No eval dataset specified in the config."
     model.saes.eval()
-    eval_loader = create_data_loader(
-        dataset_config=config.data.eval, seed=config.data.seed, batch_size=config.train.batch_size
-    )[0]
+    eval_loader = create_data_loader(config.data.eval, batch_size=config.batch_size)[0]
 
-    if config.train.eval_n_samples is None:
+    if config.eval_n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
         n_batches = None if isinstance(eval_loader.dataset, IterableDataset) else len(eval_loader)
     else:
-        n_batches = math.ceil(config.train.eval_n_samples / config.train.batch_size)
+        n_batches = math.ceil(config.eval_n_samples / config.batch_size)
 
     orig_model_performance_loss = 0.0
     sae_model_performance_loss = 0.0
@@ -254,7 +240,7 @@ def train(
 ) -> None:
     model.saes.train()
 
-    layerwise = config.train.loss_configs.logits_kl is None
+    layerwise = config.loss.logits_kl is None
 
     for name, param in model.named_parameters():
         if name.startswith("saes.") and name.split("saes.")[1] in trainable_param_names:
@@ -263,27 +249,27 @@ def train(
             param.requires_grad = False
     optimizer = torch.optim.Adam(
         filter(lambda p: p.requires_grad, model.parameters()),
-        lr=config.train.lr,
-        betas=(config.train.adam_beta1, 0.999),
+        lr=config.lr,
+        betas=(config.adam_beta1, 0.999),
     )
 
-    effective_batch_size = config.train.effective_batch_size or config.train.batch_size
-    n_gradient_accumulation_steps = effective_batch_size // config.train.batch_size
+    effective_batch_size = config.effective_batch_size or config.batch_size
+    n_gradient_accumulation_steps = effective_batch_size // config.batch_size
 
     lr_schedule = get_linear_lr_schedule(
-        warmup_samples=config.train.warmup_samples,
-        cooldown_samples=config.train.cooldown_samples,
-        n_samples=config.train.n_samples,
+        warmup_samples=config.warmup_samples,
+        cooldown_samples=config.cooldown_samples,
+        n_samples=config.n_samples,
         effective_batch_size=effective_batch_size,
     )
 
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_schedule)
 
-    if config.train.n_samples is None:
+    if config.n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
         n_batches = None if isinstance(train_loader.dataset, IterableDataset) else len(train_loader)
     else:
-        n_batches = math.ceil(config.train.n_samples / config.train.batch_size)
+        n_batches = math.ceil(config.n_samples / config.batch_size)
 
     final_layer = None
     if all(name.startswith("blocks.") for name in model.raw_sae_position_names) and layerwise:
@@ -302,7 +288,7 @@ def train(
         )
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    save_dir = config.train.save_dir / f"{run_name}_{timestamp}" if config.train.save_dir else None
+    save_dir = config.save_dir / f"{run_name}_{timestamp}" if config.save_dir else None
 
     total_samples = 0
     total_samples_at_last_save = 0
@@ -327,24 +313,24 @@ def train(
         # that case, we will never know when the final batch is reached.
         is_last_batch: bool = n_batches is not None and batch_idx == n_batches - 1
         is_grad_step: bool = (batch_idx + 1) % n_gradient_accumulation_steps == 0
-        is_eval_step: bool = config.train.eval_every_n_samples is not None and (
+        is_eval_step: bool = config.eval_every_n_samples is not None and (
             (batch_idx == 0)
-            or total_samples - total_samples_at_last_eval >= config.train.eval_every_n_samples
+            or total_samples - total_samples_at_last_eval >= config.eval_every_n_samples
             or is_last_batch
         )
         is_save_model_step: bool = save_dir is not None and (
             (
-                config.train.save_every_n_samples
-                and total_samples - total_samples_at_last_save >= config.train.save_every_n_samples
+                config.save_every_n_samples
+                and total_samples - total_samples_at_last_save >= config.save_every_n_samples
             )
             or is_last_batch
         )
 
-        if config.train.collect_output_metrics_every_n_samples > 0 and (
+        if config.collect_output_metrics_every_n_samples > 0 and (
             batch_idx == 0
             or (
                 samples_since_output_metric_collection
-                >= config.train.collect_output_metrics_every_n_samples
+                >= config.collect_output_metrics_every_n_samples
             )
         ):
             # Run entire model to collect output metrics
@@ -353,7 +339,7 @@ def train(
 
         is_log_step: bool = (
             batch_idx == 0
-            or (is_grad_step and (grad_updates + 1) % config.train.log_every_n_grad_steps == 0)
+            or (is_grad_step and (grad_updates + 1) % config.log_every_n_grad_steps == 0)
             or (layerwise and run_entire_model)
             or is_eval_step
             or is_last_batch
@@ -372,15 +358,15 @@ def train(
             sae_acts=sae_acts,
             orig_logits=None if new_logits is None else orig_logits.detach().clone(),
             new_logits=new_logits,
-            loss_configs=config.train.loss_configs,
+            loss_configs=config.loss,
             is_log_step=is_log_step,
         )
 
         loss = loss / n_gradient_accumulation_steps
         loss.backward()
-        if config.train.max_grad_norm is not None:
+        if config.max_grad_norm is not None:
             grad_norm = torch.nn.utils.clip_grad_norm_(
-                model.parameters(), config.train.max_grad_norm
+                model.parameters(), config.max_grad_norm
             ).item()
 
         if is_grad_step:
@@ -394,10 +380,10 @@ def train(
             or discrete_metrics is None
             and (
                 samples_since_discrete_metric_collection
-                >= config.train.collect_discrete_metrics_every_n_samples
+                >= config.collect_discrete_metrics_every_n_samples
             )
         ):
-            # Start collecting discrete metrics for next config.train.discrete_metrics_n_tokens
+            # Start collecting discrete metrics for next config.discrete_metrics_n_tokens
             discrete_metrics = DiscreteMetrics(
                 dict_sizes={
                     hook_name: sae_acts[hook_name]["c"].shape[-1] for hook_name in sae_acts
@@ -410,7 +396,7 @@ def train(
             discrete_metrics.update_dict_el_frequencies(
                 sae_acts, batch_tokens=tokens.shape[0] * tokens.shape[1]
             )
-            if discrete_metrics.tokens_used >= config.train.discrete_metrics_n_tokens:
+            if discrete_metrics.tokens_used >= config.discrete_metrics_n_tokens:
                 # Finished collecting discrete metrics
                 metrics = discrete_metrics.collect_for_logging(
                     log_wandb_histogram=config.wandb_project is not None
@@ -489,9 +475,7 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     logger.info(config)
     set_seed(config.seed)
 
-    train_loader = create_data_loader(
-        dataset_config=config.data.train, seed=config.data.seed, batch_size=config.train.batch_size
-    )[0]
+    train_loader = create_data_loader(config.data.train, batch_size=config.batch_size)[0]
     tlens_model = load_tlens_model(
         tlens_model_name=config.tlens_model_name, tlens_model_path=config.tlens_model_path
     )
