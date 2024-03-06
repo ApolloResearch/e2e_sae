@@ -139,19 +139,16 @@ class DiscreteMetrics:
 
 
 @torch.inference_mode()
-def collect_wandb_metrics(
+def calc_standard_metrics(
     loss: float,
     grad_updates: int,
     total_tokens: int,
     sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]],
     loss_dict: dict[str, Float[Tensor, ""]],
     grad_norm: float | None,
-    orig_logits: Float[Tensor, "... vocab"] | None,
-    new_logits: Float[Tensor, "... vocab"] | None,
-    tokens: Int[Tensor, "batch pos"] | Int[Tensor, "pos"],  # noqa: F821
     lr: float,
 ) -> dict[str, int | float]:
-    """Collect metrics for logging to wandb.
+    """Collect standard metrics for logging.
 
     Args:
         loss: The final loss value.
@@ -159,58 +156,63 @@ def collect_wandb_metrics(
         sae_acts: Dictionary of activations for each SAE position.
         loss_dict: Dictionary of loss values that make up the final loss.
         grad_norm: The norm of the gradients.
-        orig_logits: The logits produced by the original model.
-        new_logits: The logits produced by the SAE model.
-        tokens: The tokens used to produce the logits and activations.
         lr: The learning rate used for the current update.
 
     Returns:
-        Dictionary of metrics to log to wandb.
+        Dictionary of standard metrics.
     """
-    wandb_log_info = {
-        "loss": loss,
-        "grad_updates": grad_updates,
-        "total_tokens": total_tokens,
-        "lr": lr,
-    }
+    metrics = {"loss": loss, "grad_updates": grad_updates, "total_tokens": total_tokens, "lr": lr}
     for name, sae_act in sae_acts.items():
         # Record L_0 norm of the cs
         l_0_norm = torch.norm(sae_act["c"], p=0, dim=-1).mean().item()
-        wandb_log_info[f"sparsity/L_0/{name}"] = l_0_norm
+        metrics[f"sparsity/L_0/{name}"] = l_0_norm
 
         # Record fraction of zeros in the cs
         frac_zeros = ((sae_act["c"] == 0).sum() / sae_act["c"].numel()).item()
-        wandb_log_info[f"sparsity/frac_zeros/{name}"] = frac_zeros
+        metrics[f"sparsity/frac_zeros/{name}"] = frac_zeros
 
     for loss_name, loss_value in loss_dict.items():
-        wandb_log_info[loss_name] = loss_value.item()
+        metrics[loss_name] = loss_value.item()
 
     if grad_norm is not None:
-        wandb_log_info["grad_norm"] = grad_norm
+        metrics["grad_norm"] = grad_norm
 
-    if new_logits is not None and orig_logits is not None:
-        orig_model_performance_loss = lm_cross_entropy_loss(orig_logits, tokens, per_token=False)
-        sae_model_performance_loss = lm_cross_entropy_loss(new_logits, tokens, per_token=False)
+    return metrics
 
-        orig_model_top1_accuracy = topk_accuracy(orig_logits, tokens, k=1, per_token=False)
-        sae_model_top1_accuracy = topk_accuracy(new_logits, tokens, k=1, per_token=False)
-        orig_vs_sae_top1_consistency = top1_consistency(orig_logits, new_logits, per_token=False)
-        orig_vs_sae_stat_distance = statistical_distance(orig_logits, new_logits)
 
-        wandb_log_info.update(
-            {
-                "performance/orig_model_ce_loss": orig_model_performance_loss.item(),
-                "performance/sae_model_ce_loss": sae_model_performance_loss.item(),
-                "performance/difference_loss": (
-                    orig_model_performance_loss - sae_model_performance_loss
-                ).item(),
-                "performance/orig_model_top1_accuracy": orig_model_top1_accuracy.item(),
-                "performance/sae_model_top1_accuracy": sae_model_top1_accuracy.item(),
-                "performance/difference_top1_accuracy": (
-                    orig_model_top1_accuracy - sae_model_top1_accuracy
-                ).item(),
-                "performance/orig_vs_sae_top1_consistency": orig_vs_sae_top1_consistency.item(),
-                "performance/orig_vs_sae_statistical_distance": orig_vs_sae_stat_distance.item(),
-            },
-        )
-    return wandb_log_info
+@torch.inference_mode()
+def calc_performance_metrics(
+    tokens: Int[Tensor, "batch pos"] | Int[Tensor, "pos"],  # noqa: F821
+    orig_logits: Float[Tensor, "... vocab"],
+    new_logits: Float[Tensor, "... vocab"],
+) -> dict[str, float]:
+    """Get performance metrics of the SAE-augmented model compared to the original model.
+
+    Args:
+        tokens: The tokens used to produce the logits.
+        orig_logits: The logits produced by the original model.
+        new_logits: The logits produced by the SAE model.
+
+    Returns:
+        Dictionary of performance metrics.
+    """
+    orig_model_performance_loss = lm_cross_entropy_loss(orig_logits, tokens, per_token=False).item()
+    sae_model_performance_loss = lm_cross_entropy_loss(new_logits, tokens, per_token=False).item()
+
+    orig_model_top1_accuracy = topk_accuracy(orig_logits, tokens, k=1, per_token=False).item()
+    sae_model_top1_accuracy = topk_accuracy(new_logits, tokens, k=1, per_token=False).item()
+    orig_vs_sae_top1_consistency = top1_consistency(orig_logits, new_logits, per_token=False).item()
+    orig_vs_sae_stat_distance = statistical_distance(orig_logits, new_logits).item()
+
+    prefix = "performance/train"
+    metrics = {
+        f"{prefix}/orig_model_ce_loss": orig_model_performance_loss,
+        f"{prefix}/sae_model_ce_loss": sae_model_performance_loss,
+        f"{prefix}/difference_ce_loss": orig_model_performance_loss - sae_model_performance_loss,
+        f"{prefix}/orig_model_top1_accuracy": orig_model_top1_accuracy,
+        f"{prefix}/sae_model_top1_accuracy": sae_model_top1_accuracy,
+        f"{prefix}/difference_top1_accuracy": orig_model_top1_accuracy - sae_model_top1_accuracy,
+        f"{prefix}/orig_vs_sae_top1_consistency": orig_vs_sae_top1_consistency,
+        f"{prefix}/orig_vs_sae_statistical_distance": orig_vs_sae_stat_distance,
+    }
+    return metrics

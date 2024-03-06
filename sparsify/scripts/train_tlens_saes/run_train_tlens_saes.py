@@ -14,6 +14,7 @@ from typing import Annotated, Any, Self, cast
 import fire
 import torch
 import wandb
+from datasets import IterableDataset
 from dotenv import load_dotenv
 from jaxtyping import Float, Int
 from pydantic import (
@@ -29,16 +30,23 @@ from pydantic import (
 )
 from torch import Tensor
 from torch.utils.data import DataLoader
-from torch.utils.data.dataset import IterableDataset
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 from transformer_lens.hook_points import HookPoint
+from transformer_lens.utils import lm_cross_entropy_loss
 
 from sparsify.data import DataConfig, create_data_loader
 from sparsify.loader import load_pretrained_saes, load_tlens_model
 from sparsify.log import logger
 from sparsify.losses import LossConfigs, calc_loss
-from sparsify.metrics import DiscreteMetrics, collect_wandb_metrics
+from sparsify.metrics import (
+    DiscreteMetrics,
+    calc_performance_metrics,
+    calc_standard_metrics,
+    statistical_distance,
+    top1_consistency,
+    topk_accuracy,
+)
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
 from sparsify.types import RootPath, Samples
@@ -54,8 +62,12 @@ from sparsify.utils import (
 class TrainConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     save_dir: RootPath | None = Path(__file__).parent / "out"
-    save_every_n_samples: PositiveInt | None
     n_samples: PositiveInt | None = None
+    save_every_n_samples: PositiveInt | None
+    eval_every_n_samples: PositiveInt | None = Field(
+        None, description="If None, don't evaluate. If 0, only evaluate at the end."
+    )
+    eval_n_samples: PositiveInt | None
     batch_size: PositiveInt
     effective_batch_size: PositiveInt | None = None
     lr: PositiveFloat
@@ -165,11 +177,96 @@ def sae_hook(
     return output
 
 
+@torch.inference_mode()
+def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dict[str, float]:
+    """Evaluate the model on the eval dataset."""
+    assert config.data.eval is not None, "No eval dataset specified in the config."
+    model.saes.eval()
+    eval_loader = create_data_loader(
+        dataset_config=config.data.eval, seed=config.data.seed, batch_size=config.train.batch_size
+    )[0]
+
+    if config.train.eval_n_samples is None:
+        # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
+        n_batches = None if isinstance(eval_loader.dataset, IterableDataset) else len(eval_loader)
+    else:
+        n_batches = math.ceil(config.train.eval_n_samples / config.train.batch_size)
+
+    orig_model_performance_loss = 0.0
+    sae_model_performance_loss = 0.0
+    orig_model_top1_accuracy = 0.0
+    sae_model_top1_accuracy = 0.0
+    orig_vs_sae_top1_consistency = 0.0
+    orig_vs_sae_stat_distance = 0.0
+    total_tokens = 0
+
+    for batch_idx, batch in tqdm(enumerate(eval_loader), total=n_batches, desc="Eval Steps"):
+        if n_batches is not None and batch_idx >= n_batches:
+            break
+        tokens = batch[config.data.eval.column_name].to(device=device)
+        n_tokens = tokens.shape[0] * tokens.shape[1]
+        total_tokens += n_tokens
+
+        # Run model without SAEs
+        with torch.inference_mode():
+            orig_logits, orig_acts = model.tlens_model.run_with_cache(
+                tokens,
+                names_filter=model.raw_sae_position_names,
+                return_cache_object=False,
+                stop_at_layer=None,
+            )
+            assert isinstance(orig_logits, torch.Tensor)  # Prevent pyright error
+        # Get SAE feature activations
+        sae_acts = {hook_name: {} for hook_name in orig_acts}
+
+        # Run the tokens through the whole SAE-augmented model
+        fwd_hooks: list[tuple[str, Callable[..., Float[torch.Tensor, "... d_head"]]]] = [
+            (
+                hook_name,
+                partial(
+                    sae_hook,
+                    sae=cast(SAE, model.saes[hook_name.replace(".", "-")]),
+                    hook_acts=sae_acts[hook_name],
+                ),
+            )
+            for hook_name in orig_acts
+        ]
+        new_logits: Float[Tensor, "batch pos vocab"] = model.tlens_model.run_with_hooks(
+            tokens,
+            fwd_hooks=fwd_hooks,  # type: ignore
+        )
+        orig_model_performance_loss += lm_cross_entropy_loss(orig_logits, tokens).item() * n_tokens
+        sae_model_performance_loss += lm_cross_entropy_loss(new_logits, tokens).item() * n_tokens
+
+        orig_model_top1_accuracy += topk_accuracy(orig_logits, tokens, k=1).item() * n_tokens
+        sae_model_top1_accuracy += topk_accuracy(new_logits, tokens, k=1).item() * n_tokens
+        orig_vs_sae_top1_consistency += top1_consistency(orig_logits, new_logits).item() * n_tokens
+        orig_vs_sae_stat_distance += statistical_distance(orig_logits, new_logits).item() * n_tokens
+
+    prefix = "performance/eval"
+    metrics = {
+        f"{prefix}/orig_model_ce_loss": orig_model_performance_loss / total_tokens,
+        f"{prefix}/sae_model_ce_loss": sae_model_performance_loss / total_tokens,
+        f"{prefix}/difference_ce_loss": (
+            (orig_model_performance_loss - sae_model_performance_loss) / total_tokens
+        ),
+        f"{prefix}/orig_model_top1_accuracy": orig_model_top1_accuracy / total_tokens,
+        f"{prefix}/sae_model_top1_accuracy": sae_model_top1_accuracy / total_tokens,
+        f"{prefix}/difference_top1_accuracy": (
+            orig_model_top1_accuracy - sae_model_top1_accuracy / total_tokens
+        ),
+        f"{prefix}/orig_vs_sae_top1_consistency": orig_vs_sae_top1_consistency / total_tokens,
+        f"{prefix}/orig_vs_sae_statistical_distance": orig_vs_sae_stat_distance / total_tokens,
+    }
+    model.saes.train()
+    return metrics
+
+
 @logging_redirect_tqdm()
 def train(
     config: Config,
     model: SAETransformer,
-    data_loader: DataLoader[Samples],
+    train_loader: DataLoader[Samples],
     trainable_param_names: list[str],
     device: torch.device,
 ) -> None:
@@ -202,7 +299,7 @@ def train(
 
     if config.train.n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
-        n_batches = None if isinstance(data_loader.dataset, IterableDataset) else len(data_loader)
+        n_batches = None if isinstance(train_loader.dataset, IterableDataset) else len(train_loader)
     else:
         n_batches = math.ceil(config.train.n_samples / config.train.batch_size)
 
@@ -227,6 +324,7 @@ def train(
 
     total_samples = 0
     total_samples_at_last_save = 0
+    total_samples_at_last_eval = 0
     total_tokens = 0
     grad_updates = 0
     grad_norm: float | None = None
@@ -234,9 +332,31 @@ def train(
     discrete_metrics: DiscreteMetrics | None = None
     samples_since_output_metric_collection: int = 0
 
-    for batch_idx, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Steps"):
+    for batch_idx, batch in tqdm(enumerate(train_loader), total=n_batches, desc="Steps"):
+        tokens: Int[Tensor, "batch pos"] = batch[config.data.train.column_name].to(device=device)
+
+        total_samples += tokens.shape[0]
+        total_tokens += tokens.shape[0] * tokens.shape[1]
+        samples_since_discrete_metric_collection += tokens.shape[0]
+        samples_since_output_metric_collection += tokens.shape[0]
+
         run_entire_model: bool = not layerwise
+        # Note that is_last_batch will always be False for iterable datasets with n_samples=None. In
+        # that case, we will never know when the final batch is reached.
+        is_last_batch: bool = n_batches is not None and batch_idx == n_batches - 1
         is_grad_step: bool = (batch_idx + 1) % n_gradient_accumulation_steps == 0
+        is_eval_step: bool = config.train.eval_every_n_samples is not None and (
+            (batch_idx == 0)
+            or total_samples - total_samples_at_last_eval >= config.train.eval_every_n_samples
+            or is_last_batch
+        )
+        is_save_model_step: bool = save_dir is not None and (
+            (
+                config.train.save_every_n_samples
+                and total_samples - total_samples_at_last_save >= config.train.save_every_n_samples
+            )
+            or is_last_batch
+        )
 
         if config.train.collect_output_metrics_every_n_samples > 0 and (
             batch_idx == 0
@@ -253,9 +373,10 @@ def train(
             batch_idx == 0
             or (is_grad_step and (grad_updates + 1) % config.train.log_every_n_grad_steps == 0)
             or (layerwise and run_entire_model)
+            or is_eval_step
+            or is_last_batch
         )
 
-        tokens: Int[Tensor, "batch pos"] = batch[config.data.column_name].to(device=device)
         # Run model without SAEs
         with torch.inference_mode():
             orig_logits, orig_acts = model.tlens_model.run_with_cache(
@@ -316,11 +437,6 @@ def train(
             grad_updates += 1
             scheduler.step()
 
-        total_samples += tokens.shape[0]
-        total_tokens += tokens.shape[0] * tokens.shape[1]
-        samples_since_discrete_metric_collection += tokens.shape[0]
-        samples_since_output_metric_collection += tokens.shape[0]
-
         if (
             batch_idx == 0
             or discrete_metrics is None
@@ -359,26 +475,33 @@ def train(
                 f"Samples {total_samples} Batch_idx {batch_idx} GradUpdates {grad_updates} "
                 f"Loss {loss.item():.5f}"
             )
-
             if config.wandb_project:
-                wandb_log_info = collect_wandb_metrics(
+                log_info = calc_standard_metrics(
                     loss=loss.item(),
                     grad_updates=grad_updates,
                     total_tokens=total_tokens,
                     sae_acts=sae_acts,
                     loss_dict=loss_dict,
                     grad_norm=grad_norm,
-                    orig_logits=orig_logits.detach().clone() if new_logits is not None else None,
-                    new_logits=new_logits.detach().clone() if new_logits is not None else None,
-                    tokens=tokens,
                     lr=optimizer.param_groups[0]["lr"],
                 )
-                wandb.log(wandb_log_info, step=total_samples)
-        if (
-            save_dir
-            and config.train.save_every_n_samples
-            and total_samples - total_samples_at_last_save >= config.train.save_every_n_samples
-        ):
+                if new_logits is not None:
+                    train_performance_metrics = calc_performance_metrics(
+                        tokens=tokens,
+                        orig_logits=orig_logits.detach().clone(),
+                        new_logits=new_logits.detach().clone(),
+                    )
+                    log_info.update(train_performance_metrics)
+
+                if is_eval_step:
+                    eval_performance_metrics = evaluate(config=config, model=model, device=device)
+                    total_samples_at_last_eval = total_samples
+                    log_info.update(eval_performance_metrics)
+
+                wandb.log(log_info, step=total_samples)
+
+        if is_save_model_step:
+            assert save_dir is not None
             total_samples_at_last_save = total_samples
             save_module(
                 config_dict=config.model_dump(mode="json"),
@@ -387,12 +510,14 @@ def train(
                 model_path=save_dir / f"samples_{total_samples}.pt",
             )
             if config.wandb_project:
-                wandb.save(save_dir / f"samples_{total_samples}.pt")
+                wandb.save(str(save_dir / f"samples_{total_samples}.pt"))
 
-        if config.train.n_samples is not None and total_samples >= config.train.n_samples:
+        if is_last_batch:
             break
 
-    if save_dir:
+    # If the model wasn't saved at the last step of training (which may happen if n_samples: null
+    # and the dataset is an IterableDataset), save it now.
+    if save_dir and not (save_dir / f"samples_{total_samples}.pt").exists():
         save_module(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
@@ -400,7 +525,7 @@ def train(
             model_path=save_dir / f"samples_{total_samples}.pt",
         )
         if config.wandb_project:
-            wandb.save(save_dir / f"samples_{total_samples}.pt")
+            wandb.save(str(save_dir / f"samples_{total_samples}.pt"))
 
     if config.wandb_project:
         wandb.finish()
@@ -412,7 +537,9 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     logger.info(config)
     set_seed(config.seed)
 
-    data_loader, _ = create_data_loader(config.data, batch_size=config.train.batch_size)
+    train_loader = create_data_loader(
+        dataset_config=config.data.train, seed=config.data.seed, batch_size=config.train.batch_size
+    )[0]
     tlens_model = load_tlens_model(
         tlens_model_name=config.tlens_model_name, tlens_model_path=config.tlens_model_path
     )
@@ -441,7 +568,7 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     train(
         config=config,
         model=model,
-        data_loader=data_loader,
+        train_loader=train_loader,
         trainable_param_names=trainable_param_names,
         device=device,
     )
