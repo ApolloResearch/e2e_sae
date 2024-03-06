@@ -6,14 +6,18 @@ https://github.com/ai-safety-foundation/sparse_autoencoder/tree/main/sparse_auto
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, TypedDict, final
+from typing import TypedDict
 
-from datasets import Dataset, IterableDataset, VerificationMode, load_dataset
+from datasets import (
+    Dataset,
+    DatasetDict,
+    VerificationMode,
+    load_dataset,
+)
+from huggingface_hub import HfApi
 from jaxtyping import Int
 from pydantic import PositiveInt, validate_call
 from torch import Tensor
-from torch.utils.data import DataLoader
-from torch.utils.data import Dataset as TorchDataset
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 
@@ -87,41 +91,30 @@ class TextDataset:
         self,
         dataset_path: str,
         tokenizer: PreTrainedTokenizerBase,
-        buffer_size: PositiveInt = 1000,
         context_size: PositiveInt = 256,
         load_revision: str = "main",
         dataset_dir: str | None = None,
         dataset_files: str | Sequence[str] | Mapping[str, str | Sequence[str]] | None = None,
-        dataset_split: str = "train",
+        dataset_split: str | None = None,
         dataset_column_name: str = "input_ids",
         n_processes_preprocessing: PositiveInt | None = None,
         preprocess_batch_size: PositiveInt = 1000,
-        *,
-        pre_download: bool = False,
     ):
         """Initialize a generic text dataset from Hugging Face.
 
         Args:
             dataset_path: Path to the dataset on Hugging Face (e.g. `'monology/pile-uncopyright'`).
             tokenizer: Tokenizer to process text data.
-            buffer_size: The buffer size to use when shuffling the dataset when streaming. When
-                streaming a dataset, this just pre-downloads at least `buffer_size` items and then
-                shuffles just that buffer. Note that the generated activations should also be
-                shuffled before training the sparse autoencoder, so a large buffer may not be
-                strictly necessary here. Note also that this is the number of items in the dataset
-                (e.g. number of prompts) and is typically significantly less than the number of
-                tokenized prompts once the preprocessing function has been applied.
             context_size: The context size to use when returning a list of tokenized prompts.
                 *Towards Monosemanticity: Decomposing Language Models With Dictionary Learning* used
                 a context size of 250.
             load_revision: The commit hash or branch name to download from the source dataset.
             dataset_dir: Defining the `data_dir` of the dataset configuration.
             dataset_files: Path(s) to source data file(s).
-            dataset_split: Dataset split (e.g., 'train').
+            dataset_split: Dataset split (e.g., 'train'). If None, process all splits.
             dataset_column_name: The column name for the prompts.
             n_processes_preprocessing: Number of processes to use for preprocessing.
             preprocess_batch_size: Batch size for preprocessing (tokenizing prompts).
-            pre_download: Whether to pre-download the whole dataset.
         """
         self.tokenizer = tokenizer
 
@@ -129,32 +122,30 @@ class TextDataset:
         self._dataset_column_name = dataset_column_name
 
         # Load the dataset
-        should_stream = not pre_download
         dataset = load_dataset(
             dataset_path,
             revision=load_revision,
-            streaming=should_stream,
+            streaming=False,  # We need to pre-download the dataset to upload it to the hub.
             split=dataset_split,
             data_dir=dataset_dir,
             data_files=dataset_files,
             verification_mode=VerificationMode.NO_CHECKS,  # As it fails when data_files is set
         )
+        # If split is not None, will return a Dataset instance. Convert to DatasetDict.
+        if isinstance(dataset, Dataset):
+            assert dataset_split is not None
+            dataset = DatasetDict({dataset_split: dataset})
+        assert isinstance(dataset, DatasetDict)
 
-        # Setup preprocessing (we remove all columns except for input ids)
-        remove_columns: list[str] = list(next(iter(dataset)).keys())
-        if "input_ids" in remove_columns:
-            remove_columns.remove("input_ids")
+        for split in dataset:
+            print(f"Processing split: {split}")
+            # Setup preprocessing (we remove all columns except for input ids)
+            remove_columns: list[str] = list(next(iter(dataset[split])).keys())  # type: ignore
+            if "input_ids" in remove_columns:
+                remove_columns.remove("input_ids")
 
-        if pre_download:
-            if not isinstance(dataset, Dataset):
-                error_message = (
-                    f"Expected Hugging Face dataset to be a Dataset when pre-downloading, but got "
-                    f"{type(dataset)}."
-                )
-                raise TypeError(error_message)
-
-            # Download the whole dataset
-            mapped_dataset = dataset.map(
+            # Tokenize and chunk the prompts
+            mapped_dataset = dataset[split].map(
                 self.preprocess,
                 batched=True,
                 batch_size=preprocess_batch_size,
@@ -162,66 +153,16 @@ class TextDataset:
                 remove_columns=remove_columns,
                 num_proc=n_processes_preprocessing,
             )
-            self.dataset = mapped_dataset.shuffle()
-        else:
-            # Setup approximate shuffling. As the dataset is streamed, this just pre-downloads at
-            # least `buffer_size` items and then shuffles just that buffer.
-            # https://huggingface.co/docs/datasets/v2.14.5/stream#shuffle
-            if not isinstance(dataset, IterableDataset):
-                error_message = (
-                    f"Expected Hugging Face dataset to be an IterableDataset when streaming, but "
-                    f"got {type(dataset)}."
-                )
-                raise TypeError(error_message)
+            dataset[split] = mapped_dataset.shuffle()
 
-            mapped_dataset = dataset.map(
-                self.preprocess,
-                batched=True,
-                batch_size=preprocess_batch_size,
-                fn_kwargs={"context_size": context_size},
-                remove_columns=remove_columns,
-            )
-            self.dataset = mapped_dataset.shuffle(buffer_size=buffer_size)  # type: ignore
-
-    @final
-    def __iter__(self) -> Any:  # noqa: ANN401
-        """Iterate Dunder Method.
-
-        Enables direct access to :attr:`dataset` with e.g. `for` loops.
-        """
-        return self.dataset.__iter__()
-
-    @final
-    def get_dataloader(
-        self, batch_size: int, num_workers: int = 0
-    ) -> DataLoader[TorchTokenizedPrompts]:
-        """Get a PyTorch DataLoader.
-
-        Args:
-            batch_size: The batch size to use.
-            num_workers: Number of CPU workers.
-
-        Returns:
-            PyTorch DataLoader.
-        """
-        torch_dataset: TorchDataset[TorchTokenizedPrompts] = self.dataset.with_format("torch")  # type: ignore
-
-        return DataLoader[TorchTokenizedPrompts](
-            torch_dataset,
-            batch_size=batch_size,
-            # Shuffle is most efficiently done with the `shuffle` method on the dataset itself, not
-            # here.
-            shuffle=False,
-            num_workers=num_workers,
-        )
+        self.dataset = dataset
 
     @validate_call
     def push_to_hugging_face_hub(
         self,
         repo_id: str,
         commit_message: str = "Upload preprocessed dataset using sparse_autoencoder.",
-        max_shard_size: str | None = None,
-        n_shards: PositiveInt = 64,
+        max_shard_size: str = "500MB",
         revision: str = "main",
         *,
         private: bool = False,
@@ -244,29 +185,14 @@ class TextDataset:
         Args:
             repo_id: Hugging Face repo ID to save the dataset to (e.g. `username/dataset_name`).
             commit_message: Commit message.
-            max_shard_size: Maximum shard size (e.g. `'500MB'`). Should not be set if `n_shards`
-                is set.
-            n_shards: Number of shards to split the dataset into. A high number is recommended
-                here to allow for flexible distributed training of SAEs across nodes (where e.g.
-                each node fetches its own shard).
+            max_shard_size: Maximum shard size (e.g. `'500MB'`).
             revision: Branch to push to.
             private: Whether to save the dataset privately.
-
-        Raises:
-            TypeError: If the dataset is streamed.
         """
-        if isinstance(self.dataset, IterableDataset):
-            error_message = (
-                "Cannot share a streamed dataset to Hugging Face. "
-                "Please use `pre_download=True` when initializing the dataset."
-            )
-            raise TypeError(error_message)
-
         self.dataset.push_to_hub(
             repo_id=repo_id,
             commit_message=commit_message,
             max_shard_size=max_shard_size,
-            num_shards=n_shards,
             private=private,
             revision=revision,
         )
@@ -277,7 +203,7 @@ class DatasetToPreprocess:
     """Dataset to preprocess info."""
 
     source_path: str
-    """Source path from HF (e.g. `skeskinen/TinyStories-hf`)."""
+    """Source path from HF (e.g. `roneneldan/TinyStories`)."""
 
     tokenizer_name: str
     """HF tokenizer name (e.g. `gpt2`)."""
@@ -291,7 +217,7 @@ class DatasetToPreprocess:
     data_files: list[str] | None = None
     """Data files to download from the source dataset."""
 
-    hugging_face_username: str = "alancooney"
+    hugging_face_username: str = "apollo-research"
     """HF username for the upload."""
 
     private: bool = False
@@ -299,6 +225,9 @@ class DatasetToPreprocess:
 
     context_size: int = 2048
     """Number of tokens in a single sample. gpt2 uses 1024, pythia uses 2048."""
+
+    split: str | None = None
+    """Dataset split to download from the source dataset. If None, process all splits."""
 
     @property
     def source_alias(self) -> str:
@@ -325,7 +254,8 @@ class DatasetToPreprocess:
         Returns:
             The destination repo name.
         """
-        return f"sae-{self.source_alias}-tokenizer-{self.tokenizer_alias}"
+        split_str = f"{self.split}-" if self.split else ""
+        return f"{self.source_alias}-{split_str}tokenizer-{self.tokenizer_alias}"
 
     @property
     def destination_repo_id(self) -> str:
@@ -360,18 +290,31 @@ def upload_datasets(datasets_to_preprocess: list[DatasetToPreprocess]) -> None:
         text_dataset = TextDataset(
             dataset_path=dataset.source_path,
             tokenizer=tokenizer,
-            pre_download=True,  # Must be true to upload after pre-processing, to the hub.
             dataset_files=dataset.data_files,
             dataset_dir=dataset.data_dir,
+            dataset_split=dataset.split,
             context_size=dataset.context_size,
             load_revision=dataset.load_revision,
         )
-        print("Size: ", text_dataset.dataset.size_in_bytes)
-        print("Info: ", text_dataset.dataset.info)
+        # size_in_bytes and info gives info about the whole dataset regardless of the split index,
+        # so we just get the first split.
+        split = next(iter(text_dataset.dataset))
+        print("Dataset info:")
+        print(f"Size: {text_dataset.dataset[split].size_in_bytes / 1e9:.2f} GB")  # type: ignore
+        print("Info: ", text_dataset.dataset[split].info)
 
         # Upload
         text_dataset.push_to_hugging_face_hub(
             repo_id=dataset.destination_repo_id, private=dataset.private
+        )
+        # Also upload the current file to the repo for reproducibility and transparency
+        api = HfApi()
+        api.upload_file(
+            path_or_fileobj=__file__,
+            path_in_repo="upload_script.py",
+            repo_id=dataset.destination_repo_id,
+            repo_type="dataset",
+            commit_message="Add upload script",
         )
 
 
@@ -390,10 +333,7 @@ if __name__ == "__main__":
 
     datasets: list[DatasetToPreprocess] = [
         DatasetToPreprocess(
-            # Note that roneneldan/TinyStories has dataset loading issues, so we use skeskinen's
-            # which fixes the issue (and explains the issue in the README.md of the repo)
-            source_path="skeskinen/TinyStories-hf",
-            load_revision="5e877826c63d00ec32d0a93e1110cd764402e9b9",
+            source_path="roneneldan/TinyStories",
             # Paper says gpt-neo tokenizer, and e.g. EleutherAI/gpt-neo-125M uses the same tokenizer
             # as gpt2. They also suggest using gpt2 in (https://github.com/EleutherAI/gpt-neo).
             tokenizer_name="gpt2",
