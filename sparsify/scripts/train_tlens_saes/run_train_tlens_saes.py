@@ -132,6 +132,31 @@ class Config(BaseModel):
         return values
 
 
+def get_run_name(config: Config) -> str:
+    """Generate a run name based on the config."""
+    if config.wandb_run_name:
+        run_suffix = config.wandb_run_name
+    else:
+        coeff_info = f"lpcoeff-{config.train.loss_configs.sparsity.coeff}_"
+        if (
+            config.train.loss_configs.inp_to_out is not None
+            and config.train.loss_configs.inp_to_out.coeff > 0
+        ):
+            coeff_info += f"inp-to-out-{config.train.loss_configs.inp_to_out.coeff}_"
+        if (
+            config.train.loss_configs.logits_kl is not None
+            and config.train.loss_configs.logits_kl.coeff > 0
+        ):
+            coeff_info += f"logits-kl-{config.train.loss_configs.logits_kl.coeff}_"
+
+        run_suffix = config.wandb_run_name_prefix + (
+            f"{'-'.join(config.saes.sae_position_names)}_"
+            f"ratio-{config.saes.dict_size_to_input_ratio}_"
+            f"lr-{config.train.lr}_{coeff_info}"
+        )
+    return config.wandb_run_name_prefix + run_suffix
+
+
 def sae_hook(
     value: Float[torch.Tensor, "... dim"],
     hook: HookPoint | None,
@@ -192,15 +217,8 @@ def train(
         # We don't need to run through the whole model for layerwise runs
         final_layer = max([int(name.split(".")[1]) for name in model.raw_sae_position_names]) + 1
 
+    run_name = get_run_name(config)
     # Initialize wandb
-    run_name = config.wandb_run_name_prefix + (
-        config.wandb_run_name
-        or (
-            f"{'-'.join(config.saes.sae_position_names)}_"
-            f"ratio-{config.saes.dict_size_to_input_ratio}_"
-            f"lr-{config.train.lr}_lpcoeff-{config.train.loss_configs.sparsity.coeff}"
-        )
-    )
     if config.wandb_project:
         load_dotenv(override=True)
         wandb.init(
