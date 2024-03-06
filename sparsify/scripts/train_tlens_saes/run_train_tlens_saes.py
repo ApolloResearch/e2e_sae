@@ -39,7 +39,7 @@ from sparsify.losses import LossConfigs, calc_loss
 from sparsify.metrics import (
     DiscreteMetrics,
     calc_performance_metrics,
-    calc_standard_metrics,
+    calc_sparsity_metrics,
 )
 from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
@@ -182,7 +182,7 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
     Accumulates metrics over the entire eval dataset and then divides by the total number of tokens.
 
     Returns:
-        Dictionary of loss_dict and performance metrics.
+        Dictionary of metrics.
     """
     assert config.eval_data is not None, "No eval dataset specified in the config."
     model.saes.eval()
@@ -212,7 +212,7 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
         )
         assert new_logits is not None, "new_logits should not be None during evaluation."
 
-        batch_loss_dict = calc_loss(
+        raw_batch_loss_dict = calc_loss(
             orig_acts=orig_acts,
             sae_acts=sae_acts,
             orig_logits=orig_logits,
@@ -221,15 +221,16 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
             is_log_step=True,
             train=False,
         )[1]
+        batch_loss_dict = {k: v.item() for k, v in raw_batch_loss_dict.items()}
         batch_performance_metrics = calc_performance_metrics(
-            tokens=tokens, orig_logits=orig_logits, new_logits=new_logits
+            tokens=tokens, orig_logits=orig_logits, new_logits=new_logits, train=False
         )
 
-        # Update the global metric dictionaries
-        for key, value in batch_loss_dict.items():
-            metrics[key] = metrics.get(key, 0.0) + value.item() * n_tokens
-        for key, value in batch_performance_metrics.items():
-            metrics[key] = metrics.get(key, 0.0) + value * n_tokens
+        sparsity_metrics = calc_sparsity_metrics(sae_acts=sae_acts, train=False)
+
+        # Update the global metric dictionary
+        for k, v in {**batch_loss_dict, **batch_performance_metrics, **sparsity_metrics}.items():
+            metrics[k] = metrics.get(k, 0.0) + v * n_tokens
 
     # Get the mean for all metrics
     for key in metrics:
@@ -423,15 +424,19 @@ def train(
                 f"Loss {loss.item():.5f}"
             )
             if config.wandb_project:
-                log_info = calc_standard_metrics(
-                    loss=loss.item(),
-                    grad_updates=grad_updates,
-                    total_tokens=total_tokens,
-                    sae_acts=sae_acts,
-                    loss_dict=loss_dict,
-                    grad_norm=grad_norm,
-                    lr=optimizer.param_groups[0]["lr"],
-                )
+                log_info = {
+                    "loss": loss.item(),
+                    "grad_updates": grad_updates,
+                    "total_tokens": total_tokens,
+                    "lr": optimizer.param_groups[0]["lr"],
+                }
+                log_info.update({k: v.item() for k, v in loss_dict.items()})
+                if grad_norm is not None:
+                    log_info["grad_norm"] = grad_norm
+
+                sparsity_metrics = calc_sparsity_metrics(sae_acts=sae_acts)
+                log_info.update(sparsity_metrics)
+
                 if new_logits is not None:
                     train_performance_metrics = calc_performance_metrics(
                         tokens=tokens,

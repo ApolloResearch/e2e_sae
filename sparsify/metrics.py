@@ -139,45 +139,30 @@ class DiscreteMetrics:
 
 
 @torch.inference_mode()
-def calc_standard_metrics(
-    loss: float,
-    grad_updates: int,
-    total_tokens: int,
-    sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]],
-    loss_dict: dict[str, Float[Tensor, ""]],
-    grad_norm: float | None,
-    lr: float,
-) -> dict[str, int | float]:
-    """Collect standard metrics for logging.
+def calc_sparsity_metrics(
+    sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]], train: bool = True
+) -> dict[str, float]:
+    """Collect sparsity metrics for logging.
 
     Args:
-        loss: The final loss value.
-        grad_updates: The number of gradient updates performed.
         sae_acts: Dictionary of activations for each SAE position.
-        loss_dict: Dictionary of loss values that make up the final loss.
-        grad_norm: The norm of the gradients.
-        lr: The learning rate used for the current update.
+        train: Whether in train or evaluation mode. Only affects the keys of the metrics.
 
     Returns:
         Dictionary of standard metrics.
     """
-    metrics = {"loss": loss, "grad_updates": grad_updates, "total_tokens": total_tokens, "lr": lr}
+    prefix = "sparsity/train" if train else "sparsity/eval"
+    sparsity_metrics = {}
     for name, sae_act in sae_acts.items():
         # Record L_0 norm of the cs
         l_0_norm = torch.norm(sae_act["c"], p=0, dim=-1).mean().item()
-        metrics[f"sparsity/L_0/{name}"] = l_0_norm
+        sparsity_metrics[f"{prefix}/L_0/{name}"] = l_0_norm
 
         # Record fraction of zeros in the cs
         frac_zeros = ((sae_act["c"] == 0).sum() / sae_act["c"].numel()).item()
-        metrics[f"sparsity/frac_zeros/{name}"] = frac_zeros
+        sparsity_metrics[f"{prefix}/frac_zeros/{name}"] = frac_zeros
 
-    for loss_name, loss_value in loss_dict.items():
-        metrics[loss_name] = loss_value.item()
-
-    if grad_norm is not None:
-        metrics["grad_norm"] = grad_norm
-
-    return metrics
+    return sparsity_metrics
 
 
 @torch.inference_mode()
