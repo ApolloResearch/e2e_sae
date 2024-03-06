@@ -136,6 +136,15 @@ class Config(BaseModel):
             ), "effective_batch_size must be a multiple of batch_size."
         return self
 
+    @model_validator(mode="after")
+    def verify_valid_eval_settings(self) -> Self:
+        """User can't provide eval_every_n_samples without both eval_n_samples and data.eval."""
+        if self.eval_every_n_samples is not None:
+            assert (
+                self.eval_n_samples is not None and self.data.eval is not None
+            ), "Must provide eval_n_samples and data.eval when using eval_every_n_samples."
+        return self
+
 
 def get_run_name(config: Config) -> str:
     """Generate a run name based on the config."""
