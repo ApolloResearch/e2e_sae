@@ -33,7 +33,7 @@ from tqdm.contrib.logging import logging_redirect_tqdm
 from transformer_lens.hook_points import HookPoint
 from transformer_lens.utils import lm_cross_entropy_loss
 
-from sparsify.data import DataConfig, create_data_loader
+from sparsify.data import DatasetConfig, create_data_loader
 from sparsify.loader import load_pretrained_saes, load_tlens_model
 from sparsify.log import logger
 from sparsify.losses import LossConfigs, calc_loss
@@ -117,7 +117,8 @@ class Config(BaseModel):
         "these will be calculated every batch regardless of this parameter.",
     )
     loss: LossConfigs
-    data: DataConfig
+    train_data: DatasetConfig
+    eval_data: DatasetConfig | None = None
     saes: SparsifiersConfig
 
     @model_validator(mode="before")
@@ -141,7 +142,7 @@ class Config(BaseModel):
         """User can't provide eval_every_n_samples without both eval_n_samples and data.eval."""
         if self.eval_every_n_samples is not None:
             assert (
-                self.eval_n_samples is not None and self.data.eval is not None
+                self.eval_n_samples is not None and self.eval_data is not None
             ), "Must provide eval_n_samples and data.eval when using eval_every_n_samples."
         return self
 
@@ -181,9 +182,9 @@ def sae_hook(
 @torch.inference_mode()
 def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dict[str, float]:
     """Evaluate the model on the eval dataset."""
-    assert config.data.eval is not None, "No eval dataset specified in the config."
+    assert config.eval_data is not None, "No eval dataset specified in the config."
     model.saes.eval()
-    eval_loader = create_data_loader(config.data.eval, batch_size=config.batch_size)[0]
+    eval_loader = create_data_loader(config.eval_data, batch_size=config.batch_size)[0]
 
     if config.eval_n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
@@ -202,7 +203,7 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
     for batch_idx, batch in tqdm(enumerate(eval_loader), total=n_batches, desc="Eval Steps"):
         if n_batches is not None and batch_idx >= n_batches:
             break
-        tokens = batch[config.data.eval.column_name].to(device=device)
+        tokens = batch[config.eval_data.column_name].to(device=device)
         n_tokens = tokens.shape[0] * tokens.shape[1]
         total_tokens += n_tokens
 
@@ -310,7 +311,7 @@ def train(
     samples_since_output_metric_collection: int = 0
 
     for batch_idx, batch in tqdm(enumerate(train_loader), total=n_batches, desc="Steps"):
-        tokens: Int[Tensor, "batch pos"] = batch[config.data.train.column_name].to(device=device)
+        tokens: Int[Tensor, "batch pos"] = batch[config.train_data.column_name].to(device=device)
 
         total_samples += tokens.shape[0]
         total_tokens += tokens.shape[0] * tokens.shape[1]
@@ -484,7 +485,7 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     logger.info(config)
     set_seed(config.seed)
 
-    train_loader = create_data_loader(config.data.train, batch_size=config.batch_size)[0]
+    train_loader = create_data_loader(config.train_data, batch_size=config.batch_size)[0]
     tlens_model = load_tlens_model(
         tlens_model_name=config.tlens_model_name, tlens_model_path=config.tlens_model_path
     )

@@ -24,12 +24,6 @@ class DatasetConfig(BaseModel):
     created in TransformerLens (e.g. NeelNanda/pile-10k)."""
 
 
-class DataConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-    train: DatasetConfig
-    eval: DatasetConfig | None = None
-
-
 def create_data_loader(
     dataset_config: DatasetConfig, batch_size: int, buffer_size: int = 1000
 ) -> tuple[DataLoader[Samples], AutoTokenizer]:

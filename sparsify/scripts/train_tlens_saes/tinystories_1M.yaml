@@ -31,23 +31,22 @@ loss:
     coeff: 0.0
   logits_kl:
     coeff: 1.0
-data:
-  train:
-    dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
-    is_tokenized: true
-    tokenizer_name: gpt2
-    streaming: true
-    split: train
-    n_ctx: 512
-    seed: 0
-  eval:
-    dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
-    is_tokenized: true
-    tokenizer_name: gpt2
-    streaming: true
-    split: validation
-    n_ctx: 512
-    seed: 0
+train_data:
+  dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
+  is_tokenized: true
+  tokenizer_name: gpt2
+  streaming: true
+  split: train
+  n_ctx: 512
+  seed: 0
+eval_data:
+  dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
+  is_tokenized: true
+  tokenizer_name: gpt2
+  streaming: true
+  split: validation
+  n_ctx: 512
+  seed: 0
 saes:
   retrain_saes: false
   pretrained_sae_paths: null
