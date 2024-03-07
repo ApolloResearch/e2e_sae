@@ -46,7 +46,7 @@ def save_module(
     config_dict: dict[str, Any],
     save_dir: Path,
     module: nn.Module,
-    model_filename: str,
+    model_path: Path,
 ) -> None:
     """Save the pytorch module and config to the save_dir.
 
@@ -57,8 +57,7 @@ def save_module(
         config_dict: Dictionary representation of the config to save.
         save_dir: Directory to save the module.
         module: The module to save.
-        model_filename: The name of the file to save the module to.
-
+        model_path: The path to save the model to.
     """
     # If the save_dir doesn't exist, create it and save the config
     if not save_dir.exists():
@@ -68,8 +67,8 @@ def save_module(
         with open(filename, "w") as f:
             yaml.dump(config_dict, f)
 
-    torch.save(module.state_dict(), save_dir / model_filename)
-    logger.info("Saved model to %s", save_dir / model_filename)
+    torch.save(module.state_dict(), model_path)
+    logger.info("Saved model to %s", model_path)
 
 
 def load_config(config_path_or_obj: Path | str | T, config_model: type[T]) -> T:

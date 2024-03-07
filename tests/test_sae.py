@@ -59,7 +59,7 @@ def test_load_single_pretrained_sae(tmp_path: Path, retrain_saes: bool):
         config_dict=pretrained_config.model_dump(mode="json"),
         save_dir=tmp_path,
         module=model.saes,
-        model_filename="sae.pth",
+        model_path=tmp_path / "sae.pth",
     )
 
     # Get a new config that has more than one sae_position (including the one we saved)
@@ -151,7 +151,7 @@ def test_load_multiple_pretrained_sae(tmp_path: Path):
             config_dict=pretrained_config.model_dump(mode="json"),
             save_dir=tmp_path,
             module=model.saes,
-            model_filename=filename,
+            model_path=tmp_path / filename,
         )
         sae_params.append(model.saes)
 

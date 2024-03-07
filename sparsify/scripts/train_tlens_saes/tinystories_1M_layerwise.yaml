@@ -1,40 +1,56 @@
+wandb_project: tinystories-1m_play
+wandb_run_name: null
+wandb_run_name_prefix: ""
+
 seed: 0
 tlens_model_name: roneneldan/TinyStories-1M
 tlens_model_path: null
-train:
-  save_every_n_samples: null
-  n_samples: 300000  # 918604 samples of 512 tokens
-  log_every_n_grad_steps: 20
-  collect_discrete_metrics_every_n_samples: 10000
-  discrete_metrics_n_tokens: 500_000  #500k tokens is ~977 samples
-  collect_output_metrics_every_n_samples: 10000
-  batch_size: 16
-  effective_batch_size: 16
-  lr: 1e-3
-  warmup_samples: 20000
-  cooldown_samples: 0
-  max_grad_norm: 1.0
-  loss_configs:
-    sparsity:
-      p_norm: 0.6
-      coeff: 5e-6
-    inp_to_orig: null
-    out_to_orig: null
-    inp_to_out:
-      coeff: 1.0
-    logits_kl: null
-data:
-  dataset_name: apollo-research/sae-skeskinen-TinyStories-hf-tokenizer-gpt2
+
+n_samples: 900_000  # 918604 samples of 512 tokens
+save_every_n_samples: null
+eval_every_n_samples: 10_000
+eval_n_samples: 500
+log_every_n_grad_steps: 20
+collect_act_frequency_every_n_samples: 10_000
+act_frequency_n_tokens: 500_000  #500k tokens is ~977 samples
+batch_size: 10
+effective_batch_size: 10
+lr: 1e-3
+adam_beta1: 0.0  # pytorch defaults to 0.9
+warmup_samples: 50_000
+cooldown_samples: 200_000
+max_grad_norm: 1.0
+
+loss:
+  sparsity:
+    p_norm: 1.0
+    coeff: 0.1
+  inp_to_orig: null
+  out_to_orig: null
+  inp_to_out:
+    coeff: 0.0
+  logits_kl:
+    coeff: 1.0
+train_data:
+  dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
   is_tokenized: true
   tokenizer_name: gpt2
   streaming: true
   split: train
   n_ctx: 512
+  seed: 0
+eval_data:
+  dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
+  is_tokenized: true
+  tokenizer_name: gpt2
+  streaming: true
+  split: validation
+  n_ctx: 512
+  seed: 0
 saes:
   retrain_saes: false
   pretrained_sae_paths: null
-  sae_position_names: blocks.1.hook_resid_post
+  sae_position_names:
+    - blocks.1.hook_resid_post
+    - blocks.3.hook_resid_post
   dict_size_to_input_ratio: 30.0
-wandb_project: tinystories-1m_play
-wandb_run_name: null
-wandb_run_name_prefix: "" 

@@ -9,7 +9,7 @@ train:
   lr: 1e-3
   warmup_samples: 0
   max_grad_norm: 1.0
-  loss_configs:
+  loss:
     sparsity:
       p_norm: 0.5
       coeff: 0.00005
@@ -19,7 +19,7 @@ train:
     inp_to_out: null
     logits_kl: null
 data:
-  dataset_name: apollo-research/sae-monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b
+  dataset_name: apollo-research/monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b
   is_tokenized: true
   tokenizer_name: EleutherAI/gpt-neox-20B
   streaming: true

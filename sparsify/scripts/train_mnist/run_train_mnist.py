@@ -177,7 +177,7 @@ def train(config: Config) -> None:
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             module=model,
-            model_filename=f"epoch_{config.train.n_epochs}.pt",
+            model_path=save_dir / f"epoch_{config.train.n_epochs}.pt",
         )
     if config.wandb_project:
         wandb.finish()

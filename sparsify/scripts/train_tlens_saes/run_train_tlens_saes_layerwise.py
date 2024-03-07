@@ -24,7 +24,7 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     raw_config = load_config(config_path_or_obj, config_model=Config)
     set_seed(raw_config.seed)
 
-    data_loader, _ = create_data_loader(raw_config.data, batch_size=raw_config.train.batch_size)
+    data_loader = create_data_loader(raw_config.train_data, batch_size=raw_config.batch_size)[0]
     tlens_model = load_tlens_model(raw_config.tlens_model_name, raw_config.tlens_model_path)
 
     raw_sae_position_names = filter_names(
@@ -47,7 +47,7 @@ def main(config_path_or_obj: Path | str | Config) -> None:
         train(
             config=config,
             model=model,
-            data_loader=data_loader,
+            train_loader=data_loader,
             trainable_param_names=trainable_param_names,
             device=device,
         )
