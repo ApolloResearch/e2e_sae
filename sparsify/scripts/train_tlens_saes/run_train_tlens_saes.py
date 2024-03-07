@@ -206,9 +206,13 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
         n_tokens = tokens.shape[0] * tokens.shape[1]
         total_tokens += n_tokens
 
-        # Get logits and activations for the original and SAE-augmented models
-        orig_logits, orig_acts, new_logits, sae_acts = model.forward_both(
-            tokens=tokens, run_entire_model=True, final_layer=None, sae_hook=sae_hook
+        # Run through the raw transformer without SAEs
+        orig_logits, orig_acts = model.forward_raw(
+            tokens=tokens, run_entire_model=True, final_layer=None
+        )
+        # Run through the SAE-augmented model
+        new_logits, sae_acts = model.forward(
+            tokens=tokens, sae_hook=sae_hook, hook_names=list(orig_acts.keys())
         )
         assert new_logits is not None, "new_logits should not be None during evaluation."
 
@@ -366,12 +370,16 @@ def train(
             run_entire_model = True
             samples_since_output_metric_collection = 0
 
-        # Get logits and activations for the original and SAE-augmented models
-        orig_logits, orig_acts, new_logits, sae_acts = model.forward_both(
+        # Run through the raw transformer without SAEs
+        orig_logits, orig_acts = model.forward_raw(
+            tokens=tokens, run_entire_model=run_entire_model, final_layer=final_layer
+        )
+        # Run through the SAE-augmented model
+        new_logits, sae_acts = model.forward(
             tokens=tokens,
-            run_entire_model=run_entire_model,
-            final_layer=final_layer,
             sae_hook=sae_hook,
+            hook_names=list(orig_acts.keys()),
+            orig_acts=None if run_entire_model else orig_acts,
         )
 
         loss, loss_dict = calc_loss(
