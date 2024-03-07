@@ -82,7 +82,7 @@ class ActFrequencyMetrics:
         self.tokens_used += batch_tokens
 
     def collect_for_logging(self, log_wandb_histogram: bool = True) -> dict[str, list[float] | int]:
-        """Collect the activtion frequency metrics for logging.
+        """Collect the activation frequency metrics for logging.
 
         Currently collects:
         - The number of alive dictionary elements for each hook.
