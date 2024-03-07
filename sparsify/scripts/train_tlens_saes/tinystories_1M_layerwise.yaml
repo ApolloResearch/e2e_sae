@@ -11,8 +11,8 @@ save_every_n_samples: null
 eval_every_n_samples: 10_000
 eval_n_samples: 500
 log_every_n_grad_steps: 20
-collect_discrete_metrics_every_n_samples: 10_000
-discrete_metrics_n_tokens: 500_000  #500k tokens is ~977 samples
+collect_act_frequency_every_n_samples: 10_000
+act_frequency_n_tokens: 500_000  #500k tokens is ~977 samples
 batch_size: 10
 effective_batch_size: 10
 lr: 1e-3

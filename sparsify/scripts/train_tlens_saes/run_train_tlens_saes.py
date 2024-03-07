@@ -37,8 +37,8 @@ from sparsify.loader import load_pretrained_saes, load_tlens_model
 from sparsify.log import logger
 from sparsify.losses import LossConfigs, calc_loss
 from sparsify.metrics import (
-    DiscreteMetrics,
-    calc_performance_metrics,
+    ActFrequencyMetrics,
+    calc_output_metrics,
     calc_sparsity_metrics,
 )
 from sparsify.models.sparsifiers import SAE
@@ -98,13 +98,13 @@ class Config(BaseModel):
     cooldown_samples: NonNegativeInt = 0
     max_grad_norm: PositiveFloat | None = None
     log_every_n_grad_steps: PositiveInt = 20
-    collect_discrete_metrics_every_n_samples: NonNegativeInt = Field(
+    collect_act_frequency_every_n_samples: NonNegativeInt = Field(
         20_000,
-        description="Metrics such as activation frequency and alive neurons, are calculated over "
-        "discrete periods. This parameter specifies how often to calculate these metrics.",
+        description="Metrics such as activation frequency and alive neurons are calculated over "
+        "fixed number of batches. This parameter specifies how often to calculate these metrics.",
     )
-    discrete_metrics_n_tokens: PositiveInt = Field(
-        100_000, description="The number of tokens to caclulate discrete metrics over."
+    act_frequency_n_tokens: PositiveInt = Field(
+        100_000, description="The number of tokens to caclulate activation frequency metrics over."
     )
     collect_output_metrics_every_n_samples: NonNegativeInt = Field(
         0,
@@ -222,14 +222,14 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
             train=False,
         )[1]
         batch_loss_dict = {k: v.item() for k, v in raw_batch_loss_dict.items()}
-        batch_performance_metrics = calc_performance_metrics(
+        batch_output_metrics = calc_output_metrics(
             tokens=tokens, orig_logits=orig_logits, new_logits=new_logits, train=False
         )
 
         sparsity_metrics = calc_sparsity_metrics(sae_acts=sae_acts, train=False)
 
         # Update the global metric dictionary
-        for k, v in {**batch_loss_dict, **batch_performance_metrics, **sparsity_metrics}.items():
+        for k, v in {**batch_loss_dict, **batch_output_metrics, **sparsity_metrics}.items():
             metrics[k] = metrics.get(k, 0.0) + v * n_tokens
 
     # Get the mean for all metrics
@@ -306,8 +306,8 @@ def train(
     total_tokens = 0
     grad_updates = 0
     grad_norm: float | None = None
-    samples_since_discrete_metric_collection: int = 0
-    discrete_metrics: DiscreteMetrics | None = None
+    samples_since_act_frequency_collection: int = 0
+    act_frequency_metrics: ActFrequencyMetrics | None = None
     samples_since_output_metric_collection: int = 0
 
     for batch_idx, batch in tqdm(enumerate(train_loader), total=n_batches, desc="Steps"):
@@ -315,7 +315,7 @@ def train(
 
         total_samples += tokens.shape[0]
         total_tokens += tokens.shape[0] * tokens.shape[1]
-        samples_since_discrete_metric_collection += tokens.shape[0]
+        samples_since_act_frequency_collection += tokens.shape[0]
         samples_since_output_metric_collection += tokens.shape[0]
 
         run_entire_model: bool = not layerwise
@@ -328,6 +328,30 @@ def train(
             or total_samples - total_samples_at_last_eval >= config.eval_every_n_samples
             or is_last_batch
         )
+        is_collect_act_frequency_step: bool = config.collect_act_frequency_every_n_samples > 0 and (
+            batch_idx == 0
+            or (
+                samples_since_act_frequency_collection
+                >= config.collect_act_frequency_every_n_samples
+            )
+        )
+        is_collect_output_metrics_step: bool = (
+            config.collect_output_metrics_every_n_samples > 0
+            and (
+                batch_idx == 0
+                or (
+                    samples_since_output_metric_collection
+                    >= config.collect_output_metrics_every_n_samples
+                )
+            )
+        )
+        is_log_step: bool = (
+            batch_idx == 0
+            or (is_grad_step and (grad_updates + 1) % config.log_every_n_grad_steps == 0)
+            or (layerwise and is_collect_output_metrics_step)
+            or is_eval_step
+            or is_last_batch
+        )
         is_save_model_step: bool = save_dir is not None and (
             (
                 config.save_every_n_samples
@@ -336,24 +360,11 @@ def train(
             or is_last_batch
         )
 
-        if config.collect_output_metrics_every_n_samples > 0 and (
-            batch_idx == 0
-            or (
-                samples_since_output_metric_collection
-                >= config.collect_output_metrics_every_n_samples
-            )
-        ):
-            # Run entire model to collect output metrics
+        if is_collect_output_metrics_step:
+            # Running the entire model will output non-None new_logits which output metrics are
+            # calculated from
             run_entire_model = True
             samples_since_output_metric_collection = 0
-
-        is_log_step: bool = (
-            batch_idx == 0
-            or (is_grad_step and (grad_updates + 1) % config.log_every_n_grad_steps == 0)
-            or (layerwise and run_entire_model)
-            or is_eval_step
-            or is_last_batch
-        )
 
         # Get logits and activations for the original and SAE-augmented models
         orig_logits, orig_acts, new_logits, sae_acts = model.forward_both(
@@ -385,38 +396,31 @@ def train(
             grad_updates += 1
             scheduler.step()
 
-        if (
-            batch_idx == 0
-            or discrete_metrics is None
-            and (
-                samples_since_discrete_metric_collection
-                >= config.collect_discrete_metrics_every_n_samples
-            )
-        ):
-            # Start collecting discrete metrics for next config.discrete_metrics_n_tokens
-            discrete_metrics = DiscreteMetrics(
+        if is_collect_act_frequency_step and act_frequency_metrics is None:
+            # Start collecting activation frequency metrics for next config.act_frequency_n_tokens
+            act_frequency_metrics = ActFrequencyMetrics(
                 dict_sizes={
                     hook_name: sae_acts[hook_name]["c"].shape[-1] for hook_name in sae_acts
                 },
                 device=device,
             )
-            samples_since_discrete_metric_collection = 0
+            samples_since_act_frequency_collection = 0
 
-        if discrete_metrics is not None:
-            discrete_metrics.update_dict_el_frequencies(
+        if act_frequency_metrics is not None:
+            act_frequency_metrics.update_dict_el_frequencies(
                 sae_acts, batch_tokens=tokens.shape[0] * tokens.shape[1]
             )
-            if discrete_metrics.tokens_used >= config.discrete_metrics_n_tokens:
-                # Finished collecting discrete metrics
-                metrics = discrete_metrics.collect_for_logging(
+            if act_frequency_metrics.tokens_used >= config.act_frequency_n_tokens:
+                # Finished collecting activation frequency metrics
+                metrics = act_frequency_metrics.collect_for_logging(
                     log_wandb_histogram=config.wandb_project is not None
                 )
                 metrics["total_tokens"] = total_tokens
                 if config.wandb_project:
                     # TODO: Log when not using wandb too
                     wandb.log(metrics, step=total_samples)
-                discrete_metrics = None
-                samples_since_discrete_metric_collection = 0
+                act_frequency_metrics = None
+                samples_since_act_frequency_collection = 0
 
         if is_log_step:
             tqdm.write(
@@ -438,12 +442,12 @@ def train(
                 log_info.update(sparsity_metrics)
 
                 if new_logits is not None:
-                    train_performance_metrics = calc_performance_metrics(
+                    train_output_metrics = calc_output_metrics(
                         tokens=tokens,
                         orig_logits=orig_logits.detach().clone(),
                         new_logits=new_logits.detach().clone(),
                     )
-                    log_info.update(train_performance_metrics)
+                    log_info.update(train_output_metrics)
 
                 if is_eval_step:
                     eval_metrics = evaluate(config=config, model=model, device=device)

@@ -47,22 +47,22 @@ def statistical_distance(
     return 0.5 * torch.abs(orig_probs - new_probs).sum(dim=-1).mean()
 
 
-class DiscreteMetrics:
-    """Manages metrics such as dict activation frequencies and alive dictionary elements."""
+class ActFrequencyMetrics:
+    """Manages activation frequency metrics calculated over fixed spans of training batches."""
 
     def __init__(self, dict_sizes: dict[str, int], device: torch.device) -> None:
-        """Initialize the DiscreteMetrics object.
+        """Initialize ActFrequencyMetrics. Create the dictionary element frequency tensors.
 
         Args:
             dict_sizes: Sizes of the dictionaries for each sae position.
-            device: Device to store the dictionary element frequencies on.
+            device: Device to store dictionary element activation frequencies on.
         """
         self.tokens_used = 0  # Number of tokens used in dict_el_frequencies
         self.dict_el_frequencies: dict[str, Float[Tensor, "dims"]] = {  # noqa: F821
             sae_pos: torch.zeros(dict_size, device=device)
             for sae_pos, dict_size in dict_sizes.items()
         }
-        self.dict_el_frequencies_history: dict[str, list[Float[Tensor, "dims"]]] = {  # noqa: F821
+        self.dict_el_frequency_history: dict[str, list[Float[Tensor, "dims"]]] = {  # noqa: F821
             sae_pos: [] for sae_pos, dict_size in dict_sizes.items()
         }
 
@@ -82,7 +82,7 @@ class DiscreteMetrics:
         self.tokens_used += batch_tokens
 
     def collect_for_logging(self, log_wandb_histogram: bool = True) -> dict[str, list[float] | int]:
-        """Collect the discrete metrics for logging.
+        """Collect the activtion frequency metrics for logging.
 
         Currently collects:
         - The number of alive dictionary elements for each hook.
@@ -99,7 +99,7 @@ class DiscreteMetrics:
         log_dict = {}
         for sae_pos in self.dict_el_frequencies:
             self.dict_el_frequencies[sae_pos] /= self.tokens_used
-            self.dict_el_frequencies_history[sae_pos].append(
+            self.dict_el_frequency_history[sae_pos].append(
                 self.dict_el_frequencies[sae_pos].detach().cpu()
             )
 
@@ -124,16 +124,16 @@ class DiscreteMetrics:
                     title=f"{sae_pos} (most_recent_n_tokens={self.tokens_used} "
                     f"dict_size={self.dict_el_frequencies[sae_pos].shape[0]})",
                 )
-                log_dict[f"sparsity/dict_el_frequencies_hist/{sae_pos}"] = plot
-                log_dict[f"sparsity/dict_el_frequencies_hist/log10/{sae_pos}"] = plot_log10
+                log_dict[f"sparsity/dict_el_frequency_hist/{sae_pos}"] = plot
+                log_dict[f"sparsity/dict_el_frequency_hist/log10/{sae_pos}"] = plot_log10
 
+                log_dict[f"sparsity/dict_el_frequency_hist/over_time/{sae_pos}"] = wandb.Histogram(
+                    self.dict_el_frequency_history[sae_pos]
+                )
                 log_dict[
-                    f"sparsity/dict_el_frequencies_hist/over_time/{sae_pos}"
-                ] = wandb.Histogram(self.dict_el_frequencies_history[sae_pos])
-                log_dict[
-                    f"sparsity/dict_el_frequencies_hist/over_time/log10/{sae_pos}"
+                    f"sparsity/dict_el_frequency_hist/over_time/log10/{sae_pos}"
                 ] = wandb.Histogram(
-                    [torch.log10(s + 1e-10) for s in self.dict_el_frequencies_history[sae_pos]]
+                    [torch.log10(s + 1e-10) for s in self.dict_el_frequency_history[sae_pos]]
                 )
         return log_dict
 
@@ -149,7 +149,7 @@ def calc_sparsity_metrics(
         train: Whether in train or evaluation mode. Only affects the keys of the metrics.
 
     Returns:
-        Dictionary of standard metrics.
+        Dictionary of sparsity metrics.
     """
     prefix = "sparsity/train" if train else "sparsity/eval"
     sparsity_metrics = {}
@@ -166,13 +166,13 @@ def calc_sparsity_metrics(
 
 
 @torch.inference_mode()
-def calc_performance_metrics(
+def calc_output_metrics(
     tokens: Int[Tensor, "batch pos"] | Int[Tensor, "pos"],  # noqa: F821
     orig_logits: Float[Tensor, "... vocab"],
     new_logits: Float[Tensor, "... vocab"],
     train: bool = True,
 ) -> dict[str, float]:
-    """Get performance metrics of the SAE-augmented model compared to the original model.
+    """Get metrics on the outputs of the SAE-augmented model and the original model.
 
     Args:
         tokens: The tokens used to produce the logits.
@@ -181,10 +181,10 @@ def calc_performance_metrics(
         train: Whether in train or evaluation mode. Only affects the keys of the metrics.
 
     Returns:
-        Dictionary of performance metrics.
+        Dictionary of output metrics
     """
-    orig_model_performance_loss = lm_cross_entropy_loss(orig_logits, tokens, per_token=False).item()
-    sae_model_performance_loss = lm_cross_entropy_loss(new_logits, tokens, per_token=False).item()
+    orig_model_ce_loss = lm_cross_entropy_loss(orig_logits, tokens, per_token=False).item()
+    sae_model_ce_loss = lm_cross_entropy_loss(new_logits, tokens, per_token=False).item()
 
     orig_model_top1_accuracy = topk_accuracy(orig_logits, tokens, k=1, per_token=False).item()
     sae_model_top1_accuracy = topk_accuracy(new_logits, tokens, k=1, per_token=False).item()
@@ -193,9 +193,9 @@ def calc_performance_metrics(
 
     prefix = "performance/train" if train else "performance/eval"
     metrics = {
-        f"{prefix}/orig_model_ce_loss": orig_model_performance_loss,
-        f"{prefix}/sae_model_ce_loss": sae_model_performance_loss,
-        f"{prefix}/difference_ce_loss": orig_model_performance_loss - sae_model_performance_loss,
+        f"{prefix}/orig_model_ce_loss": orig_model_ce_loss,
+        f"{prefix}/sae_model_ce_loss": sae_model_ce_loss,
+        f"{prefix}/difference_ce_loss": orig_model_ce_loss - sae_model_ce_loss,
         f"{prefix}/orig_model_top1_accuracy": orig_model_top1_accuracy,
         f"{prefix}/sae_model_top1_accuracy": sae_model_top1_accuracy,
         f"{prefix}/difference_top1_accuracy": orig_model_top1_accuracy - sae_model_top1_accuracy,
