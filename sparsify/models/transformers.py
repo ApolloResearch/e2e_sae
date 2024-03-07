@@ -6,6 +6,7 @@ import torch
 from jaxtyping import Float, Int
 from torch import Tensor, nn
 from transformer_lens import HookedTransformer
+from transformer_lens.hook_points import HookPoint
 
 from sparsify.models.sparsifiers import SAE
 from sparsify.utils import get_hook_shapes
@@ -45,6 +46,30 @@ class SAETransformer(nn.Module):
                 n_dict_components=int(config.saes.dict_size_to_input_ratio * input_size),
             )
 
+    @staticmethod
+    def sae_hook(
+        x: Float[torch.Tensor, "... dim"],
+        hook: HookPoint | None,
+        sae: SAE | torch.nn.Module,
+        hook_acts: dict[str, Any],
+    ) -> Float[torch.Tensor, "... dim"]:
+        """Runs the SAE on the input and stores the output and c in hook_acts.
+
+        Args:
+            x: The input.
+            hook: HookPoint object. Unused.
+            sae: The SAE to run the input through.
+            hook_acts: The dictionary to store the output and c in.
+
+        Returns:
+            The output of the SAE.
+        """
+        hook_acts["input"] = x
+        output, c = sae(x)
+        hook_acts["output"] = output
+        hook_acts["c"] = c
+        return output
+
     def forward_raw(
         self, tokens: Int[Tensor, "batch pos"], run_entire_model: bool, final_layer: int | None
     ) -> tuple[
@@ -73,7 +98,6 @@ class SAETransformer(nn.Module):
     def forward(
         self,
         tokens: Int[Tensor, "batch pos"],
-        sae_hook: Callable,  # type: ignore
         hook_names: list[str],
         orig_acts: dict[str, Float[Tensor, "batch pos dim"]] | None = None,
     ) -> tuple[
@@ -86,7 +110,6 @@ class SAETransformer(nn.Module):
             tokens: The input tokens.
             orig_acts: The activations of the original model. If not None, simply pass them through
                 the SAEs. If None, run the entire SAE-augmented model.
-            sae_hook: The hook function to use for the SAEs.
             hook_names: The names of the hooks in the original model.
 
         Returns:
@@ -100,8 +123,8 @@ class SAETransformer(nn.Module):
         if orig_acts is not None:
             # Just run the already-stored activations through the SAEs
             for hook_name in hook_names:
-                sae_hook(
-                    value=orig_acts[hook_name].detach().clone(),
+                self.sae_hook(
+                    x=orig_acts[hook_name].detach().clone(),
                     hook=None,
                     sae=self.saes[hook_name.replace(".", "-")],
                     hook_acts=sae_acts[hook_name],
@@ -112,7 +135,7 @@ class SAETransformer(nn.Module):
                 (
                     hook_name,
                     partial(
-                        sae_hook,
+                        self.sae_hook,
                         sae=cast(SAE, self.saes[hook_name.replace(".", "-")]),
                         hook_acts=sae_acts[hook_name],
                     ),

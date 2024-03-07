@@ -14,7 +14,7 @@ import torch
 import wandb
 from datasets import IterableDataset
 from dotenv import load_dotenv
-from jaxtyping import Float, Int
+from jaxtyping import Int
 from pydantic import (
     BaseModel,
     BeforeValidator,
@@ -30,7 +30,6 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
-from transformer_lens.hook_points import HookPoint
 
 from sparsify.data import DatasetConfig, create_data_loader
 from sparsify.loader import load_pretrained_saes, load_tlens_model
@@ -41,7 +40,6 @@ from sparsify.metrics import (
     calc_output_metrics,
     calc_sparsity_metrics,
 )
-from sparsify.models.sparsifiers import SAE
 from sparsify.models.transformers import SAETransformer
 from sparsify.types import RootPath, Samples
 from sparsify.utils import (
@@ -161,20 +159,6 @@ def get_run_name(config: Config) -> str:
     return config.wandb_run_name_prefix + run_suffix
 
 
-def sae_hook(
-    value: Float[torch.Tensor, "... dim"],
-    hook: HookPoint | None,
-    sae: SAE | torch.nn.Module,
-    hook_acts: dict[str, Any],
-) -> Float[torch.Tensor, "... dim"]:
-    """Runs the SAE on the input and stores the output and c in hook_acts."""
-    hook_acts["input"] = value
-    output, c = sae(value)
-    hook_acts["output"] = output
-    hook_acts["c"] = c
-    return output
-
-
 @torch.inference_mode()
 def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dict[str, float]:
     """Evaluate the model on the eval dataset.
@@ -211,9 +195,7 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
             tokens=tokens, run_entire_model=True, final_layer=None
         )
         # Run through the SAE-augmented model
-        new_logits, sae_acts = model.forward(
-            tokens=tokens, sae_hook=sae_hook, hook_names=list(orig_acts.keys())
-        )
+        new_logits, sae_acts = model.forward(tokens=tokens, hook_names=list(orig_acts.keys()))
         assert new_logits is not None, "new_logits should not be None during evaluation."
 
         raw_batch_loss_dict = calc_loss(
@@ -377,7 +359,6 @@ def train(
         # Run through the SAE-augmented model
         new_logits, sae_acts = model.forward(
             tokens=tokens,
-            sae_hook=sae_hook,
             hook_names=list(orig_acts.keys()),
             orig_acts=None if run_entire_model else orig_acts,
         )
