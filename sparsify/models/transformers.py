@@ -40,7 +40,6 @@ class SAETransformer(nn.Module):
         self.saes = nn.ModuleDict()
         for i in range(len(self.all_sae_position_names)):
             input_size = self.hook_shapes[self.raw_sae_position_names[i]][-1]
-            # TODO: allow choosing which activation dimension (or dimensions) to train the SAE on
             self.saes[self.all_sae_position_names[i]] = SAE(
                 input_size=input_size,
                 n_dict_components=int(config.saes.dict_size_to_input_ratio * input_size),
