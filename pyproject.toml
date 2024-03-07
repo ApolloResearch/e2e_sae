@@ -18,7 +18,7 @@ dependencies = [
     "jaxtyping~=0.2.25",
     "python-dotenv~=1.0.1",
     "zstandard~=0.22.0",
-    "natsort~=8.4",
+    "eindex@git+https://github.com/callummcdougall/eindex",
     "sae_vis@git+https://github.com/callummcdougall/sae_vis"
 ]
 
