@@ -1,11 +1,13 @@
-from typing import Any
+from typing import Annotated, Any
 
 import einops
 import torch
 import torch.nn.functional as F
 from jaxtyping import Float
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 from torch import Tensor
+
+from sparsify.hooks import CacheActs, SAEActs
 
 
 def explained_variance(
@@ -26,18 +28,12 @@ def explained_variance(
     return 1 - per_token_l2_loss / total_variance
 
 
-class BaseLossConfig(BaseModel):
+class SparsityLossConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     coeff: float
-
-    def calc_loss(self, *args: Any, **kwargs: Any) -> Float[Tensor, ""]:
-        raise NotImplementedError
-
-
-class SparsityLossConfig(BaseLossConfig):
     p_norm: float = 1.0
 
-    def calc_loss(self, *args: Any, c: Float[Tensor, "... c"], **kwargs: Any) -> Float[Tensor, ""]:
+    def calc_loss(self, c: Float[Tensor, "... c"]) -> Float[Tensor, ""]:
         """Calculate the sparsity loss.
 
         Args:
@@ -49,13 +45,20 @@ class SparsityLossConfig(BaseLossConfig):
         return torch.norm(c, p=self.p_norm, dim=-1).mean()
 
 
-class InpToOrigLossConfig(BaseLossConfig):
+class InpToOrigLossConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    coeff: float
+    hook_positions: Annotated[
+        list[str], BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
+    ] = Field(
+        ...,
+        description="The hook positions at which to compare raw and SAE-augmented activations with."
+        "E.g. 'hook_resid_post' or ['blocks.3.hook_resid_post', 'hook_mlp_out']. Each entry gets "
+        " matched to all hook positions that contain the given string.",
+    )
+
     def calc_loss(
-        self,
-        *args: Any,
-        input: Float[Tensor, "... dim"],
-        orig: Float[Tensor, "... dim"],
-        **kwargs: Any,
+        self, input: Float[Tensor, "... dim"], orig: Float[Tensor, "... dim"]
     ) -> Float[Tensor, ""]:
         """Calculate loss between the input of the SAE and the non-SAE-augmented activations."""
         return F.mse_loss(input, orig)
@@ -70,13 +73,12 @@ class InpToOrigLossConfig(BaseLossConfig):
         return explained_variance(input, orig)
 
 
-class OutToOrigLossConfig(BaseLossConfig):
+class OutToOrigLossConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    coeff: float
+
     def calc_loss(
-        self,
-        *args: Any,
-        output: Float[Tensor, "... dim"],
-        orig: Float[Tensor, "... dim"],
-        **kwargs: Any,
+        self, output: Float[Tensor, "... dim"], orig: Float[Tensor, "... dim"]
     ) -> Float[Tensor, ""]:
         """Calculate loss between the output of the SAE and the non-SAE-augmented activations."""
         return F.mse_loss(output, orig)
@@ -91,13 +93,12 @@ class OutToOrigLossConfig(BaseLossConfig):
         return explained_variance(output, orig)
 
 
-class InpToOutLossConfig(BaseLossConfig):
+class InpToOutLossConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    coeff: float
+
     def calc_loss(
-        self,
-        *args: Any,
-        input: Float[Tensor, "... dim"],
-        output: Float[Tensor, "... dim"],
-        **kwargs: Any,
+        self, input: Float[Tensor, "... dim"], output: Float[Tensor, "... dim"]
     ) -> Float[Tensor, ""]:
         """Calculate loss between the input and output of the SAE."""
         return F.mse_loss(input, output)
@@ -112,13 +113,12 @@ class InpToOutLossConfig(BaseLossConfig):
         return explained_variance(input, output)
 
 
-class LogitsKLLossConfig(BaseLossConfig):
+class LogitsKLLossConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    coeff: float
+
     def calc_loss(
-        self,
-        *args: Any,
-        new_logits: Float[Tensor, "... vocab"],
-        orig_logits: Float[Tensor, "... vocab"],
-        **kwargs: Any,
+        self, new_logits: Float[Tensor, "... vocab"], orig_logits: Float[Tensor, "... vocab"]
     ) -> Float[Tensor, ""]:
         """Calculate KL divergence between SAE-augmented and non-SAE-augmented logits.
 
@@ -149,7 +149,7 @@ class LossConfigs(BaseModel):
 
 def calc_loss(
     orig_acts: dict[str, Tensor],
-    sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]],
+    new_acts: dict[str, SAEActs | CacheActs],
     orig_logits: Float[Tensor, "batch pos vocab"] | None,
     new_logits: Float[Tensor, "batch pos vocab"] | None,
     loss_configs: LossConfigs,
@@ -161,10 +161,11 @@ def calc_loss(
     Note that some losses may be computed on the final logits, while others may be computed on
     intermediate activations.
 
+    Additionally, for cache activations, only the inp_to_orig loss is computed.
+
     Args:
         orig_acts: Dictionary of original activations, keyed by tlens attribute.
-        sae_acts: Dictionary of SAE activations. First level keys should match orig_acts.
-            Second level keys are "output" and "c".
+        new_acts: Dictionary of SAE or cache activations. Keys should match orig_acts.
         orig_logits: Logits from non-SAE-augmented model.
         new_logits: Logits from SAE-augmented model.
         loss_configs: Config for the losses to be computed.
@@ -175,9 +176,9 @@ def calc_loss(
         loss: Scalar tensor representing the loss.
         loss_dict: Dictionary of losses, keyed by loss type and name.
     """
-    assert set(orig_acts.keys()) == set(sae_acts.keys()), (
-        f"Keys of orig_acts and sae_acts must match, got {orig_acts.keys()} and "
-        f"{sae_acts.keys()}"
+    assert set(orig_acts.keys()) == set(new_acts.keys()), (
+        f"Keys of orig_acts and new_acts must match, got {orig_acts.keys()} and "
+        f"{new_acts.keys()}"
     )
 
     prefix = "loss/train" if train else "loss/eval"
@@ -197,28 +198,40 @@ def calc_loss(
     for name, orig_act in orig_acts.items():
         # Convert from inference tensor.
         orig_act = orig_act.detach().clone()
-        sae_act = sae_acts[name]
+        new_act = new_acts[name]
 
-        for config_type in ["inp_to_orig", "out_to_orig", "inp_to_out", "sparsity"]:
-            loss_config: BaseLossConfig | None = getattr(loss_configs, config_type)
+        if isinstance(new_act, CacheActs):
+            # Cache acts are only used for inp_to_orig loss
+            config_types = ["inp_to_orig"]
+        else:
+            config_types = ["inp_to_orig", "out_to_orig", "inp_to_out", "sparsity"]
+
+        for config_type in config_types:
+            loss_config = getattr(loss_configs, config_type)
+            if isinstance(loss_config, InpToOrigLossConfig):
+                # Note that inp_to_out may calculate losses using CacheActs rather than SAEActs.
+                kwargs = {"input": new_act.input, "orig": orig_act}
+            elif isinstance(loss_config, OutToOrigLossConfig):
+                assert isinstance(new_act, SAEActs)
+                kwargs = {"output": new_act.output, "orig": orig_act}
+            elif isinstance(loss_config, InpToOutLossConfig):
+                assert isinstance(new_act, SAEActs)
+                kwargs = {"input": new_act.input, "output": new_act.output}
+            elif isinstance(loss_config, SparsityLossConfig):
+                assert isinstance(new_act, SAEActs)
+                kwargs = {"c": new_act.c}
+            else:
+                assert loss_config is None
+                kwargs = {}
+
             if loss_config:
-                loss_dict[f"{prefix}/{config_type}/{name}"] = loss_config.calc_loss(
-                    input=sae_act["input"],
-                    output=sae_act["output"],
-                    orig=orig_act,
-                    c=sae_act["c"],
-                )
+                loss_dict[f"{prefix}/{config_type}/{name}"] = loss_config.calc_loss(**kwargs)
                 loss = loss + loss_config.coeff * loss_dict[f"{prefix}/{config_type}/{name}"]
 
                 if is_log_step and isinstance(
                     loss_config, InpToOrigLossConfig | OutToOrigLossConfig | InpToOutLossConfig
                 ):
-                    explained_variance = loss_config.calc_explained_variance(
-                        input=sae_act["input"],
-                        output=sae_act["output"],
-                        orig=orig_act,
-                        c=sae_act["c"],
-                    )
+                    explained_variance = loss_config.calc_explained_variance(**kwargs)
                     loss_dict[
                         f"{prefix}/{config_type}/explained_variance/{name}"
                     ] = explained_variance.mean()

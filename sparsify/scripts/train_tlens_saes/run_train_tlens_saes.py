@@ -32,6 +32,7 @@ from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
 
 from sparsify.data import DatasetConfig, create_data_loader
+from sparsify.hooks import SAEActs
 from sparsify.loader import load_pretrained_saes, load_tlens_model
 from sparsify.log import logger
 from sparsify.losses import LossConfigs, calc_loss
@@ -65,7 +66,8 @@ class SparsifiersConfig(BaseModel):
     ] = Field(
         ...,
         description="The names of the SAE positions to train on. E.g. 'hook_resid_post' or "
-        "['hook_resid_post', 'hook_mlp_out'] or ['hook_mlp_out', 'hook_resid_post']",
+        "['hook_resid_post', 'hook_mlp_out']. Each entry gets matched to all hook positions that "
+        "contain the given string.",
     )
 
 
@@ -160,7 +162,9 @@ def get_run_name(config: Config) -> str:
 
 
 @torch.inference_mode()
-def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dict[str, float]:
+def evaluate(
+    config: Config, model: SAETransformer, device: torch.device, cache_positions: list[str] | None
+) -> dict[str, float]:
     """Evaluate the model on the eval dataset.
 
     Accumulates metrics over the entire eval dataset and then divides by the total number of tokens.
@@ -192,15 +196,19 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
 
         # Run through the raw transformer without SAEs
         orig_logits, orig_acts = model.forward_raw(
-            tokens=tokens, run_entire_model=True, final_layer=None
+            tokens=tokens, run_entire_model=True, final_layer=None, cache_positions=cache_positions
         )
         # Run through the SAE-augmented model
-        new_logits, sae_acts = model.forward(tokens=tokens, hook_names=list(orig_acts.keys()))
+        new_logits, new_acts = model.forward(
+            tokens=tokens,
+            sae_positions=model.raw_sae_position_names,
+            cache_positions=cache_positions,
+        )
         assert new_logits is not None, "new_logits should not be None during evaluation."
 
         raw_batch_loss_dict = calc_loss(
             orig_acts=orig_acts,
-            sae_acts=sae_acts,
+            new_acts=new_acts,
             orig_logits=orig_logits,
             new_logits=new_logits,
             loss_configs=config.loss,
@@ -212,7 +220,7 @@ def evaluate(config: Config, model: SAETransformer, device: torch.device) -> dic
             tokens=tokens, orig_logits=orig_logits, new_logits=new_logits, train=False
         )
 
-        sparsity_metrics = calc_sparsity_metrics(sae_acts=sae_acts, train=False)
+        sparsity_metrics = calc_sparsity_metrics(new_acts=new_acts, train=False)
 
         # Update the global metric dictionary
         for k, v in {**batch_loss_dict, **batch_output_metrics, **sparsity_metrics}.items():
@@ -233,6 +241,7 @@ def train(
     train_loader: DataLoader[Samples],
     trainable_param_names: list[str],
     device: torch.device,
+    cache_positions: list[str] | None = None,
 ) -> None:
     model.saes.train()
 
@@ -354,18 +363,22 @@ def train(
 
         # Run through the raw transformer without SAEs
         orig_logits, orig_acts = model.forward_raw(
-            tokens=tokens, run_entire_model=run_entire_model, final_layer=final_layer
+            tokens=tokens,
+            run_entire_model=run_entire_model,
+            final_layer=final_layer,
+            cache_positions=cache_positions,
         )
         # Run through the SAE-augmented model
-        new_logits, sae_acts = model.forward(
+        new_logits, new_acts = model.forward(
             tokens=tokens,
-            hook_names=list(orig_acts.keys()),
+            sae_positions=model.raw_sae_position_names,
+            cache_positions=cache_positions,
             orig_acts=None if run_entire_model else orig_acts,
         )
 
         loss, loss_dict = calc_loss(
             orig_acts=orig_acts,
-            sae_acts=sae_acts,
+            new_acts=new_acts,
             orig_logits=None if new_logits is None else orig_logits.detach().clone(),
             new_logits=new_logits,
             loss_configs=config.loss,
@@ -389,7 +402,9 @@ def train(
             # Start collecting activation frequency metrics for next config.act_frequency_n_tokens
             act_frequency_metrics = ActFrequencyMetrics(
                 dict_sizes={
-                    hook_name: sae_acts[hook_name]["c"].shape[-1] for hook_name in sae_acts
+                    hook_pos: new_act_pos.c.shape[-1]
+                    for hook_pos, new_act_pos in new_acts.items()
+                    if isinstance(new_act_pos, SAEActs)
                 },
                 device=device,
             )
@@ -397,7 +412,7 @@ def train(
 
         if act_frequency_metrics is not None:
             act_frequency_metrics.update_dict_el_frequencies(
-                sae_acts, batch_tokens=tokens.shape[0] * tokens.shape[1]
+                new_acts, batch_tokens=tokens.shape[0] * tokens.shape[1]
             )
             if act_frequency_metrics.tokens_used >= config.act_frequency_n_tokens:
                 # Finished collecting activation frequency metrics
@@ -427,7 +442,7 @@ def train(
                 if grad_norm is not None:
                     log_info["grad_norm"] = grad_norm
 
-                sparsity_metrics = calc_sparsity_metrics(sae_acts=sae_acts)
+                sparsity_metrics = calc_sparsity_metrics(new_acts=new_acts)
                 log_info.update(sparsity_metrics)
 
                 if new_logits is not None:
@@ -439,7 +454,9 @@ def train(
                     log_info.update(train_output_metrics)
 
                 if is_eval_step:
-                    eval_metrics = evaluate(config=config, model=model, device=device)
+                    eval_metrics = evaluate(
+                        config=config, model=model, device=device, cache_positions=cache_positions
+                    )
                     total_samples_at_last_eval = total_samples
                     log_info.update(eval_metrics)
 
@@ -490,6 +507,12 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     raw_sae_position_names = filter_names(
         list(tlens_model.hook_dict.keys()), config.saes.sae_position_names
     )
+    # TODO: Use consistent naming for sae positions and cache positions (get rid of "names")
+    cache_positions: list[str] | None = None
+    if config.loss.inp_to_orig is not None:
+        cache_positions = filter_names(
+            list(tlens_model.hook_dict.keys()), config.loss.inp_to_orig.hook_positions
+        )
 
     model = SAETransformer(
         config=config, tlens_model=tlens_model, raw_sae_position_names=raw_sae_position_names
@@ -514,6 +537,7 @@ def main(config_path_or_obj: Path | str | Config) -> None:
         train_loader=train_loader,
         trainable_param_names=trainable_param_names,
         device=device,
+        cache_positions=cache_positions,
     )
 
 
