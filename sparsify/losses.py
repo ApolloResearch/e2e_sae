@@ -154,6 +154,7 @@ def calc_loss(
     new_logits: Float[Tensor, "batch pos vocab"] | None,
     loss_configs: LossConfigs,
     is_log_step: bool = False,
+    train: bool = True,
 ) -> tuple[Float[Tensor, ""], dict[str, Float[Tensor, ""]]]:
     """Compute losses.
 
@@ -168,6 +169,7 @@ def calc_loss(
         new_logits: Logits from SAE-augmented model.
         loss_configs: Config for the losses to be computed.
         is_log_step: Whether to store additional loss information for logging.
+        train: Whether in train or evaluation mode. Only affects the keys of the loss_dict.
 
     Returns:
         loss: Scalar tensor representing the loss.
@@ -178,18 +180,18 @@ def calc_loss(
         f"{sae_acts.keys()}"
     )
 
+    prefix = "loss/train" if train else "loss/eval"
+
     loss: Float[Tensor, ""] = torch.zeros(
-        1,
-        device=next(iter(orig_acts.values())).device,
-        dtype=next(iter(orig_acts.values())).dtype,
+        1, device=next(iter(orig_acts.values())).device, dtype=next(iter(orig_acts.values())).dtype
     )
     loss_dict = {}
 
     if loss_configs.logits_kl and orig_logits is not None and new_logits is not None:
-        loss_dict["loss/logits_kl"] = loss_configs.logits_kl.calc_loss(
+        loss_dict[f"{prefix}/logits_kl"] = loss_configs.logits_kl.calc_loss(
             new_logits=new_logits, orig_logits=orig_logits
         )
-        loss = loss + loss_configs.logits_kl.coeff * loss_dict["loss/logits_kl"]
+        loss = loss + loss_configs.logits_kl.coeff * loss_dict[f"{prefix}/logits_kl"]
     # TODO Future: Maintain a record of batch-element-wise losses
 
     for name, orig_act in orig_acts.items():
@@ -200,13 +202,13 @@ def calc_loss(
         for config_type in ["inp_to_orig", "out_to_orig", "inp_to_out", "sparsity"]:
             loss_config: BaseLossConfig | None = getattr(loss_configs, config_type)
             if loss_config:
-                loss_dict[f"loss/{config_type}/{name}"] = loss_config.calc_loss(
+                loss_dict[f"{prefix}/{config_type}/{name}"] = loss_config.calc_loss(
                     input=sae_act["input"],
                     output=sae_act["output"],
                     orig=orig_act,
                     c=sae_act["c"],
                 )
-                loss = loss + loss_config.coeff * loss_dict[f"loss/{config_type}/{name}"]
+                loss = loss + loss_config.coeff * loss_dict[f"{prefix}/{config_type}/{name}"]
 
                 if is_log_step and isinstance(
                     loss_config, InpToOrigLossConfig | OutToOrigLossConfig | InpToOutLossConfig
@@ -218,10 +220,10 @@ def calc_loss(
                         c=sae_act["c"],
                     )
                     loss_dict[
-                        f"loss/{config_type}/explained_variance/{name}"
+                        f"{prefix}/{config_type}/explained_variance/{name}"
                     ] = explained_variance.mean()
                     loss_dict[
-                        f"loss/{config_type}/explained_variance_std/{name}"
+                        f"{prefix}/{config_type}/explained_variance_std/{name}"
                     ] = explained_variance.std()
 
     return loss, loss_dict
