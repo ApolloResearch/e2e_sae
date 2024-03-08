@@ -1,4 +1,4 @@
-from typing import Annotated, Any
+from typing import Annotated
 
 import einops
 import torch
@@ -10,7 +10,7 @@ from torch import Tensor
 from sparsify.hooks import CacheActs, SAEActs
 
 
-def explained_variance(
+def calc_explained_variance(
     pred: Float[Tensor, "... dim"], target: Float[Tensor, "... dim"]
 ) -> Float[Tensor, "..."]:
     """Calculate the explained variance of the pred and target.
@@ -46,6 +46,11 @@ class SparsityLossConfig(BaseModel):
 
 
 class InpToOrigLossConfig(BaseModel):
+    """Config for the loss between the input and original activations.
+
+    The input activations may come from the input to an SAE or the activations at a cache_hook.
+    """
+
     model_config = ConfigDict(extra="forbid", frozen=True)
     coeff: float
     hook_positions: Annotated[
@@ -60,17 +65,8 @@ class InpToOrigLossConfig(BaseModel):
     def calc_loss(
         self, input: Float[Tensor, "... dim"], orig: Float[Tensor, "... dim"]
     ) -> Float[Tensor, ""]:
-        """Calculate loss between the input of the SAE and the non-SAE-augmented activations."""
+        """Calculate the MSE between the input and orig."""
         return F.mse_loss(input, orig)
-
-    def calc_explained_variance(
-        self,
-        *args: Any,
-        input: Float[Tensor, "... dim"],
-        orig: Float[Tensor, "... dim"],
-        **kwargs: Any,
-    ) -> Float[Tensor, ""]:
-        return explained_variance(input, orig)
 
 
 class OutToOrigLossConfig(BaseModel):
@@ -83,15 +79,6 @@ class OutToOrigLossConfig(BaseModel):
         """Calculate loss between the output of the SAE and the non-SAE-augmented activations."""
         return F.mse_loss(output, orig)
 
-    def calc_explained_variance(
-        self,
-        *args: Any,
-        output: Float[Tensor, "... dim"],
-        orig: Float[Tensor, "... dim"],
-        **kwargs: Any,
-    ) -> Float[Tensor, ""]:
-        return explained_variance(output, orig)
-
 
 class InpToOutLossConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -102,15 +89,6 @@ class InpToOutLossConfig(BaseModel):
     ) -> Float[Tensor, ""]:
         """Calculate loss between the input and output of the SAE."""
         return F.mse_loss(input, output)
-
-    def calc_explained_variance(
-        self,
-        *args: Any,
-        input: Float[Tensor, "... dim"],
-        output: Float[Tensor, "... dim"],
-        **kwargs: Any,
-    ) -> Float[Tensor, ""]:
-        return explained_variance(input, output)
 
 
 class LogitsKLLossConfig(BaseModel):
@@ -221,7 +199,7 @@ def calc_loss(
                 assert isinstance(new_act, SAEActs)
                 kwargs = {"c": new_act.c}
             else:
-                assert loss_config is None
+                assert loss_config is None, f"Unknown loss_config type {type(loss_config)}"
                 kwargs = {}
 
             if loss_config:
@@ -231,12 +209,8 @@ def calc_loss(
                 if is_log_step and isinstance(
                     loss_config, InpToOrigLossConfig | OutToOrigLossConfig | InpToOutLossConfig
                 ):
-                    explained_variance = loss_config.calc_explained_variance(**kwargs)
-                    loss_dict[
-                        f"{prefix}/{config_type}/explained_variance/{name}"
-                    ] = explained_variance.mean()
-                    loss_dict[
-                        f"{prefix}/{config_type}/explained_variance_std/{name}"
-                    ] = explained_variance.std()
+                    var = calc_explained_variance(**kwargs)
+                    loss_dict[f"{prefix}/{config_type}/explained_variance/{name}"] = var.mean()
+                    loss_dict[f"{prefix}/{config_type}/explained_variance_std/{name}"] = var.std()
 
     return loss, loss_dict

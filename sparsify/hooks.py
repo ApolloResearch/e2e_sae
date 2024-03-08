@@ -24,7 +24,7 @@ def sae_hook(
     hook_acts: dict[str, Any],
     hook_key: str,
 ) -> Float[torch.Tensor, "... dim"]:
-    """Runs the SAE on the input and stores the output and c in hook_acts.
+    """Runs the SAE on the input and stores the input, output and c in hook_acts under hook_key.
 
     Args:
         x: The input.
@@ -47,7 +47,7 @@ def cache_hook(
     hook_acts: dict[str, Any],
     hook_key: str,
 ) -> Float[torch.Tensor, "... dim"]:
-    """Stores the input in hook_acts.
+    """Stores the input in hook_acts under hook_key.
 
     Args:
         x: The input.
