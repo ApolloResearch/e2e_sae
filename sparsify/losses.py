@@ -193,27 +193,34 @@ def calc_loss(
                 # Cache acts are only used for in_to_orig loss
                 continue
 
+            var: Float[Tensor, "batch_token"] | None = None  # noqa: F821
             if isinstance(loss_config, InToOrigLoss):
                 # Note that out_to_in may calculate losses using CacheActs rather than SAEActs.
-                kwargs = {"input": new_act.input, "orig": orig_act}
+                loss_val = loss_config.calc_loss(new_act.input, orig_act)
+                var = calc_explained_variance(new_act.input, orig_act)
             elif isinstance(loss_config, OutToOrigLoss):
                 assert isinstance(new_act, SAEActs)
-                kwargs = {"output": new_act.output, "orig": orig_act}
+                loss_val = loss_config.calc_loss(new_act.output, orig_act)
+                var = calc_explained_variance(new_act.output, orig_act)
             elif isinstance(loss_config, OutToInLoss):
                 assert isinstance(new_act, SAEActs)
-                kwargs = {"output": new_act.output, "input": new_act.input}
+                loss_val = loss_config.calc_loss(new_act.input, new_act.output)
+                var = calc_explained_variance(new_act.input, new_act.output)
             elif isinstance(loss_config, SparsityLoss):
                 assert isinstance(new_act, SAEActs)
-                kwargs = {"c": new_act.c}
+                loss_val = loss_config.calc_loss(new_act.c)
             else:
                 assert loss_config is None, f"Unknown loss config {loss_config}"
                 continue
 
-            loss_dict[f"{prefix}/{config_type}/{name}"] = loss_config.calc_loss(**kwargs)
-            loss = loss + loss_config.coeff * loss_dict[f"{prefix}/{config_type}/{name}"]
+            loss = loss + loss_config.coeff * loss_val
+            loss_dict[f"{prefix}/{config_type}/{name}"] = loss_val.detach().clone()
 
-            if is_log_step and isinstance(loss_config, InToOrigLoss | OutToOrigLoss | OutToInLoss):
-                var = calc_explained_variance(*kwargs.values())
+            if (
+                var is not None
+                and is_log_step
+                and isinstance(loss_config, InToOrigLoss | OutToOrigLoss | OutToInLoss)
+            ):
                 loss_dict[f"{prefix}/{config_type}/explained_variance/{name}"] = var.mean()
                 loss_dict[f"{prefix}/{config_type}/explained_variance_std/{name}"] = var.std()
 

@@ -26,10 +26,8 @@ loss:
     p_norm: 1.0
     coeff: 0.1
   in_to_orig:
-    hook_positions:
-      - blocks.2.hook_resid_post
-      - blocks.3.hook_resid_post
-    coeff: 0.0
+    hook_positions: hook_resid_post
+    coeff: 0.0  # log these positions but don't use them in the loss
   out_to_orig: null
   out_to_in:
     coeff: 0.0
