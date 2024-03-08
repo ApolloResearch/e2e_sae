@@ -245,7 +245,7 @@ def train(
 ) -> None:
     model.saes.train()
 
-    layerwise = config.loss.logits_kl is None
+    is_layerwise = config.loss.logits_kl is None and cache_positions is None
 
     for name, param in model.named_parameters():
         if name.startswith("saes.") and name.split("saes.")[1] in trainable_param_names:
@@ -277,7 +277,7 @@ def train(
         n_batches = math.ceil(config.n_samples / config.batch_size)
 
     final_layer = None
-    if all(name.startswith("blocks.") for name in model.raw_sae_positions) and layerwise:
+    if all(name.startswith("blocks.") for name in model.raw_sae_positions) and is_layerwise:
         # We don't need to run through the whole model for layerwise runs
         final_layer = max([int(name.split(".")[1]) for name in model.raw_sae_positions]) + 1
 
@@ -313,7 +313,7 @@ def train(
         samples_since_act_frequency_collection += tokens.shape[0]
         samples_since_output_metric_collection += tokens.shape[0]
 
-        run_entire_model: bool = not layerwise
+        run_entire_model: bool = not is_layerwise
         # Note that is_last_batch will always be False for iterable datasets with n_samples=None. In
         # that case, we will never know when the final batch is reached.
         is_last_batch: bool = n_batches is not None and batch_idx == n_batches - 1
@@ -343,7 +343,7 @@ def train(
         is_log_step: bool = (
             batch_idx == 0
             or (is_grad_step and (grad_updates + 1) % config.log_every_n_grad_steps == 0)
-            or (layerwise and is_collect_output_metrics_step)
+            or (is_layerwise and is_collect_output_metrics_step)
             or is_eval_step
             or is_last_batch
         )
@@ -511,6 +511,8 @@ def main(config_path_or_obj: Path | str | Config) -> None:
         cache_positions = filter_names(
             list(tlens_model.hook_dict.keys()), config.loss.in_to_orig.hook_positions
         )
+        # Don't add a cache position if there is already an SAE at that position
+        cache_positions = [pos for pos in cache_positions if pos not in raw_sae_positions] or None
 
     model = SAETransformer(
         config=config, tlens_model=tlens_model, raw_sae_positions=raw_sae_positions
