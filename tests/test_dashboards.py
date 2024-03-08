@@ -6,7 +6,7 @@ import pytest
 import torch
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
-from sparsify.data import DataConfig
+from sparsify.data import DatasetConfig
 from sparsify.loader import load_tlens_model
 from sparsify.models.transformers import SAETransformer
 from sparsify.scripts.generate_dashboards import (
@@ -116,7 +116,7 @@ def test_generate_dashboards(tinystories_model: SAETransformer, tmp_dir: Path):
             save_dir=Path(tmp_dir),
             sae_position_names=["blocks.2.hook_resid_post"],
             feature_indices=list(range(5)),
-            data=DataConfig(
+            data=DatasetConfig(
                 dataset_name="apollo-research/sae-skeskinen-TinyStories-hf-tokenizer-gpt2",
                 tokenizer_name="gpt2",
                 split="train",
