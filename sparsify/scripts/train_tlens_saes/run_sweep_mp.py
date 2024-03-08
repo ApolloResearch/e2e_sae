@@ -18,7 +18,7 @@ SCRIPT_PATH = f"{REPO_ROOT}/sparsify/scripts/train_tlens_saes/run_train_tlens_sa
 
 
 def main(config_path_str: str) -> None:
-    """Run the training script with different sae_position_name values.
+    """Run the training script with different sae_position values.
 
     NOTE: You must specify the GPU indices to use in the `gpu_idxs` list.
     """

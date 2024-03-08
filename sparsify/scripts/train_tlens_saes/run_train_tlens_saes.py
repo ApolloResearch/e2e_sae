@@ -61,11 +61,11 @@ class SparsifiersConfig(BaseModel):
         list[RootPath] | None, BeforeValidator(lambda x: [x] if isinstance(x, str | Path) else x)
     ] = Field(None, description="Path to a pretrained SAE model to load. If None, don't load any.")
     retrain_saes: bool = Field(False, description="Whether to retrain the pretrained SAEs.")
-    sae_position_names: Annotated[
+    sae_positions: Annotated[
         list[str], BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
     ] = Field(
         ...,
-        description="The names of the SAE positions to train on. E.g. 'hook_resid_post' or "
+        description="The names of the hook positions to train SAEs on. E.g. 'hook_resid_post' or "
         "['hook_resid_post', 'hook_mlp_out']. Each entry gets matched to all hook positions that "
         "contain the given string.",
     )
@@ -155,7 +155,7 @@ def get_run_name(config: Config) -> str:
             coeff_info += f"logits-kl-{config.loss.logits_kl.coeff}_"
 
         run_suffix = config.wandb_run_name_prefix + (
-            f"{'-'.join(config.saes.sae_position_names)}_"
+            f"{'-'.join(config.saes.sae_positions)}_"
             f"ratio-{config.saes.dict_size_to_input_ratio}_lr-{config.lr}_{coeff_info}"
         )
     return config.wandb_run_name_prefix + run_suffix
@@ -201,7 +201,7 @@ def evaluate(
         # Run through the SAE-augmented model
         new_logits, new_acts = model.forward(
             tokens=tokens,
-            sae_positions=model.raw_sae_position_names,
+            sae_positions=model.raw_sae_positions,
             cache_positions=cache_positions,
         )
         assert new_logits is not None, "new_logits should not be None during evaluation."
@@ -277,9 +277,9 @@ def train(
         n_batches = math.ceil(config.n_samples / config.batch_size)
 
     final_layer = None
-    if all(name.startswith("blocks.") for name in model.raw_sae_position_names) and layerwise:
+    if all(name.startswith("blocks.") for name in model.raw_sae_positions) and layerwise:
         # We don't need to run through the whole model for layerwise runs
-        final_layer = max([int(name.split(".")[1]) for name in model.raw_sae_position_names]) + 1
+        final_layer = max([int(name.split(".")[1]) for name in model.raw_sae_positions]) + 1
 
     run_name = get_run_name(config)
     # Initialize wandb
@@ -371,7 +371,7 @@ def train(
         # Run through the SAE-augmented model
         new_logits, new_acts = model.forward(
             tokens=tokens,
-            sae_positions=model.raw_sae_position_names,
+            sae_positions=model.raw_sae_positions,
             cache_positions=cache_positions,
             orig_acts=None if run_entire_model else orig_acts,
         )
@@ -504,9 +504,7 @@ def main(config_path_or_obj: Path | str | Config) -> None:
         tlens_model_name=config.tlens_model_name, tlens_model_path=config.tlens_model_path
     )
 
-    raw_sae_position_names = filter_names(
-        list(tlens_model.hook_dict.keys()), config.saes.sae_position_names
-    )
+    raw_sae_positions = filter_names(list(tlens_model.hook_dict.keys()), config.saes.sae_positions)
     # TODO: Use consistent naming for sae positions and cache positions (get rid of "names")
     cache_positions: list[str] | None = None
     if config.loss.in_to_orig is not None:
@@ -515,7 +513,7 @@ def main(config_path_or_obj: Path | str | Config) -> None:
         )
 
     model = SAETransformer(
-        config=config, tlens_model=tlens_model, raw_sae_position_names=raw_sae_position_names
+        config=config, tlens_model=tlens_model, raw_sae_positions=raw_sae_positions
     ).to(device=device)
 
     all_param_names = [name for name, _ in model.saes.named_parameters()]

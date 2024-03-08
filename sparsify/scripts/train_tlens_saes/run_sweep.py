@@ -14,7 +14,7 @@ from sparsify.utils import replace_pydantic_model
 
 
 def main(config_path_str: str) -> None:
-    """Run the training script with different sae_position_name values."""
+    """Run the training script with different sae_position values."""
     sweep_name = "tinystories-1m_sparsity-coeff"
     values = [1.0, 0.1, 0.01, 0.001, 0.0001, 0.00001]
 

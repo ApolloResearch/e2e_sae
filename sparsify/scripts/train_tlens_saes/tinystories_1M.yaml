@@ -52,5 +52,5 @@ eval_data:
 saes:
   retrain_saes: false
   pretrained_sae_paths: null
-  sae_position_names: blocks.1.hook_resid_post
+  sae_positions: blocks.1.hook_resid_post
   dict_size_to_input_ratio: 30.0
