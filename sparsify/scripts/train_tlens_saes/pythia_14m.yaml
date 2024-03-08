@@ -13,10 +13,10 @@ train:
     sparsity:
       p_norm: 0.5
       coeff: 0.00005
-    inp_to_orig: null
+    in_to_orig: null
     out_to_orig:
       coeff: 1.0
-    inp_to_out: null
+    out_to_in: null
     logits_kl: null
 data:
   dataset_name: apollo-research/monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b

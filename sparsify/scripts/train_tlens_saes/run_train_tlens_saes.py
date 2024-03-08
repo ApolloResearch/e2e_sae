@@ -149,8 +149,8 @@ def get_run_name(config: Config) -> str:
         run_suffix = config.wandb_run_name
     else:
         coeff_info = f"lpcoeff-{config.loss.sparsity.coeff}_"
-        if config.loss.inp_to_out is not None and config.loss.inp_to_out.coeff > 0:
-            coeff_info += f"inp-to-out-{config.loss.inp_to_out.coeff}_"
+        if config.loss.out_to_in is not None and config.loss.out_to_in.coeff > 0:
+            coeff_info += f"inp-to-out-{config.loss.out_to_in.coeff}_"
         if config.loss.logits_kl is not None and config.loss.logits_kl.coeff > 0:
             coeff_info += f"logits-kl-{config.loss.logits_kl.coeff}_"
 
@@ -509,9 +509,9 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     )
     # TODO: Use consistent naming for sae positions and cache positions (get rid of "names")
     cache_positions: list[str] | None = None
-    if config.loss.inp_to_orig is not None:
+    if config.loss.in_to_orig is not None:
         cache_positions = filter_names(
-            list(tlens_model.hook_dict.keys()), config.loss.inp_to_orig.hook_positions
+            list(tlens_model.hook_dict.keys()), config.loss.in_to_orig.hook_positions
         )
 
     model = SAETransformer(

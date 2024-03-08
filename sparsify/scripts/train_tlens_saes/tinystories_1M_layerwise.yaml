@@ -25,9 +25,9 @@ loss:
   sparsity:
     p_norm: 1.0
     coeff: 0.1
-  inp_to_orig: null
+  in_to_orig: null
   out_to_orig: null
-  inp_to_out:
+  out_to_in:
     coeff: 0.0
   logits_kl:
     coeff: 1.0

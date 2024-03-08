@@ -28,7 +28,7 @@ def calc_explained_variance(
     return 1 - per_token_l2_loss / total_variance
 
 
-class SparsityLossConfig(BaseModel):
+class SparsityLoss(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     coeff: float
     p_norm: float = 1.0
@@ -45,7 +45,7 @@ class SparsityLossConfig(BaseModel):
         return torch.norm(c, p=self.p_norm, dim=-1).mean()
 
 
-class InpToOrigLossConfig(BaseModel):
+class InToOrigLoss(BaseModel):
     """Config for the loss between the input and original activations.
 
     The input activations may come from the input to an SAE or the activations at a cache_hook.
@@ -69,7 +69,7 @@ class InpToOrigLossConfig(BaseModel):
         return F.mse_loss(input, orig)
 
 
-class OutToOrigLossConfig(BaseModel):
+class OutToOrigLoss(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     coeff: float
 
@@ -80,7 +80,7 @@ class OutToOrigLossConfig(BaseModel):
         return F.mse_loss(output, orig)
 
 
-class InpToOutLossConfig(BaseModel):
+class OutToInLoss(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     coeff: float
 
@@ -91,7 +91,7 @@ class InpToOutLossConfig(BaseModel):
         return F.mse_loss(input, output)
 
 
-class LogitsKLLossConfig(BaseModel):
+class LogitsKLLoss(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     coeff: float
 
@@ -118,11 +118,22 @@ class LogitsKLLossConfig(BaseModel):
 
 class LossConfigs(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    sparsity: SparsityLossConfig
-    inp_to_orig: InpToOrigLossConfig | None
-    out_to_orig: OutToOrigLossConfig | None
-    inp_to_out: InpToOutLossConfig | None
-    logits_kl: LogitsKLLossConfig | None
+    sparsity: SparsityLoss
+    in_to_orig: InToOrigLoss | None
+    out_to_orig: OutToOrigLoss | None
+    out_to_in: OutToInLoss | None
+    logits_kl: LogitsKLLoss | None
+
+    @property
+    def activation_loss_configs(
+        self,
+    ) -> dict[str, SparsityLoss | InToOrigLoss | OutToOrigLoss | OutToInLoss | None]:
+        return {
+            "sparsity": self.sparsity,
+            "in_to_orig": self.in_to_orig,
+            "out_to_orig": self.out_to_orig,
+            "out_to_in": self.out_to_in,
+        }
 
 
 def calc_loss(
@@ -139,7 +150,7 @@ def calc_loss(
     Note that some losses may be computed on the final logits, while others may be computed on
     intermediate activations.
 
-    Additionally, for cache activations, only the inp_to_orig loss is computed.
+    Additionally, for cache activations, only the in_to_orig loss is computed.
 
     Args:
         orig_acts: Dictionary of original activations, keyed by tlens attribute.
@@ -171,46 +182,39 @@ def calc_loss(
             new_logits=new_logits, orig_logits=orig_logits
         )
         loss = loss + loss_configs.logits_kl.coeff * loss_dict[f"{prefix}/logits_kl"]
-    # TODO Future: Maintain a record of batch-element-wise losses
 
     for name, orig_act in orig_acts.items():
         # Convert from inference tensor.
         orig_act = orig_act.detach().clone()
         new_act = new_acts[name]
 
-        if isinstance(new_act, CacheActs):
-            # Cache acts are only used for inp_to_orig loss
-            config_types = ["inp_to_orig"]
-        else:
-            config_types = ["inp_to_orig", "out_to_orig", "inp_to_out", "sparsity"]
+        for config_type, loss_config in loss_configs.activation_loss_configs.items():
+            if isinstance(new_act, CacheActs) and not isinstance(loss_config, InToOrigLoss):
+                # Cache acts are only used for in_to_orig loss
+                continue
 
-        for config_type in config_types:
-            loss_config = getattr(loss_configs, config_type)
-            if isinstance(loss_config, InpToOrigLossConfig):
-                # Note that inp_to_out may calculate losses using CacheActs rather than SAEActs.
+            if isinstance(loss_config, InToOrigLoss):
+                # Note that out_to_in may calculate losses using CacheActs rather than SAEActs.
                 kwargs = {"input": new_act.input, "orig": orig_act}
-            elif isinstance(loss_config, OutToOrigLossConfig):
+            elif isinstance(loss_config, OutToOrigLoss):
                 assert isinstance(new_act, SAEActs)
                 kwargs = {"output": new_act.output, "orig": orig_act}
-            elif isinstance(loss_config, InpToOutLossConfig):
+            elif isinstance(loss_config, OutToInLoss):
                 assert isinstance(new_act, SAEActs)
-                kwargs = {"input": new_act.input, "output": new_act.output}
-            elif isinstance(loss_config, SparsityLossConfig):
+                kwargs = {"output": new_act.output, "input": new_act.input}
+            elif isinstance(loss_config, SparsityLoss):
                 assert isinstance(new_act, SAEActs)
                 kwargs = {"c": new_act.c}
             else:
-                assert loss_config is None, f"Unknown loss_config type {type(loss_config)}"
-                kwargs = {}
+                assert loss_config is None, f"Unknown loss config {loss_config}"
+                continue
 
-            if loss_config:
-                loss_dict[f"{prefix}/{config_type}/{name}"] = loss_config.calc_loss(**kwargs)
-                loss = loss + loss_config.coeff * loss_dict[f"{prefix}/{config_type}/{name}"]
+            loss_dict[f"{prefix}/{config_type}/{name}"] = loss_config.calc_loss(**kwargs)
+            loss = loss + loss_config.coeff * loss_dict[f"{prefix}/{config_type}/{name}"]
 
-                if is_log_step and isinstance(
-                    loss_config, InpToOrigLossConfig | OutToOrigLossConfig | InpToOutLossConfig
-                ):
-                    var = calc_explained_variance(**kwargs)
-                    loss_dict[f"{prefix}/{config_type}/explained_variance/{name}"] = var.mean()
-                    loss_dict[f"{prefix}/{config_type}/explained_variance_std/{name}"] = var.std()
+            if is_log_step and isinstance(loss_config, InToOrigLoss | OutToOrigLoss | OutToInLoss):
+                var = calc_explained_variance(*kwargs.values())
+                loss_dict[f"{prefix}/{config_type}/explained_variance/{name}"] = var.mean()
+                loss_dict[f"{prefix}/{config_type}/explained_variance_std/{name}"] = var.std()
 
     return loss, loss_dict
