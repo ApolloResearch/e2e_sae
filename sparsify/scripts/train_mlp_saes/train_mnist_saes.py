@@ -45,7 +45,7 @@ class TrainConfig(BaseModel):
     type_of_sparsifier: str
     sparsity_lambda: NonNegativeFloat
     dict_eles_to_input_ratio: PositiveFloat
-    sparsifier_inp_out_recon_loss_scale: NonNegativeFloat
+    sparsifier_in_out_recon_loss_scale: NonNegativeFloat
     k: PositiveInt
 
 
@@ -219,7 +219,7 @@ def train(config: Config) -> None:
                             sparsifiers_outs[str(layer)], mod_acts[str(layer)].detach()
                         )
                     loss = loss + (
-                        sp_new_losses[str(layer)] * config.train.sparsifier_inp_out_recon_loss_scale
+                        sp_new_losses[str(layer)] * config.train.sparsifier_in_out_recon_loss_scale
                     )
 
             # Add L_p norm loss

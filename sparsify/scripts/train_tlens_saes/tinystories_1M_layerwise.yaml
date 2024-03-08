@@ -25,9 +25,9 @@ loss:
   sparsity:
     p_norm: 1.0
     coeff: 0.1
-  inp_to_orig: null
+  in_to_orig: null
   out_to_orig: null
-  inp_to_out:
+  out_to_in:
     coeff: 0.0
   logits_kl:
     coeff: 1.0
@@ -50,7 +50,7 @@ eval_data:
 saes:
   retrain_saes: false
   pretrained_sae_paths: null
-  sae_position_names:
+  sae_positions:
     - blocks.1.hook_resid_post
     - blocks.3.hook_resid_post
   dict_size_to_input_ratio: 30.0
