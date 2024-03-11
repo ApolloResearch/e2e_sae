@@ -6,7 +6,7 @@ seed: 0
 tlens_model_name: roneneldan/TinyStories-1M
 tlens_model_path: null
 
-n_samples: 900_000  # 918604 samples of 512 tokens
+n_samples: 400_000  # 918604 samples of 512 tokens
 save_every_n_samples: null
 eval_every_n_samples: 10_000
 eval_n_samples: 500
