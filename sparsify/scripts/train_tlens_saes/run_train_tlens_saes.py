@@ -154,7 +154,7 @@ def get_run_name(config: Config) -> str:
         if config.loss.logits_kl is not None and config.loss.logits_kl.coeff > 0:
             coeff_info += f"logits-kl-{config.loss.logits_kl.coeff}_"
 
-        run_suffix = config.wandb_run_name_prefix + (
+        run_suffix = (
             f"{'-'.join(config.saes.sae_positions)}_"
             f"ratio-{config.saes.dict_size_to_input_ratio}_lr-{config.lr}_{coeff_info}"
         )
@@ -440,7 +440,7 @@ def train(
                 }
                 log_info.update({k: v.item() for k, v in loss_dict.items()})
                 if grad_norm is not None:
-                    log_info["grad_norm"] = grad_norm
+                    log_info["grad_norm"] = grad_norm  # Norm of grad before clipping
 
                 sparsity_metrics = calc_sparsity_metrics(new_acts=new_acts)
                 log_info.update(sparsity_metrics)
