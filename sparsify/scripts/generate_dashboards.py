@@ -111,7 +111,7 @@ class DashboardsConfig(BaseModel):
 def compute_feature_acts(
     model: SAETransformer,
     tokens: Int[Tensor, "batch pos"],
-    raw_sae_position_names: list[str] | None = None,
+    raw_sae_positions: list[str] | None = None,
     feature_indices: FeatureIndicesType | None = None,
     stop_at_layer: int = -1,
 ) -> tuple[dict[str, Float[Tensor, "... some_feats"]], Float[Tensor, "... dim"]]:
@@ -119,7 +119,7 @@ def compute_feature_acts(
     Args:
         model: The SAETransformer containing the SAEs and the tlens_model
         tokens: The inputs to the tlens_model
-        raw_sae_position_names: The names of the SAEs we're interested in
+        raw_sae_positions: The names of the SAEs we're interested in
         feature_indices: The indices of the features we're interested in for each SAE
         stop_at_layer: Where to stop the forward pass. final_resid_acts will be returned from here
 
@@ -130,12 +130,12 @@ def compute_feature_acts(
         final_resid_acts:
             The residual stream activations of the model at the final layer (or at stop_at_layer)
     """
-    if raw_sae_position_names is None:
-        raw_sae_position_names = model.raw_sae_position_names
+    if raw_sae_positions is None:
+        raw_sae_positions = model.raw_sae_positions
     # Run model without SAEs
     final_resid_acts, orig_acts = model.tlens_model.run_with_cache(
         tokens,
-        names_filter=raw_sae_position_names,
+        names_filter=raw_sae_positions,
         return_cache_object=False,
         stop_at_layer=stop_at_layer,
     )
@@ -157,7 +157,7 @@ def compute_feature_acts_on_distribution(
     dataset_config: DatasetConfig,
     batch_size: PositiveInt,
     n_samples: PositiveInt | None = None,
-    raw_sae_position_names: list[str] | None = None,
+    raw_sae_positions: list[str] | None = None,
     feature_indices: FeatureIndicesType | None = None,
     stop_at_layer: int = -1,
 ) -> tuple[
@@ -169,7 +169,7 @@ def compute_feature_acts_on_distribution(
         dataset_config: The DatasetConfig used to get the data loader for the tokens.
         batch_size: The batch size of data run through the model when calculating the feature acts
         n_samples: The number of batches of data to use for calculating the feature dashboard data
-        raw_sae_position_names: The names of the SAEs we're interested in. If none, do all SAEs.
+        raw_sae_positions: The names of the SAEs we're interested in. If none, do all SAEs.
         feature_indices: The indices of the features we're interested in for each SAE. If none, do
                          all features.
         stop_at_layer: Where to stop the forward pass. final_resid_acts will be returned from here
@@ -187,9 +187,10 @@ def compute_feature_acts_on_distribution(
     data_loader, _ = create_data_loader(
         dataset_config, batch_size=batch_size, buffer_size=batch_size
     )
-    if raw_sae_position_names is None:
-        raw_sae_position_names = model.raw_sae_position_names
-    device = model.saes[raw_sae_position_names[0].replace(".", "-")].device
+    if raw_sae_positions is None:
+        raw_sae_positions = model.raw_sae_positions
+        assert raw_sae_positions is not None
+    device = model.saes[raw_sae_positions[0].replace(".", "-")].device
     if n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
         n_batches = None if isinstance(data_loader.dataset, IterableDataset) else len(data_loader)
@@ -198,7 +199,7 @@ def compute_feature_acts_on_distribution(
 
     total_samples = 0
     feature_acts_lists: dict[str, list[Float[Tensor, "... some_feats"]]] = {
-        sae_name: [] for sae_name in raw_sae_position_names
+        sae_name: [] for sae_name in raw_sae_positions
     }
     final_resid_acts_list: list[Float[Tensor, "... d_resid"]] = []
     tokens_list: list[Int[Tensor, "..."]] = []
@@ -209,11 +210,11 @@ def compute_feature_acts_on_distribution(
         batch_feature_acts, batch_final_resid_acts = compute_feature_acts(
             model=model,
             tokens=batch_tokens,
-            raw_sae_position_names=raw_sae_position_names,
+            raw_sae_positions=raw_sae_positions,
             feature_indices=feature_indices,
             stop_at_layer=stop_at_layer,
         )
-        for sae_name in raw_sae_position_names:
+        for sae_name in raw_sae_positions:
             feature_acts_lists[sae_name].append(batch_feature_acts[sae_name])
         final_resid_acts_list.append(batch_final_resid_acts)
         tokens_list.append(batch_tokens)
@@ -223,7 +224,7 @@ def compute_feature_acts_on_distribution(
     final_resid_acts: Float[Tensor, "... d_resid"] = torch.cat(final_resid_acts_list, dim=0)
     tokens: Int[Tensor, "..."] = torch.cat(tokens_list, dim=0)
     feature_acts: dict[str, Float[Tensor, "... some_feats"]] = {}
-    for sae_name in raw_sae_position_names:
+    for sae_name in raw_sae_positions:
         feature_acts[sae_name] = torch.cat(tensors=feature_acts_lists[sae_name], dim=0)
     return feature_acts, final_resid_acts, tokens
 
@@ -341,13 +342,13 @@ def parse_activation_data(
 
 def feature_indices_to_tensordict(
     feature_indices_in: FeatureIndicesType | list[int] | None,
-    raw_sae_position_names: list[str],
+    raw_sae_positions: list[str],
     model: SAETransformer,
 ) -> dict[str, Tensor]:
     """ "Convert feature indices to a dict of tensor indices"""
     if feature_indices_in is None:
         feature_indices = {}
-        for sae_name in raw_sae_position_names:
+        for sae_name in raw_sae_positions:
             feature_indices[sae_name] = torch.arange(
                 end=model.saes[sae_name.replace(".", "-")].n_dict_components
             )
@@ -355,12 +356,12 @@ def feature_indices_to_tensordict(
     elif not isinstance(feature_indices_in, dict):
         feature_indices = {
             sae_name: Tensor(feature_indices_in).to("cpu").to(torch.int)
-            for sae_name in raw_sae_position_names
+            for sae_name in raw_sae_positions
         }
     else:
         feature_indices: dict[str, Tensor] = {
             sae_name: Tensor(feature_indices_in[sae_name]).to("cpu").to(torch.int)
-            for sae_name in raw_sae_position_names
+            for sae_name in raw_sae_positions
         }
     return feature_indices
 
@@ -430,24 +431,24 @@ def get_dashboards_data(
         fvp = FeatureVisParams(include_left_tables=False)
 
     if sae_position_names is None:
-        raw_sae_position_names: list[str] = model.raw_sae_position_names
+        raw_sae_positions: list[str] = model.raw_sae_positions
     else:
-        raw_sae_position_names: list[str] = filter_names(
+        raw_sae_positions: list[str] = filter_names(
             list(model.tlens_model.hook_dict.keys()), sae_position_names
         )
     # If we haven't supplied any feature indicies, assume that we want all of them
     feature_indices_tensors = feature_indices_to_tensordict(
         feature_indices_in=feature_indices,
-        raw_sae_position_names=raw_sae_position_names,
+        raw_sae_positions=raw_sae_positions,
         model=model,
     )
-    for sae_name in raw_sae_position_names:
+    for sae_name in raw_sae_positions:
         assert (
             feature_indices_tensors[sae_name].max().item()
             < model.saes[sae_name.replace(".", "-")].n_dict_components
         ), "Error: Some feature indices are greater than the number of SAE features"
 
-    device = model.saes[raw_sae_position_names[0].replace(".", "-")].device
+    device = model.saes[raw_sae_positions[0].replace(".", "-")].device
     # Get the SAE feature activations (as well as their resudual stream inputs and outputs)
     if tokens is None:
         assert dataset_config is not None, "If no tokens are supplied, then config must be supplied"
@@ -458,7 +459,7 @@ def get_dashboards_data(
             model=model,
             dataset_config=dataset_config,
             batch_size=batch_size,
-            raw_sae_position_names=raw_sae_position_names,
+            raw_sae_positions=raw_sae_positions,
             feature_indices=feature_indices_tensors,
             n_samples=n_samples,
         )
@@ -467,22 +468,22 @@ def get_dashboards_data(
         feature_acts, final_resid_acts = compute_feature_acts(
             model=model,
             tokens=tokens,
-            raw_sae_position_names=raw_sae_position_names,
+            raw_sae_positions=raw_sae_positions,
             feature_indices=feature_indices_tensors,
         )
 
     # Filter out the never active features:
-    for sae_name in raw_sae_position_names:
+    for sae_name in raw_sae_positions:
         acts_sum = einsum(feature_acts[sae_name], "... some_feats -> some_feats").to("cpu")
         feature_acts[sae_name] = feature_acts[sae_name][..., acts_sum > 0]
         feature_indices_tensors[sae_name] = feature_indices_tensors[sae_name][acts_sum > 0]
         del acts_sum
 
     dashboards_data: dict[str, MultiFeatureData] = {
-        name: MultiFeatureData() for name in raw_sae_position_names
+        name: MultiFeatureData() for name in raw_sae_positions
     }
 
-    for sae_name in raw_sae_position_names:
+    for sae_name in raw_sae_positions:
         sae = model.saes[sae_name.replace(".", "-")]
         W_dec: Float[Tensor, "feats dim"] = sae.decoder.weight.T
         feature_resid_dirs: Float[Tensor, "some_feats dim"] = W_dec[
@@ -739,26 +740,26 @@ def get_prompt_data(
         str_tokens
     ), "Error: the number of tokens does not equal the number of str_tokens"
     if sae_position_names is None:
-        raw_sae_position_names: list[str] = model.raw_sae_position_names
+        raw_sae_positions: list[str] = model.raw_sae_positions
     else:
-        raw_sae_position_names: list[str] = filter_names(
+        raw_sae_positions: list[str] = filter_names(
             list(model.tlens_model.hook_dict.keys()), sae_position_names
         )
     feature_indices: dict[str, list[int]] = {}
-    for sae_name in raw_sae_position_names:
+    for sae_name in raw_sae_positions:
         feature_indices[sae_name] = list(dashboards_data[sae_name].feature_data_dict.keys())
 
     feature_acts, final_resid_acts = compute_feature_acts(
         model=model,
         tokens=tokens,
-        raw_sae_position_names=raw_sae_position_names,
+        raw_sae_positions=raw_sae_positions,
         feature_indices=feature_indices,
     )
     final_resid_acts = final_resid_acts.squeeze(dim=0)
 
     prompt_data: dict[str, MultiPromptData] = {}
 
-    for sae_name in raw_sae_position_names:
+    for sae_name in raw_sae_positions:
         sae = model.saes[sae_name.replace(".", "-")]
         feature_act_dir: Float[Tensor, "dim some_feats"] = sae.encoder[0].weight.T[
             :, feature_indices[sae_name]
@@ -926,14 +927,14 @@ def generate_random_prompt_dashboards(
         tokenizer = AutoTokenizer.from_pretrained(dashboards_config.data.tokenizer_name)
     vocab_dict = create_vocab_dict(tokenizer)
     if dashboards_config.sae_position_names is None:
-        raw_sae_position_names: list[str] = model.raw_sae_position_names
+        raw_sae_positions: list[str] = model.raw_sae_positions
     else:
-        raw_sae_position_names: list[str] = filter_names(
+        raw_sae_positions: list[str] = filter_names(
             list(model.tlens_model.hook_dict.keys()), dashboards_config.sae_position_names
         )
 
     used_features: dict[str, set[int]] = {sae_name: set() for sae_name in dashboards_data}
-    device = model.saes[raw_sae_position_names[0].replace(".", "-")].device
+    device = model.saes[raw_sae_positions[0].replace(".", "-")].device
     n_prompts = (dashboards_config.prompt_centric.n_random_prompt_dashboards + 2) // 3
     for prompt_idx, batch in tqdm(
         enumerate(data_loader),
@@ -982,21 +983,21 @@ def generate_dashboards(model: SAETransformer, dashboards_config: DashboardsConf
     ), "make_html_dashboards() saves HTML files, but no save_dir was specified in the dashboards_config"
     # Deal with the possible input typles of sae_position_names
     if dashboards_config.sae_position_names is None:
-        raw_sae_position_names = model.raw_sae_position_names
+        raw_sae_positions = model.raw_sae_positions
     else:
-        raw_sae_position_names = filter_names(
+        raw_sae_positions = filter_names(
             list(model.tlens_model.hook_dict.keys()), dashboards_config.sae_position_names
         )
     # Deal with the possible input typles of feature_indices
     feature_indices = feature_indices_to_tensordict(
-        dashboards_config.feature_indices, raw_sae_position_names, model
+        dashboards_config.feature_indices, raw_sae_positions, model
     )
 
     # Get the data used in the dashboards
     dashboards_data: dict[str, MultiFeatureData] = get_dashboards_data(
         model=model,
         dataset_config=dashboards_config.data,
-        sae_position_names=raw_sae_position_names,
+        sae_position_names=raw_sae_positions,
         # We need data for every feature if we're generating prompt-centric dashboards:
         feature_indices=None if dashboards_config.prompt_centric else feature_indices,
         n_samples=dashboards_config.n_samples,
@@ -1043,7 +1044,7 @@ def generate_dashboards(model: SAETransformer, dashboards_config: DashboardsConf
                         used_features_now[sae_name]
                     )
 
-        for sae_name in raw_sae_position_names:
+        for sae_name in raw_sae_positions:
             used_features[sae_name] = used_features[sae_name].union(
                 set(feature_indices[sae_name].tolist())
             )

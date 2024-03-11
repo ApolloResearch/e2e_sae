@@ -49,10 +49,10 @@ def test_load_single_pretrained_sae(tmp_path: Path, retrain_saes: bool):
     tlens_model = HookedTransformer(tlens_config)
 
     sae_position = "blocks.0.hook_resid_post"
-    pretrained_config = get_tinystories_config({"saes": {"sae_position_names": sae_position}})
+    pretrained_config = get_tinystories_config({"saes": {"sae_positions": sae_position}})
 
     model = SAETransformer(
-        config=pretrained_config, tlens_model=tlens_model, raw_sae_position_names=[sae_position]
+        config=pretrained_config, tlens_model=tlens_model, raw_sae_positions=[sae_position]
     )
     # Save the model.saes to a temp file
     save_module(
@@ -67,14 +67,14 @@ def test_load_single_pretrained_sae(tmp_path: Path, retrain_saes: bool):
     new_config = get_tinystories_config(
         {
             "saes": {
-                "sae_position_names": sae_positions,
+                "sae_positions": sae_positions,
                 "pretrained_sae_paths": tmp_path / "sae.pth",
             }
         }
     )
     new_tlens_model = HookedTransformer(tlens_config)
     new_model = SAETransformer(
-        config=new_config, tlens_model=new_tlens_model, raw_sae_position_names=sae_positions
+        config=new_config, tlens_model=new_tlens_model, raw_sae_positions=sae_positions
     )
 
     assert isinstance(new_config.saes.pretrained_sae_paths, list)
@@ -139,12 +139,12 @@ def test_load_multiple_pretrained_sae(tmp_path: Path):
     ]
     sae_params = []
     for filename, sae_positions in zip(filenames, sae_position_lists, strict=True):
-        pretrained_config = get_tinystories_config({"saes": {"sae_position_names": sae_positions}})
+        pretrained_config = get_tinystories_config({"saes": {"sae_positions": sae_positions}})
         tlens_model = HookedTransformer(tlens_config)
         model = SAETransformer(
             config=pretrained_config,
             tlens_model=tlens_model,
-            raw_sae_position_names=sae_positions,
+            raw_sae_positions=sae_positions,
         )
         # Save the model.saes to a temp file
         save_module(
@@ -158,7 +158,7 @@ def test_load_multiple_pretrained_sae(tmp_path: Path):
     new_config = get_tinystories_config(
         {
             "saes": {
-                "sae_position_names": all_positions,
+                "sae_positions": all_positions,
                 "pretrained_sae_paths": [tmp_path / filename for filename in filenames],
             }
         }
@@ -168,7 +168,7 @@ def test_load_multiple_pretrained_sae(tmp_path: Path):
     new_model = SAETransformer(
         config=new_config,
         tlens_model=new_tlens_model,
-        raw_sae_position_names=all_positions,
+        raw_sae_positions=all_positions,
     )
 
     assert isinstance(new_config.saes.pretrained_sae_paths, list)

@@ -28,9 +28,7 @@ def tinystories_model() -> SAETransformer:
     )
     sae_position = "blocks.2.hook_resid_post"
     config = get_tinystories_config({"saes": {"sae_position_names": sae_position}})
-    model = SAETransformer(
-        config=config, tlens_model=tlens_model, raw_sae_position_names=[sae_position]
-    )
+    model = SAETransformer(config=config, tlens_model=tlens_model, raw_sae_positions=[sae_position])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     return model
@@ -49,7 +47,7 @@ def test_compute_feature_acts(tinystories_model: SAETransformer):
     assert tokenizer is not None
     tokens = tokenizer(prompt, return_tensors="pt")["input_ids"]
     assert isinstance(tokens, torch.Tensor)
-    feature_indices = {name: list(range(7)) for name in tinystories_model.raw_sae_position_names}
+    feature_indices = {name: list(range(7)) for name in tinystories_model.raw_sae_positions}
     feature_acts, final_resid_acts = compute_feature_acts(
         tinystories_model, tokens, feature_indices=feature_indices
     )

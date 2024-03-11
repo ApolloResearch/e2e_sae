@@ -6,6 +6,8 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from transformer_lens.utils import lm_cross_entropy_loss
 
+from sparsify.hooks import CacheActs, SAEActs
+
 
 def topk_accuracy(
     logits: Float[Tensor, "... vocab"],
@@ -67,18 +69,18 @@ class ActFrequencyMetrics:
         }
 
     def update_dict_el_frequencies(
-        self, sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]], batch_tokens: int
+        self, new_acts: dict[str, SAEActs | CacheActs], batch_tokens: int
     ) -> None:
         """Update the dictionary element frequencies with the new batch frequencies.
 
         Args:
-            sae_acts: Dictionary of activations for each SAE position.
+            new_acts: Dictionary of activations for each hook position.
             batch_tokens: Number of tokens used to produce the sae acts.
         """
         for sae_pos in self.dict_el_frequencies:
-            self.dict_el_frequencies[sae_pos] += einsum(
-                sae_acts[sae_pos]["c"] != 0, "... dim -> dim"
-            )
+            new_acts_pos = new_acts[sae_pos]
+            if isinstance(new_acts_pos, SAEActs):
+                self.dict_el_frequencies[sae_pos] += einsum(new_acts_pos.c != 0, "... dim -> dim")
         self.tokens_used += batch_tokens
 
     def collect_for_logging(self, log_wandb_histogram: bool = True) -> dict[str, list[float] | int]:
@@ -140,12 +142,12 @@ class ActFrequencyMetrics:
 
 @torch.inference_mode()
 def calc_sparsity_metrics(
-    sae_acts: dict[str, dict[str, Float[Tensor, "... dim"]]], train: bool = True
+    new_acts: dict[str, SAEActs | CacheActs], train: bool = True
 ) -> dict[str, float]:
     """Collect sparsity metrics for logging.
 
     Args:
-        sae_acts: Dictionary of activations for each SAE position.
+        new_acts: Dictionary of activations for each hook position (may include SAE or cache acts).
         train: Whether in train or evaluation mode. Only affects the keys of the metrics.
 
     Returns:
@@ -153,14 +155,15 @@ def calc_sparsity_metrics(
     """
     prefix = "sparsity/train" if train else "sparsity/eval"
     sparsity_metrics = {}
-    for name, sae_act in sae_acts.items():
-        # Record L_0 norm of the cs
-        l_0_norm = torch.norm(sae_act["c"], p=0, dim=-1).mean().item()
-        sparsity_metrics[f"{prefix}/L_0/{name}"] = l_0_norm
+    for name, new_act in new_acts.items():
+        if isinstance(new_act, SAEActs):
+            # Record L_0 norm of the cs
+            l_0_norm = torch.norm(new_act.c, p=0, dim=-1).mean().item()
+            sparsity_metrics[f"{prefix}/L_0/{name}"] = l_0_norm
 
-        # Record fraction of zeros in the cs
-        frac_zeros = ((sae_act["c"] == 0).sum() / sae_act["c"].numel()).item()
-        sparsity_metrics[f"{prefix}/frac_zeros/{name}"] = frac_zeros
+            # Record fraction of zeros in the cs
+            frac_zeros = ((new_act.c == 0).sum() / new_act.c.numel()).item()
+            sparsity_metrics[f"{prefix}/frac_zeros/{name}"] = frac_zeros
 
     return sparsity_metrics
 

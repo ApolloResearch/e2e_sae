@@ -3,6 +3,7 @@ Defines a generic MLP.
 """
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 
@@ -25,13 +26,15 @@ class SAE(nn.Module):
         self.decoder.weight.data = nn.init.orthogonal_(self.decoder.weight.data.T).T
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Pass input through the encoder and normalized decoder."""
         c = self.encoder(x)
-
-        # Apply unit norm constraint so that each dictionary component has unit norm
-        self.decoder.weight.data = nn.functional.normalize(self.decoder.weight.data, dim=0)
-
-        x_hat = self.decoder(c)
+        x_hat = F.linear(c, self.dict_elements, bias=self.decoder.bias)
         return x_hat, c
+
+    @property
+    def dict_elements(self):
+        """Dictionary elements are simply the normalized decoder weights."""
+        return F.normalize(self.decoder.weight, dim=0)
 
     @property
     def device(self):
@@ -59,10 +62,8 @@ class Codebook(nn.Module):
         self.k = k
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, None]:
-        # Compute cosine similarity between input and codebook features
-        cos_sim = nn.functional.cosine_similarity(
-            x.unsqueeze(1), self.codebook, dim=2
-        )  # (batch_size, n_dict_components)
+        # Compute cosine similarity between input and codebook features (batch_size, dict_size)
+        cos_sim = F.cosine_similarity(x.unsqueeze(1), self.codebook, dim=2)
 
         # Take the top k most similar codebook features
         _, topk = torch.topk(cos_sim, self.k, dim=1)  # (batch_size, k)

@@ -13,8 +13,8 @@ eval_n_samples: 500
 log_every_n_grad_steps: 20
 collect_act_frequency_every_n_samples: 10_000
 act_frequency_n_tokens: 500_000  #500k tokens is ~977 samples
-batch_size: 10
-effective_batch_size: 10
+batch_size: 20
+effective_batch_size: 20
 lr: 1e-3
 adam_beta1: 0.0  # pytorch defaults to 0.9
 warmup_samples: 50_000
@@ -24,13 +24,12 @@ max_grad_norm: 1.0
 loss:
   sparsity:
     p_norm: 1.0
-    coeff: 0.1
-  inp_to_orig: null
+    coeff: 5e-5
+  in_to_orig: null
   out_to_orig: null
-  inp_to_out:
-    coeff: 0.0
-  logits_kl:
+  out_to_in:
     coeff: 1.0
+  logits_kl: null
 train_data:
   dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
   is_tokenized: true
@@ -50,7 +49,6 @@ eval_data:
 saes:
   retrain_saes: false
   pretrained_sae_paths: null
-  sae_position_names:
+  sae_positions:
     - blocks.1.hook_resid_post
-    - blocks.3.hook_resid_post
-  dict_size_to_input_ratio: 30.0
+  dict_size_to_input_ratio: 50.0
