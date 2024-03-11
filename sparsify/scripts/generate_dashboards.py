@@ -89,7 +89,7 @@ class DashboardsConfig(BaseModel):
         description="Num features in each batch of calculations (i.e. we break up the features to "
         "avoid OOM errors).",
     )
-    sae_position_names: Annotated[
+    sae_positions: Annotated[
         list[str] | None, BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
     ] = Field(
         None,
@@ -371,7 +371,7 @@ def get_dashboards_data(
     model: SAETransformer,
     dataset_config: DatasetConfig | None = None,
     tokens: Int[Tensor, "batch pos"] | None = None,
-    sae_position_names: list[str] | None = None,
+    sae_positions: list[str] | None = None,
     feature_indices: FeatureIndicesType | list[int] | None = None,
     n_samples: PositiveInt | None = None,
     batch_size: PositiveInt | None = None,
@@ -390,7 +390,7 @@ def get_dashboards_data(
         tokens:
             The tokens we'll be using to get the feature activations. If None, then we'll use the
             distribution from the dataset_config.
-        sae_position_names:
+        sae_positions:
             The names of the SAEs we want to calculate feature dashboards for,
             eg. ['blocks.0.hook_resid_pre']. If none, then we'll do all of them.
         feature_indices:
@@ -430,11 +430,11 @@ def get_dashboards_data(
     if fvp is None:
         fvp = FeatureVisParams(include_left_tables=False)
 
-    if sae_position_names is None:
+    if sae_positions is None:
         raw_sae_positions: list[str] = model.raw_sae_positions
     else:
         raw_sae_positions: list[str] = filter_names(
-            list(model.tlens_model.hook_dict.keys()), sae_position_names
+            list(model.tlens_model.hook_dict.keys()), sae_positions
         )
     # If we haven't supplied any feature indicies, assume that we want all of them
     feature_indices_tensors = feature_indices_to_tensordict(
@@ -705,7 +705,7 @@ def get_prompt_data(
     tokens: Int[Tensor, "batch pos"],
     str_tokens: list[str],
     dashboards_data: dict[str, MultiFeatureData],
-    sae_position_names: list[str] | None = None,
+    sae_positions: list[str] | None = None,
     num_top_features: PositiveInt = 10,
 ) -> dict[str, MultiPromptData]:
     """Gets data that will be used to create the sequences in the prompt-centric HTML visualisation.
@@ -720,7 +720,7 @@ def get_prompt_data(
             The input prompt to the model as a list of strings (one string per token)
         dashboards_data:
             For each SAE, a MultiFeatureData containing information required to plot its features.
-        sae_position_names:
+        sae_positions:
             The names of the SAEs we want to find relevant features in.
             eg. ['blocks.0.hook_resid_pre']. If none, then we'll do all of them.
         num_top_features: int
@@ -739,11 +739,11 @@ def get_prompt_data(
     assert tokens.shape[-1] == len(
         str_tokens
     ), "Error: the number of tokens does not equal the number of str_tokens"
-    if sae_position_names is None:
+    if sae_positions is None:
         raw_sae_positions: list[str] = model.raw_sae_positions
     else:
         raw_sae_positions: list[str] = filter_names(
-            list(model.tlens_model.hook_dict.keys()), sae_position_names
+            list(model.tlens_model.hook_dict.keys()), sae_positions
         )
     feature_indices: dict[str, list[int]] = {}
     for sae_name in raw_sae_positions:
@@ -926,11 +926,11 @@ def generate_random_prompt_dashboards(
     else:
         tokenizer = AutoTokenizer.from_pretrained(dashboards_config.data.tokenizer_name)
     vocab_dict = create_vocab_dict(tokenizer)
-    if dashboards_config.sae_position_names is None:
+    if dashboards_config.sae_positions is None:
         raw_sae_positions: list[str] = model.raw_sae_positions
     else:
         raw_sae_positions: list[str] = filter_names(
-            list(model.tlens_model.hook_dict.keys()), dashboards_config.sae_position_names
+            list(model.tlens_model.hook_dict.keys()), dashboards_config.sae_positions
         )
 
     used_features: dict[str, set[int]] = {sae_name: set() for sae_name in dashboards_data}
@@ -981,12 +981,12 @@ def generate_dashboards(model: SAETransformer, dashboards_config: DashboardsConf
     assert (
         dashboards_config.save_dir is not None
     ), "make_html_dashboards() saves HTML files, but no save_dir was specified in the dashboards_config"
-    # Deal with the possible input typles of sae_position_names
-    if dashboards_config.sae_position_names is None:
+    # Deal with the possible input typles of sae_positions
+    if dashboards_config.sae_positions is None:
         raw_sae_positions = model.raw_sae_positions
     else:
         raw_sae_positions = filter_names(
-            list(model.tlens_model.hook_dict.keys()), dashboards_config.sae_position_names
+            list(model.tlens_model.hook_dict.keys()), dashboards_config.sae_positions
         )
     # Deal with the possible input typles of feature_indices
     feature_indices = feature_indices_to_tensordict(
@@ -997,7 +997,7 @@ def generate_dashboards(model: SAETransformer, dashboards_config: DashboardsConf
     dashboards_data: dict[str, MultiFeatureData] = get_dashboards_data(
         model=model,
         dataset_config=dashboards_config.data,
-        sae_position_names=raw_sae_positions,
+        sae_positions=raw_sae_positions,
         # We need data for every feature if we're generating prompt-centric dashboards:
         feature_indices=None if dashboards_config.prompt_centric else feature_indices,
         n_samples=dashboards_config.n_samples,

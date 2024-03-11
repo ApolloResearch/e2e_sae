@@ -27,7 +27,7 @@ def tinystories_model() -> SAETransformer:
         tlens_model_name="roneneldan/TinyStories-1M", tlens_model_path=None
     )
     sae_position = "blocks.2.hook_resid_post"
-    config = get_tinystories_config({"saes": {"sae_position_names": sae_position}})
+    config = get_tinystories_config({"saes": {"sae_positions": sae_position}})
     model = SAETransformer(config=config, tlens_model=tlens_model, raw_sae_positions=[sae_position])
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -112,7 +112,7 @@ def test_generate_dashboards(tinystories_model: SAETransformer, tmp_dir: Path):
             batch_size=2,
             minibatch_size_features=5,
             save_dir=Path(tmp_dir),
-            sae_position_names=["blocks.2.hook_resid_post"],
+            sae_positions=["blocks.2.hook_resid_post"],
             feature_indices=list(range(5)),
             data=DatasetConfig(
                 dataset_name="apollo-research/sae-skeskinen-TinyStories-hf-tokenizer-gpt2",
