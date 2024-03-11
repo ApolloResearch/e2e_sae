@@ -299,7 +299,7 @@ def parse_activation_data(
     )
     for i, (feat, logit) in enumerate(zip(feature_indices_list, logits, strict=True)):
         # Get data for logits (the histogram, and the table)
-        logits_histogram_data = HistogramData(logit, n_bins=40, tickmode="5 ticks")
+        logits_histogram_data = HistogramData(logit, 40, "5 ticks")
         top10_logits = TopK(logit, k=15, largest=True)
         bottom10_logits = TopK(logit, k=15, largest=False)
 
@@ -307,7 +307,7 @@ def parse_activation_data(
         feat_acts = feature_acts[..., i]
         nonzero_feat_acts = feat_acts[feat_acts > 0]
         frac_nonzero = nonzero_feat_acts.numel() / feat_acts.numel()
-        freq_histogram_data = HistogramData(nonzero_feat_acts, n_bins=40, tickmode="ints")
+        freq_histogram_data = HistogramData(nonzero_feat_acts, 40, "ints")
 
         # Create a MiddlePlotsData object from this, and add it to the dict
         middle_plots_data_dict[feat] = MiddlePlotsData(
@@ -873,9 +873,7 @@ def generate_prompt_dashboard_html_files(
         }
         for seq_pos_i in seq_pos_with_scores.intersection(seq_pos):
             # Find the most relevant features (by {str_score}) for the token '{str_tokens[seq_pos_i]}' in the prompt '{prompt}:
-            html_str = prompt_data[sae_name].get_html(
-                seq_pos=seq_pos_i, str_score=str_score, vocab_dict=vocab_dict
-            )
+            html_str = prompt_data[sae_name].get_html(seq_pos_i, str_score, vocab_dict)
             # Insert a title
             title: str = (
                 f"<h4>&nbsp&nbspThe most relevant features from {sae_name},<br/>&nbsp&nbsp"

@@ -19,7 +19,7 @@ dependencies = [
     "python-dotenv~=1.0.1",
     "zstandard~=0.22.0",
     "eindex@git+https://github.com/callummcdougall/eindex",
-    "sae_vis@git+https://github.com/callummcdougall/sae_vis"
+    "sae_vis@git+https://github.com/callummcdougall/sae_vis.git@b28a0f7c7e936f4bea05528d952dfcd438533cce"
 ]
 
 [project.urls]
