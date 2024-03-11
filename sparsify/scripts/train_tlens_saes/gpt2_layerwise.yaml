@@ -3,19 +3,19 @@ wandb_run_name: null
 wandb_run_name_prefix: ""
 
 seed: 0
-tlens_model_name: roneneldan/TinyStories-1M
+tlens_model_name: gpt2-small
 tlens_model_path: null
 
-n_samples: 900_000  # 918604 samples of 512 tokens
+n_samples: 300_000  # 918604 samples of 512 tokens
 save_every_n_samples: null
-eval_every_n_samples: 10_000
+eval_every_n_samples: 30_000
 eval_n_samples: 500
 log_every_n_grad_steps: 20
-collect_act_frequency_every_n_samples: 10_000
+collect_act_frequency_every_n_samples: 20_000
 act_frequency_n_tokens: 500_000  #500k tokens is ~977 samples
-batch_size: 20
-effective_batch_size: 20
-lr: 1e-2
+batch_size: 12
+effective_batch_size: 12
+lr: 1e-3
 adam_beta1: 0.0  # pytorch defaults to 0.9
 warmup_samples: 50_000
 cooldown_samples: 200_000
@@ -31,24 +31,24 @@ loss:
     coeff: 1.0
   logits_kl: null
 train_data:
-  dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
+  dataset_name: apollo-research/Skylion007-openwebtext-tokenizer-gpt2
   is_tokenized: true
   tokenizer_name: gpt2
   streaming: true
   split: train
-  n_ctx: 512
+  n_ctx: 1024
   seed: 0
 eval_data:
-  dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
+  dataset_name: apollo-research/Skylion007-openwebtext-tokenizer-gpt2
   is_tokenized: true
   tokenizer_name: gpt2
   streaming: true
-  split: validation
-  n_ctx: 512
-  seed: 0
+  split: train
+  n_ctx: 1024
+  seed: 1
 saes:
   retrain_saes: false
   pretrained_sae_paths: null
   sae_positions:
     - blocks.1.hook_resid_post
-  dict_size_to_input_ratio: 50.0
+  dict_size_to_input_ratio: 30.0

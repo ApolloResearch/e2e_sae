@@ -28,6 +28,25 @@ def calc_explained_variance(
     return 1 - per_token_l2_loss / total_variance
 
 
+def calc_mse_normalized(
+    pred: Float[Tensor, "... dim"], target: Float[Tensor, "... dim"]
+) -> Float[Tensor, "..."]:
+    """Calculate the normalized MSE between the pred and target.
+
+    Args:
+        pred: The prediction to compare to the target.
+        target: The target to compare the prediction to.
+
+    Returns:
+        The normalized MSE between the prediction and target for each batch and sequence pos.
+
+    """
+    sample_dims = tuple(range(pred.ndim - 1))
+    std = (pred - pred.mean(dim=sample_dims)).pow(2).sum(dim=-1).sqrt()
+    per_token_mse = (pred - target).pow(2).sum(dim=-1)
+    return (per_token_mse / std).mean()
+
+
 class SparsityLoss(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     coeff: float
@@ -66,7 +85,8 @@ class InToOrigLoss(BaseModel):
         self, input: Float[Tensor, "... dim"], orig: Float[Tensor, "... dim"]
     ) -> Float[Tensor, ""]:
         """Calculate the MSE between the input and orig."""
-        return F.mse_loss(input, orig)
+        # return F.mse_loss(input, orig)
+        return calc_mse_normalized(input, orig)
 
 
 class OutToOrigLoss(BaseModel):
@@ -77,7 +97,8 @@ class OutToOrigLoss(BaseModel):
         self, output: Float[Tensor, "... dim"], orig: Float[Tensor, "... dim"]
     ) -> Float[Tensor, ""]:
         """Calculate loss between the output of the SAE and the non-SAE-augmented activations."""
-        return F.mse_loss(output, orig)
+        # return F.mse_loss(output, orig)
+        return calc_mse_normalized(output, orig)
 
 
 class OutToInLoss(BaseModel):
@@ -88,7 +109,8 @@ class OutToInLoss(BaseModel):
         self, input: Float[Tensor, "... dim"], output: Float[Tensor, "... dim"]
     ) -> Float[Tensor, ""]:
         """Calculate loss between the input and output of the SAE."""
-        return F.mse_loss(input, output)
+        # return F.mse_loss(input, output)
+        return calc_mse_normalized(input, output)
 
 
 class LogitsKLLoss(BaseModel):

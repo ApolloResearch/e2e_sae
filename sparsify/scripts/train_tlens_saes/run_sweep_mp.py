@@ -22,9 +22,9 @@ def main(config_path_str: str) -> None:
 
     NOTE: You must specify the GPU indices to use in the `gpu_idxs` list.
     """
-    sweep_name = "tinystories-1m_sparsity-coeff"
-    values = [0.01, 0.001, 0.0001, 0.00001]
-    gpu_idxs = [0, 1, 2, 3]
+    sweep_name = "tinystories-1m_mse_norm"
+    values = [1e-4, 1e-5, 1e-6]
+    gpu_idxs = [1, 2, 3]
 
     assert len(values) == len(
         gpu_idxs
@@ -35,7 +35,7 @@ def main(config_path_str: str) -> None:
 
     for idx, value in zip(gpu_idxs, values, strict=True):
         update_dict = {
-            "train": {"loss": {"sparsity": {"coeff": value}}},
+            "loss": {"sparsity": {"coeff": value}},
             "wandb_project": sweep_name,
         }
         new_config = replace_pydantic_model(base_config, update_dict)
