@@ -148,11 +148,11 @@ def get_run_name(config: Config) -> str:
     if config.wandb_run_name:
         run_suffix = config.wandb_run_name
     else:
-        coeff_info = f"lpcoeff-{config.loss.sparsity.coeff}_"
+        coeff_info = f"lpcoeff-{config.loss.sparsity.coeff}"
         if config.loss.out_to_in is not None and config.loss.out_to_in.coeff > 0:
-            coeff_info += f"inp-to-out-{config.loss.out_to_in.coeff}_"
+            coeff_info += f"_inp-to-out-{config.loss.out_to_in.coeff}"
         if config.loss.logits_kl is not None and config.loss.logits_kl.coeff > 0:
-            coeff_info += f"logits-kl-{config.loss.logits_kl.coeff}_"
+            coeff_info += f"_logits-kl-{config.loss.logits_kl.coeff}"
 
         run_suffix = (
             f"{'-'.join(config.saes.sae_positions)}_"
