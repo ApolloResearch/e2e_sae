@@ -7,7 +7,7 @@ import math
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 import fire
 import torch
@@ -30,6 +30,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
+from transformers import get_cosine_schedule_with_warmup
 
 from sparsify.data import DatasetConfig, create_data_loader
 from sparsify.hooks import SAEActs
@@ -94,6 +95,7 @@ class Config(BaseModel):
     effective_batch_size: PositiveInt | None = None
     lr: PositiveFloat
     adam_beta1: NonNegativeFloat
+    lr_schedule: Literal["linear", "cosine"] = "cosine"
     warmup_samples: NonNegativeInt = 0
     cooldown_samples: NonNegativeInt = 0
     max_grad_norm: PositiveFloat | None = None
@@ -140,6 +142,14 @@ class Config(BaseModel):
             assert (
                 self.eval_n_samples is not None and self.eval_data is not None
             ), "Must provide eval_n_samples and data.eval when using eval_every_n_samples."
+        return self
+
+    @model_validator(mode="after")
+    def cosine_schedule_requirements(self) -> Self:
+        """Cosine schedule must have n_samples set in order to define the cosine curve."""
+        if self.lr_schedule == "cosine":
+            assert self.n_samples is not None, "Cosine schedule requires n_samples."
+            assert self.cooldown_samples == 0, "Cosine schedule must not have cooldown_samples."
         return self
 
 
@@ -261,14 +271,22 @@ def train(
     effective_batch_size = config.effective_batch_size or config.batch_size
     n_gradient_accumulation_steps = effective_batch_size // config.batch_size
 
-    lr_schedule = get_linear_lr_schedule(
-        warmup_samples=config.warmup_samples,
-        cooldown_samples=config.cooldown_samples,
-        n_samples=config.n_samples,
-        effective_batch_size=effective_batch_size,
-    )
-
-    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_schedule)
+    if config.lr_schedule == "cosine":
+        assert config.n_samples is not None, "Cosine schedule requires n_samples."
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=config.warmup_samples // effective_batch_size,
+            num_training_steps=config.n_samples // effective_batch_size,
+        )
+    else:
+        assert config.lr_schedule == "linear"
+        lr_schedule = get_linear_lr_schedule(
+            warmup_samples=config.warmup_samples,
+            cooldown_samples=config.cooldown_samples,
+            n_samples=config.n_samples,
+            effective_batch_size=effective_batch_size,
+        )
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_schedule)
 
     if config.n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length

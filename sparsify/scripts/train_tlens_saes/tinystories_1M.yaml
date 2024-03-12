@@ -17,8 +17,8 @@ batch_size: 10
 effective_batch_size: 10
 lr: 1e-3
 adam_beta1: 0.0  # pytorch defaults to 0.9
-warmup_samples: 50_000
-cooldown_samples: 200_000
+lr_schedule: cosine
+warmup_samples: 20_000
 max_grad_norm: 1.0
 
 loss:

@@ -6,9 +6,9 @@ seed: 0
 tlens_model_name: roneneldan/TinyStories-1M
 tlens_model_path: null
 
-n_samples: 900_000  # 918604 samples of 512 tokens
+n_samples: 400_000  # 918604 samples of 512 tokens
 save_every_n_samples: null
-eval_every_n_samples: 10_000
+eval_every_n_samples: 20_000
 eval_n_samples: 500
 log_every_n_grad_steps: 20
 collect_act_frequency_every_n_samples: 10_000
@@ -17,8 +17,8 @@ batch_size: 20
 effective_batch_size: 20
 lr: 1e-3
 adam_beta1: 0.0  # pytorch defaults to 0.9
-warmup_samples: 50_000
-cooldown_samples: 200_000
+lr_schedule: cosine
+warmup_samples: 20_000
 max_grad_norm: 1.0
 
 loss:
