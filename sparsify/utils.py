@@ -19,19 +19,19 @@ from sparsify.settings import REPO_ROOT
 T = TypeVar("T", bound=BaseModel)
 
 
-def to_numpy(tensor: Any) -> np.ndarray[Any, Any]:
+def to_numpy(tensor: Any) -> np.ndarray[Any, np.dtype[Any]]:
     """
     Helper function to convert a tensor to a numpy array. Also works on lists, tuples, and numpy arrays.
     Adapted from TransformerLens/transformer_lens/utils.py
     """
     if isinstance(tensor, np.ndarray):
         return tensor
-    elif isinstance(tensor, (list, tuple)):
+    elif isinstance(tensor, list | tuple):
         array = np.array(tensor)
         return array
-    elif isinstance(tensor, (torch.Tensor, torch.nn.parameter.Parameter)):
+    elif isinstance(tensor, torch.Tensor | torch.nn.parameter.Parameter):
         return tensor.detach().cpu().numpy()
-    elif isinstance(tensor, (int, float, bool, str)):
+    elif isinstance(tensor, int | float | bool | str):
         return np.array(tensor)
     else:
         raise ValueError(f"Input to to_numpy has invalid type: {type(tensor)}")
