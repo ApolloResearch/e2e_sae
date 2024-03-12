@@ -16,7 +16,7 @@ act_frequency_n_tokens: 500_000  #500k tokens is ~977 samples
 batch_size: 20
 effective_batch_size: 20
 lr: 1e-3
-adam_beta1: 0.0  # pytorch defaults to 0.9
+adam_beta1: 0.9  # pytorch defaults to 0.9
 lr_schedule: cosine
 warmup_samples: 20_000
 max_grad_norm: 1.0
