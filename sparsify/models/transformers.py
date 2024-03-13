@@ -190,7 +190,8 @@ class SAETransformer(nn.Module):
         return_type: str | None = "input",
         verbose: bool = True,
     ) -> Int[torch.Tensor, "batch pos_plus_new_tokens"] | str:
-        """Sample Tokens from the Model.
+        """Sample Tokens from the model.
+
         Adapted from transformer_lens.HookedTransformer.generate()
 
         Sample tokens from the model until the model outputs eos_token or max_new_tokens is reached.
@@ -237,8 +238,8 @@ class SAETransformer(nn.Module):
             verbose (bool): If True, show tqdm progress bars for generation.
 
         Returns:
-                generated sequence of new tokens, or completed prompt string
-                (by default returns same type as input).
+            generated sequence of new tokens, or completed prompt string (by default returns same
+                type as input).
         """
 
         with LocallyOverridenDefaults(
@@ -259,7 +260,7 @@ class SAETransformer(nn.Module):
                 return_type = "str" if isinstance(input, str) else "tensor"
 
             assert isinstance(tokens, torch.Tensor)
-            batch_size, ctx_length = tokens.shape
+            batch_size = tokens.shape[0]
             device = "cuda" if torch.cuda.is_available() else "cpu"
             tokens = tokens.to(device)
 
@@ -271,7 +272,10 @@ class SAETransformer(nn.Module):
                     and self.tlens_model.tokenizer.eos_token_id is not None
                 )
                 if eos_token_id is None:
-                    assert tokenizer_has_eos_token, "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or has no eos_token_id"
+                    assert tokenizer_has_eos_token, (
+                        "Must pass a eos_token_id if stop_at_eos is True and tokenizer is None or "
+                        "has no eos_token_id"
+                    )
                     assert self.tlens_model.tokenizer is not None
                     eos_token_id = self.tlens_model.tokenizer.eos_token_id
 
@@ -292,7 +296,7 @@ class SAETransformer(nn.Module):
             # Currently nothing in HookedTransformer changes with eval, but this is here in case
             # that changes in the future.
             self.eval()
-            for index in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
+            for _ in tqdm.tqdm(range(max_new_tokens), disable=not verbose):
                 # While generating, we keep generating logits, throw away all but the final logits,
                 # and then use those logits to sample from the distribution We keep adding the
                 # sampled tokens to the end of tokens.
