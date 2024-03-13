@@ -1,5 +1,3 @@
-import tempfile
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -32,12 +30,6 @@ def tinystories_model() -> SAETransformer:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     return model
-
-
-@pytest.fixture(scope="function")
-def tmp_dir() -> Iterator[Path]:
-    with tempfile.TemporaryDirectory() as tmp_dir_path:
-        yield Path(tmp_dir_path)
 
 
 def test_compute_feature_acts(tinystories_model: SAETransformer):
@@ -104,14 +96,14 @@ def check_valid_prompt_dashboard_htmls(folder: Path):
 
 
 @pytest.mark.slow
-def test_generate_dashboards(tinystories_model: SAETransformer, tmp_dir: Path):
+def test_generate_dashboards(tinystories_model: SAETransformer, tmp_path: Path):
     # This function also tests compute_feature_acts_on_distribution()
     set_seed(0)
     dashboards_config = DashboardsConfig(
         n_samples=10,
         batch_size=2,
         minibatch_size_features=5,
-        save_dir=Path(tmp_dir),
+        save_dir=Path(tmp_path),
         sae_positions=["blocks.2.hook_resid_post"],
         pretrained_sae_paths=None,
         feature_indices=list(range(5)),
@@ -124,5 +116,5 @@ def test_generate_dashboards(tinystories_model: SAETransformer, tmp_dir: Path):
     )
     generate_dashboards(tinystories_model, dashboards_config)
     check_valid_feature_dashboard_htmls(
-        tmp_dir / "feature-dashboards" / "dashboards_blocks.2.hook_resid_post"
+        tmp_path / "feature-dashboards" / "dashboards_blocks.2.hook_resid_post"
     )
