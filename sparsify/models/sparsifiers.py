@@ -4,7 +4,8 @@ Defines a generic MLP.
 
 import torch
 import torch.nn.functional as F
-from torch import nn
+from jaxtyping import Float
+from torch import Tensor, nn
 
 
 class SAE(nn.Module):
@@ -23,10 +24,25 @@ class SAE(nn.Module):
         # Initialize so that there are n_dict_components orthonormal vectors
         self.decoder.weight.data = nn.init.orthogonal_(self.decoder.weight.data.T).T
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """Pass input through the encoder and normalized decoder."""
-        c = self.encoder(x)
+    def forward(
+        self, x: Float[Tensor, "... dim"]
+    ) -> tuple[Float[Tensor, "... dim"], Float[Tensor, "... c"]]:
+        """Pass input through the encoder and normalized decoder.
+
+        Args:
+            x: The input tensor.
+
+        Returns:
+            - The reconstructed input.
+            - The activations after the non-linearity in the encoder.
+        """
+        # Normalize the input to have L2 norm of sqrt(input_size)
+        scaling_factor = self.get_scaling_factor(x)
+        x_normed = x * scaling_factor
+        c = self.encoder(x_normed)
         x_hat = F.linear(c, self.dict_elements, bias=self.decoder.bias)
+        # Unnormalize the output
+        x_hat = x_hat / scaling_factor
         return x_hat, c
 
     @property
@@ -37,6 +53,13 @@ class SAE(nn.Module):
     @property
     def device(self):
         return next(self.parameters()).device
+
+    def get_scaling_factor(self, x: Float[Tensor, "... dim"]) -> Float[Tensor, "..."]:
+        """Get the scaling factor used to normalize the input to the SAE.
+
+        After scaling, the input will have an L2 norm of sqrt(input_size).
+        """
+        return (self.input_size**0.5) / x.norm(dim=-1, p=2)
 
 
 class Codebook(nn.Module):

@@ -212,7 +212,7 @@ def calc_loss(
                 var = calc_explained_variance(new_act.input, new_act.output)
             elif isinstance(loss_config, SparsityLoss):
                 assert isinstance(new_act, SAEActs)
-                loss_val = loss_config.calc_loss(new_act.c, dense_dim=new_act.output.shape[-1])
+                loss_val = loss_config.calc_loss(new_act.c, dense_dim=new_act.input.shape[-1])
             else:
                 assert loss_config is None, f"Unknown loss config {loss_config}"
                 continue
