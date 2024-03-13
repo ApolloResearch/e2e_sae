@@ -107,23 +107,22 @@ def check_valid_prompt_dashboard_htmls(folder: Path):
 def test_generate_dashboards(tinystories_model: SAETransformer, tmp_dir: Path):
     # This function also tests compute_feature_acts_on_distribution()
     set_seed(0)
-    if torch.cuda.is_available():
-        dashboards_config = DashboardsConfig(
-            n_samples=10,
-            batch_size=2,
-            minibatch_size_features=5,
-            save_dir=Path(tmp_dir),
-            sae_positions=["blocks.2.hook_resid_post"],
-            pretrained_sae_paths=None,
-            feature_indices=list(range(5)),
-            data=DatasetConfig(
-                dataset_name="apollo-research/sae-skeskinen-TinyStories-hf-tokenizer-gpt2",
-                tokenizer_name="gpt2",
-                split="train",
-                n_ctx=512,
-            ),
-        )
-        generate_dashboards(tinystories_model, dashboards_config)
-        check_valid_feature_dashboard_htmls(
-            tmp_dir / "feature-dashboards" / "dashboards_blocks.2.hook_resid_post"
-        )
+    dashboards_config = DashboardsConfig(
+        n_samples=10,
+        batch_size=2,
+        minibatch_size_features=5,
+        save_dir=Path(tmp_dir),
+        sae_positions=["blocks.2.hook_resid_post"],
+        pretrained_sae_paths=None,
+        feature_indices=list(range(5)),
+        data=DatasetConfig(
+            dataset_name="apollo-research/sae-skeskinen-TinyStories-hf-tokenizer-gpt2",
+            tokenizer_name="gpt2",
+            split="train",
+            n_ctx=512,
+        ),
+    )
+    generate_dashboards(tinystories_model, dashboards_config)
+    check_valid_feature_dashboard_htmls(
+        tmp_dir / "feature-dashboards" / "dashboards_blocks.2.hook_resid_post"
+    )
