@@ -33,8 +33,12 @@ class SparsityLoss(BaseModel):
     coeff: float
     p_norm: float = 1.0
 
-    def calc_loss(self, c: Float[Tensor, "... c"]) -> Float[Tensor, ""]:
+    def calc_loss(self, c: Float[Tensor, "... c"], dense_dim: int) -> Float[Tensor, ""]:
         """Calculate the sparsity loss.
+
+        Note that we divide by the dimension of the input to the SAE. This helps with using the same
+        hyperparameters across different model sizes (input dimension is more relevant than the c
+        dimension for Lp loss).
 
         Args:
             c: The activations after the non-linearity in the SAE.
@@ -42,7 +46,7 @@ class SparsityLoss(BaseModel):
         Returns:
             The L_p norm of the activations.
         """
-        return torch.norm(c, p=self.p_norm, dim=-1).mean()
+        return torch.norm(c, p=self.p_norm, dim=-1).mean() / dense_dim
 
 
 class InToOrigLoss(BaseModel):
@@ -105,8 +109,8 @@ class LogitsKLLoss(BaseModel):
 
         We flatten all but the last dimensions and take the mean over this new dimension.
         """
-        new_logits_flat = einops.rearrange(new_logits, "... dim -> (...) dim")
-        orig_logits_flat = einops.rearrange(orig_logits, "... dim -> (...) dim")
+        new_logits_flat = einops.rearrange(new_logits, "... vocab -> (...) vocab")
+        orig_logits_flat = einops.rearrange(orig_logits, "... vocab -> (...) vocab")
 
         return F.kl_div(
             F.log_softmax(new_logits_flat, dim=-1),
@@ -208,7 +212,7 @@ def calc_loss(
                 var = calc_explained_variance(new_act.input, new_act.output)
             elif isinstance(loss_config, SparsityLoss):
                 assert isinstance(new_act, SAEActs)
-                loss_val = loss_config.calc_loss(new_act.c)
+                loss_val = loss_config.calc_loss(new_act.c, dense_dim=new_act.output.shape[-1])
             else:
                 assert loss_config is None, f"Unknown loss config {loss_config}"
                 continue
