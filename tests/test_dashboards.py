@@ -103,6 +103,7 @@ def check_valid_prompt_dashboard_htmls(folder: Path):
             assert '<div class="tooltip" id=' in html_content
 
 
+@pytest.mark.slow
 def test_generate_dashboards(tinystories_model: SAETransformer, tmp_dir: Path):
     # This function also tests compute_feature_acts_on_distribution()
     set_seed(0)
@@ -113,6 +114,7 @@ def test_generate_dashboards(tinystories_model: SAETransformer, tmp_dir: Path):
             minibatch_size_features=5,
             save_dir=Path(tmp_dir),
             sae_positions=["blocks.2.hook_resid_post"],
+            pretrained_sae_paths=None,
             feature_indices=list(range(5)),
             data=DatasetConfig(
                 dataset_name="apollo-research/sae-skeskinen-TinyStories-hf-tokenizer-gpt2",

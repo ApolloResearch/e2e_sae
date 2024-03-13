@@ -1,9 +1,16 @@
+"""Script for generating HTML feature dashboards
+Usage: 
+    python generate_dashboards.py </path/to/dashboards_config.yaml>
+    or
+    python generate_dashboards.py </path/to/dashboards_config.yaml> </path/to/sae.pt>
+"""
 import math
 import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Annotated, Literal
 
+import fire
 import numpy as np
 import torch
 from eindex import eindex
@@ -34,9 +41,12 @@ from transformers import (
 )
 
 from sparsify.data import DatasetConfig, create_data_loader
+from sparsify.loader import load_pretrained_saes, load_tlens_model
+from sparsify.log import logger
 from sparsify.models.transformers import SAETransformer
+from sparsify.scripts.train_tlens_saes.run_train_tlens_saes import Config
 from sparsify.types import RootPath
-from sparsify.utils import filter_names, to_numpy
+from sparsify.utils import filter_names, load_config, to_numpy
 
 FeatureIndicesType = dict[str, list[int]] | dict[str, Int[Tensor, "some_feats"]]  # noqa: F821 (jaxtyping/pyright doesn't like single dimensions)
 StrScoreType = Literal["act_size", "act_quantile", "loss_effect"]
@@ -71,17 +81,22 @@ class PromptDashboardsConfig(BaseModel):
 
 
 class DashboardsConfig(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid", arbitrary_types_allowed=True, frozen=True
-    )  # arbitrary_types_allowed=True because jaxtyping/pyright doesn't like single dimensions like "some_feats"
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True, frozen=True)
     n_samples: PositiveInt | None = None
     batch_size: PositiveInt
     data: DatasetConfig = Field(
         default=None,
         description="DatasetConfig for getting the data which will be used to generate the dashboards",
     )
+    pretrained_sae_paths: Annotated[
+        list[RootPath] | None, BeforeValidator(lambda x: [x] if isinstance(x, str | Path) else x)
+    ] = Field(None, description="Path to the pretrained SAEs to load")
+    model_config_path: RootPath | None = Field(
+        default=None,
+        description="Path to the config file used to train the SAEs",
+    )
     save_dir: RootPath | None = Field(
-        default=Path(__file__).parent / "out",
+        default=None,
         description="The directory for saving the HTML feature dashboard files",
     )
     minibatch_size_features: PositiveInt | None = Field(
@@ -106,6 +121,7 @@ class DashboardsConfig(BaseModel):
         description="Used to generate prompt-centric (rather than feature-centric) dashboards."
         " Feature-centric dashboards will also be generated for every",
     )
+    seed: PositiveInt = 0
 
 
 def compute_feature_acts(
@@ -116,6 +132,7 @@ def compute_feature_acts(
     stop_at_layer: int = -1,
 ) -> tuple[dict[str, Float[Tensor, "... some_feats"]], Float[Tensor, "... dim"]]:
     """Compute the activations of the SAEs in the model given a tensor of input tokens
+
     Args:
         model: The SAETransformer containing the SAEs and the tlens_model
         tokens: The inputs to the tlens_model
@@ -123,12 +140,11 @@ def compute_feature_acts(
         feature_indices: The indices of the features we're interested in for each SAE
         stop_at_layer: Where to stop the forward pass. final_resid_acts will be returned from here
 
-    Returns:
-        feature_acts: Feature activations for each SAE.
+    Returns a tuple of:
+        [0] A dict of feature activations for each SAE.
             feature_acts[sae_position_name] = the feature activations of that SAE
-                                              shape: batch pos some_feats
-        final_resid_acts:
-            The residual stream activations of the model at the final layer (or at stop_at_layer)
+                                                shape: batch pos some_feats
+        [1] The residual stream activations of the model at the final layer (or at stop_at_layer)
     """
     if raw_sae_positions is None:
         raw_sae_positions = model.raw_sae_positions
@@ -164,6 +180,7 @@ def compute_feature_acts_on_distribution(
     dict[str, Float[Tensor, "... some_feats"]], Float[Tensor, "... d_resid"], Int[Tensor, "..."]
 ]:
     """Compute the activations of the SAEs in the model on the training distribution of input tokens
+
     Args:
         model: The SAETransformer containing the SAEs and the tlens_model
         dataset_config: The DatasetConfig used to get the data loader for the tokens.
@@ -174,15 +191,12 @@ def compute_feature_acts_on_distribution(
                          all features.
         stop_at_layer: Where to stop the forward pass. final_resid_acts will be returned from here
 
-    Returns:
-        feature_acts:
-            a dict of SAE inputs, activations, and outputs for each SAE.
+    Returns: a tuple of:
+        [0] a dict of SAE inputs, activations, and outputs for each SAE.
             feature_acts[sae_position_name] = the feature activations of that SAE
                                               shape: batch pos feats (or # feature_indices)
-        final_resid_acts:
-            The residual stream activations of the model at the final layer (or at stop_at_layer)
-        tokens:
-            The tokens used as input to the model
+        [1] The residual stream activations of the model at the final layer (or at stop_at_layer)
+        [2] The tokens used as input to the model
     """
     data_loader, _ = create_data_loader(
         dataset_config, batch_size=batch_size, buffer_size=batch_size
@@ -203,9 +217,7 @@ def compute_feature_acts_on_distribution(
     }
     final_resid_acts_list: list[Float[Tensor, "... d_resid"]] = []
     tokens_list: list[Int[Tensor, "..."]] = []
-    for batch_idx, batch in tqdm(
-        enumerate(data_loader), total=n_batches, desc="Computing feature acts"
-    ):
+    for batch in tqdm(data_loader, total=n_batches, desc="Computing feature acts"):
         batch_tokens: Int[Tensor, "..."] = batch[dataset_config.column_name].to(device=device)
         batch_feature_acts, batch_final_resid_acts = compute_feature_acts(
             model=model,
@@ -253,7 +265,6 @@ def parse_activation_data(
     """Convert generic activation data into a MultiFeatureData object, which can be used to create
     the feature-centric visualisation.
     Adapted from sae_vis.data_fetching_fns._get_feature_data()
-
     final_resid_acts + W_U are used for the logit lens.
 
     Args:
@@ -381,6 +392,7 @@ def get_dashboards_data(
 ) -> dict[str, MultiFeatureData]:
     """Gets data that will be used to create the sequences in the feature-centric HTML visualisation
         Adapted from sae_vis.data_fetching_fns._get_feature_data()
+
     Args:
         model:
             The model (with SAEs) we'll be using to get the feature activations.
@@ -412,13 +424,12 @@ def get_dashboards_data(
             HTML representations. If None then it will be created using create_vocab_dict(tokenizer)
 
     Returns:
-        dashboards_data:
-            A dict of [sae_position_name: MultiFeatureData]. Each MultiFeatureData contains data for
-            creating each feature's visualization, as well as data for rank-ordering the feature
-            visualizations when it comes time to make the prompt-centric view
-            (the `feature_act_quantiles` attribute).
-            Use dashboards_data[sae_name][feature_idx].get_html() to generate the HTML
-            dashboard for a particular feature (returns a string of HTML)
+        A dict of [sae_position_name: MultiFeatureData]. Each MultiFeatureData contains data for
+        creating each feature's visualization, as well as data for rank-ordering the feature
+        visualizations when it comes time to make the prompt-centric view
+        (the `feature_act_quantiles` attribute).
+        Use dashboards_data[sae_name][feature_idx].get_html() to generate the HTML
+        dashboard for a particular feature (returns a string of HTML)
     """
     # Get the vocab dict, which we'll use at the end
     if vocab_dict is None:
@@ -533,6 +544,7 @@ def parse_prompt_data(
     """Gets data that will be used to create the sequences in the prompt-centric HTML visualisation.
        This visualization displays dashboards for the most relevant features on a prompt.
        Adapted from sae_vis.data_fetching_fns.get_prompt_data().
+
     Args:
         tokens: The input prompt to the model as tokens
         str_tokens: The input prompt to the model as a list of strings (one string per token)
@@ -627,7 +639,7 @@ def parse_prompt_data(
     # Construct a scores dict, which maps from things like ("act_quantile", seq_pos) to a list of the top-scoring features
     scores_dict: dict[tuple[str, str], tuple[TopK, list[str]]] = {}
 
-    for seq_pos, str_tok in enumerate(str_tokens):
+    for seq_pos in range(len(str_tokens)):
         # Filter the feature activations, since we only need the ones that are non-zero
         feat_acts_nonzero_filter = to_numpy(feature_acts[seq_pos] > 0)
         feat_acts_nonzero_locations = np.nonzero(feat_acts_nonzero_filter)[0].tolist()
@@ -711,6 +723,7 @@ def get_prompt_data(
     """Gets data that will be used to create the sequences in the prompt-centric HTML visualisation.
        This visualization displays dashboards for the most relevant features on a prompt.
        Adapted from sae_vis.data_fetching_fns.get_prompt_data()
+
     Args:
         model:
             The model (with SAEs) we'll be using to get the feature activations.
@@ -727,11 +740,10 @@ def get_prompt_data(
             The number of top features to display in this view, for any given metric.
 
     Returns:
-        prompt_data:
-            A dict of [sae_position_name: MultiPromptData]. Each MultiPromptData contains data for
-            visualizing the most relevant features in that SAE given the prompt.
-            Similar to get_feature_data, except it just gets the data relevant for a particular
-            sequence (i.e. a custom one that the user inputs on their own).
+        A dict of [sae_position_name: MultiPromptData]. Each MultiPromptData contains data for
+        visualizing the most relevant features in that SAE given the prompt.
+        Similar to get_feature_data, except it just gets the data relevant for a particular
+        sequence (i.e. a custom one that the user inputs on their own).
 
     The ordering metric for relevant features is set by the str_score parameter in the
     MultiPromptData.get_html() method: it can be "act_size", "act_quantile", or "loss_effect"
@@ -797,14 +809,11 @@ def generate_feature_dashboard_html_files(
     if feature_indices is None:
         feature_indices = {name: dashboards_data[name].keys() for name in dashboards_data}
     save_dir = Path(save_dir)
-    if not save_dir.is_absolute():
-        current_dir = Path(os.getcwd())
-        save_dir = Path(current_dir) / save_dir
     if not save_dir.exists():
         os.makedirs(save_dir)
     for sae_name in feature_indices:
         print(f"Saving HTML feature dashboards for the SAE at {sae_name}:")
-        folder: Path = save_dir / Path(f"dashboards_{sae_name}")
+        folder = save_dir / Path(f"dashboards_{sae_name}")
         if not folder.exists():
             os.makedirs(folder)
         for feature_idx in tqdm(feature_indices[sae_name], desc="Dashboard HTML files"):
@@ -860,9 +869,6 @@ def generate_prompt_dashboard_html_files(
     filename_from_prompt = "".join(str_tokens_safe_for_filenames)
     filename_from_prompt = filename_from_prompt[:50]
     save_dir = Path(save_dir)
-    if not save_dir.is_absolute():
-        current_dir = Path(os.getcwd())
-        save_dir = Path(current_dir) / save_dir
     if not save_dir.exists():
         os.makedirs(save_dir)
     used_features: dict[str, set[int]] = {sae_name: set() for sae_name in dashboards_data}
@@ -901,15 +907,18 @@ def generate_random_prompt_dashboards(
     dashboards_data: dict[str, MultiFeatureData],
     dashboards_config: DashboardsConfig,
     use_model_tokenizer: bool = False,
-    save_dir: Path | None = None,
+    save_dir: RootPath | None = None,
 ) -> dict[str, set[int]]:
     """Generates prompt-centric HTML dashboards for prompts from the training distribution
     A data_loader is created using the dashboards_config.prompt_centric.data if it exists,
     otherwise using the dashboards_config.data config.
     For each random prompt, dashboards are generated for three consecutive sequence positions."""
-    assert (
-        dashboards_config.save_dir is not None
-    ), "generate_random_prompt_dashboards() saves HTML files, but no save_dir was specified in the dashboards_config"
+    np.random.seed(dashboards_config.seed)
+    if save_dir is None:
+        save_dir = dashboards_config.save_dir
+        assert (
+            save_dir is not None
+        ), "generate_random_prompt_dashboards() saves HTML files, but no save_dir was specified in the dashboards_config or given as input"
     assert (
         dashboards_config.prompt_centric is not None
     ), "generate_random_prompt_dashboards() makes prompt-centric dashboards: the dashboards_config.prompt_centric config must exist"
@@ -945,23 +954,28 @@ def generate_random_prompt_dashboards(
             device=device
         )
         assert len(batch_tokens.shape) == 2 and batch_tokens.shape[0] == 1
+        # Use the tokens from the first <|endoftext|> token to the next
+        bos_inds = torch.argwhere(batch_tokens == tokenizer.bos_token_id)[:, 1]
+        if len(bos_inds) > 1:
+            batch_tokens = batch_tokens[:, bos_inds[0] : bos_inds[1]]
         str_tokens = tokenizer.convert_ids_to_tokens(batch_tokens.squeeze(dim=0).tolist())
         assert isinstance(str_tokens, list)
         seq_len: int = batch_tokens.shape[1]
-        seq_pos_c = np.random.randint(3, seq_len - 3)
-        seq_pos = [seq_pos_c - 1, seq_pos_c, seq_pos_c + 1]
-        used_features_now = generate_prompt_dashboard_html_files(
-            model=model,
-            tokens=batch_tokens,
-            str_tokens=str_tokens,
-            dashboards_data=dashboards_data,
-            seq_pos=seq_pos,
-            vocab_dict=vocab_dict,
-            str_score=dashboards_config.prompt_centric.str_score,
-            save_dir=save_dir if save_dir else dashboards_config.save_dir,
-        )
-        for sae_name in used_features:
-            used_features[sae_name] = used_features[sae_name].union(used_features_now[sae_name])
+        if seq_len > 4:
+            seq_pos_c = np.random.randint(2, seq_len - 2)
+            seq_pos = [seq_pos_c - 1, seq_pos_c, seq_pos_c + 1]
+            used_features_now = generate_prompt_dashboard_html_files(
+                model=model,
+                tokens=batch_tokens,
+                str_tokens=str_tokens,
+                dashboards_data=dashboards_data,
+                seq_pos=seq_pos,
+                vocab_dict=vocab_dict,
+                str_score=dashboards_config.prompt_centric.str_score,
+                save_dir=save_dir,
+            )
+            for sae_name in used_features:
+                used_features[sae_name] = used_features[sae_name].union(used_features_now[sae_name])
 
         if prompt_idx > n_prompts:
             break
@@ -969,7 +983,9 @@ def generate_random_prompt_dashboards(
 
 
 @torch.inference_mode()
-def generate_dashboards(model: SAETransformer, dashboards_config: DashboardsConfig) -> None:
+def generate_dashboards(
+    model: SAETransformer, dashboards_config: DashboardsConfig, save_dir: RootPath | None = None
+) -> None:
     """Generate HTML feature dashboards for an SAETransformer and save them.
     First the data for the dashboards are crated using dashboards_data = get_dashboards_data(),
     then prompt-centric HTML dashboards are created (if dashboards_config.prompt_centric exists),
@@ -978,9 +994,11 @@ def generate_dashboards(model: SAETransformer, dashboards_config: DashboardsConf
     appeared in prompt-centric dashboards.
     Dashboards are saved in dashboards_config.save_dir
     """
-    assert (
-        dashboards_config.save_dir is not None
-    ), "make_html_dashboards() saves HTML files, but no save_dir was specified in the dashboards_config"
+    if save_dir is None:
+        save_dir = dashboards_config.save_dir
+        assert (
+            save_dir is not None
+        ), "generate_dashboards() saves HTML files, but no save_dir was specified in the dashboards_config or given as input"
     # Deal with the possible input typles of sae_positions
     if dashboards_config.sae_positions is None:
         raw_sae_positions = model.raw_sae_positions
@@ -1008,7 +1026,9 @@ def generate_dashboards(model: SAETransformer, dashboards_config: DashboardsConf
     # Generate the prompt-centric dashboards and record which features were active on them
     used_features: dict[str, set[int]] = {sae_name: set() for sae_name in dashboards_data}
     if dashboards_config.prompt_centric:
-        prompt_dashboard_saving_folder = dashboards_config.save_dir / Path("prompt-dashboards")
+        prompt_dashboard_saving_folder = save_dir / Path("prompt-dashboards")
+        if not prompt_dashboard_saving_folder.exists():
+            os.makedirs(prompt_dashboard_saving_folder)
         # Generate random prompt-centric dashboards
         if dashboards_config.prompt_centric.n_random_prompt_dashboards > 0:
             used_features_now = generate_random_prompt_dashboards(
@@ -1050,7 +1070,9 @@ def generate_dashboards(model: SAETransformer, dashboards_config: DashboardsConf
             )
 
     # Generate the viewable HTML feature dashboard files
-    dashboard_html_saving_folder = dashboards_config.save_dir / Path("feature-dashboards")
+    dashboard_html_saving_folder = save_dir / Path("feature-dashboards")
+    if not dashboard_html_saving_folder.exists():
+        os.makedirs(dashboard_html_saving_folder)
     generate_feature_dashboard_html_files(
         dashboards_data=dashboards_data,
         feature_indices=used_features if dashboards_config.prompt_centric else feature_indices,
@@ -1058,9 +1080,93 @@ def generate_dashboards(model: SAETransformer, dashboards_config: DashboardsConf
     )
 
 
-# TODO: make a function for generating dashboards just from an saes filepath?
-#       (see load_SAETransformer_from_saes_path in feature_dashboards.ipynb)
-# TODO: Have an option for run_train_tlens_saes to automatically make dashboards?
-#       (and optionally upload them to wandb, though the HTML files are quite big)
-# TODO: make functions for saving and loading the dashboards_data
-#       (as it's much smaller than the HTML files) piclke?
+# Load the saved SAEs and the corresponding model
+def load_SAETransformer_from_saes_paths(
+    pretrained_sae_paths: list[RootPath] | list[str] | None,
+    config_path: RootPath | str | None = None,
+    sae_positions: list[str] | None = None,
+) -> tuple[SAETransformer, Config, list[str]]:
+    if pretrained_sae_paths is not None:
+        pretrained_sae_paths = [Path(p) for p in pretrained_sae_paths]
+        for path in pretrained_sae_paths:
+            assert path.exists(), f"pretrained_sae_path: {path} does not exist"
+            assert path.is_file() and (
+                path.suffix == ".pt" or path.suffix == ".pth"
+            ), f"pretrained_sae_path: {path} is not a .pt or .pth file"
+
+    if config_path is None:
+        assert (
+            pretrained_sae_paths is not None
+        ), "Either config_path or pretrained_sae_paths must be provided"
+        config_path = pretrained_sae_paths[0].parent / "config.yaml"
+    config_path = Path(config_path)
+    assert config_path.exists(), f"config_path: {config_path} does not exist"
+    assert (
+        config_path.is_file() and config_path.suffix == ".yaml"
+    ), f"config_path: {config_path} does not exist"
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    config = load_config(config_path, config_model=Config)
+    logger.info(config)
+
+    tlens_model = load_tlens_model(
+        tlens_model_name=config.tlens_model_name, tlens_model_path=config.tlens_model_path
+    )
+    assert tlens_model is not None
+
+    if sae_positions is None:
+        sae_positions = config.saes.sae_positions
+
+    raw_sae_positions = filter_names(list(tlens_model.hook_dict.keys()), sae_positions)
+    model = SAETransformer(
+        config=config, tlens_model=tlens_model, raw_sae_positions=raw_sae_positions
+    ).to(device=device)
+
+    all_param_names = [name for name, _ in model.saes.named_parameters()]
+    trainable_param_names = load_pretrained_saes(
+        saes=model.saes,
+        pretrained_sae_paths=pretrained_sae_paths
+        if pretrained_sae_paths
+        else model.cfg.pretrained_sae_paths,
+        all_param_names=all_param_names,
+        retrain_saes=config.saes.retrain_saes,
+    )
+    return model, config, trainable_param_names
+
+
+def main(
+    config_path_or_obj: Path | str | DashboardsConfig,
+    pretrained_sae_paths: Path | str | list[Path] | list[str] | None,
+) -> None:
+    dashboards_config = load_config(config_path_or_obj, config_model=DashboardsConfig)
+    logger.info(dashboards_config)
+
+    if pretrained_sae_paths is None:
+        assert (
+            dashboards_config.pretrained_sae_paths is not None
+        ), "pretrained_sae_paths must be provided, either in the dashboards config or as an input"
+        pretrained_sae_paths = dashboards_config.pretrained_sae_paths
+    else:
+        pretrained_sae_paths = (
+            pretrained_sae_paths
+            if isinstance(pretrained_sae_paths, list)
+            else [Path(pretrained_sae_paths)]
+        )
+
+    print("Loading the model and SAEs")
+    model, _, _ = load_SAETransformer_from_saes_paths(
+        pretrained_sae_paths, dashboards_config.model_config_path
+    )
+    print("done")
+
+    save_dir = (
+        dashboards_config.save_dir
+        if dashboards_config.save_dir
+        else Path(pretrained_sae_paths[0]).parent
+    )
+    print(f"The HTML dashboards will be saved in {save_dir}")
+    generate_dashboards(model, dashboards_config, save_dir=save_dir)
+
+
+if __name__ == "__main__":
+    fire.Fire(main)

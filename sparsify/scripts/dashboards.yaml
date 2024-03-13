@@ -1,0 +1,13 @@
+n_samples: 20_000
+batch_size: 64
+minibatch_size_features: 128
+data: 
+  dataset_name: 'apollo-research/roneneldan-TinyStories-tokenizer-gpt2'
+  is_tokenized: True
+  tokenizer_name: 'gpt2'
+  split: "validation"
+  n_ctx: 512
+prompt_centric:
+  prompts:
+    - "Sally met Mike at the show. She brought popcorn for him."
+  n_random_prompt_dashboards: 60
