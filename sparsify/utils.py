@@ -1,4 +1,5 @@
 import math
+import os
 import random
 from collections.abc import Callable
 from pathlib import Path
@@ -6,7 +7,9 @@ from typing import Any, TypeVar
 
 import numpy as np
 import torch
+import wandb
 import yaml
+from dotenv import load_dotenv
 from pydantic import BaseModel
 from pydantic.v1.utils import deep_update
 from torch import nn
@@ -210,3 +213,39 @@ def get_linear_lr_schedule(
             return 1.0
 
     return lr_schedule
+
+
+def init_wandb(config: T, project: str, sweep_config_path: Path | str | None) -> T:
+    """Initialize Weights & Biases and return a config updated with sweep hyperparameters.
+
+    If no sweep config is provided, the config is returned as is.
+
+    If a sweep config is provided, wandb is first initialized with the sweep config. This will
+    cause wandb to choose specific hyperparameters for this instance of the sweep and store them
+    in wandb.config. We then update the config with these hyperparameters.
+
+    Args:
+        config: The base config.
+        project: The name of the wandb project.
+        sweep_config_path: The path to the sweep config file. If provided, updates the config with
+            the hyperparameters from this instance of the sweep.
+
+    Returns:
+        Config updated with sweep hyperparameters (if any).
+    """
+    load_dotenv(override=True)
+    if sweep_config_path is not None:
+        with open(sweep_config_path) as f:
+            sweep_data = yaml.safe_load(f)
+    else:
+        sweep_data = {}
+    wandb.init(
+        project=project,
+        entity=os.getenv("WANDB_ENTITY"),
+        config=sweep_data,
+    )
+    # Update the config with the hyperparameters for this sweep (if any)
+    config = replace_pydantic_model(config, wandb.config)
+    wandb.config = config.model_dump(mode="json")
+    wandb.save()
+    return config

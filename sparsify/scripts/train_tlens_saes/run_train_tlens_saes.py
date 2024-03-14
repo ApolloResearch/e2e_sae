@@ -4,7 +4,6 @@ Usage:
     python run_train_tlens_saes.py <path/to/config.yaml>
 """
 import math
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, Self
@@ -13,7 +12,6 @@ import fire
 import torch
 import wandb
 from datasets import IterableDataset
-from dotenv import load_dotenv
 from jaxtyping import Int
 from pydantic import (
     BaseModel,
@@ -47,6 +45,7 @@ from sparsify.types import RootPath, Samples
 from sparsify.utils import (
     filter_names,
     get_linear_lr_schedule,
+    init_wandb,
     load_config,
     save_module,
     set_seed,
@@ -300,15 +299,10 @@ def train(
         final_layer = max([int(name.split(".")[1]) for name in model.raw_sae_positions]) + 1
 
     run_name = get_run_name(config)
-    # Initialize wandb
     if config.wandb_project:
-        load_dotenv(override=True)
-        wandb.init(
-            name=run_name,
-            project=config.wandb_project,
-            entity=os.getenv("WANDB_ENTITY"),
-            config=config.model_dump(mode="json"),
-        )
+        assert wandb.run, "wandb.run must be initialized before calling train."
+        wandb.run.name = run_name
+        wandb.save()
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     save_dir = config.save_dir / f"{run_name}_{timestamp}" if config.save_dir else None
@@ -511,11 +505,17 @@ def train(
         wandb.finish()
 
 
-def main(config_path_or_obj: Path | str | Config) -> None:
+def main(
+    config_path_or_obj: Path | str | Config, sweep_config_path: Path | str | None = None
+) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config = load_config(config_path_or_obj, config_model=Config)
-    logger.info(config)
+
+    if config.wandb_project:
+        config = init_wandb(config, config.wandb_project, sweep_config_path)
+
     set_seed(config.seed)
+    logger.info(config)
 
     train_loader = create_data_loader(config.train_data, batch_size=config.batch_size)[0]
     tlens_model = load_tlens_model(
