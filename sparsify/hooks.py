@@ -13,7 +13,7 @@ class CacheActs(NamedTuple):
 
 class SAEActs(NamedTuple):
     input: Float[torch.Tensor, "... dim"]
-    c: Float[torch.Tensor, "... dim"]
+    c: Float[torch.Tensor, "... c"]
     output: Float[torch.Tensor, "... dim"]
 
 

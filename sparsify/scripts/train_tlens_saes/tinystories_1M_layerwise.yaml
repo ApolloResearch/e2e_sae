@@ -24,7 +24,7 @@ max_grad_norm: 1.0
 loss:
   sparsity:
     p_norm: 1.0
-    coeff: 5e-5
+    coeff: 1e-3
   in_to_orig: null
   out_to_orig: null
   out_to_in:
