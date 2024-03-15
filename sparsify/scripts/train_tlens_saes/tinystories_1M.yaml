@@ -8,13 +8,13 @@ tlens_model_path: null
 
 n_samples: 900_000  # 918604 samples of 512 tokens
 save_every_n_samples: null
-eval_every_n_samples: 10_000
+eval_every_n_samples: 20_000
 eval_n_samples: 500
 log_every_n_grad_steps: 20
 collect_act_frequency_every_n_samples: 10_000
 act_frequency_n_tokens: 500_000  #500k tokens is ~977 samples
-batch_size: 10
-effective_batch_size: 10
+batch_size: 20
+effective_batch_size: 20
 lr: 1e-3
 adam_beta1: 0.9  # pytorch defaults to 0.9
 lr_schedule: cosine
@@ -53,4 +53,4 @@ saes:
   retrain_saes: false
   pretrained_sae_paths: null
   sae_positions: blocks.1.hook_resid_post
-  dict_size_to_input_ratio: 30.0
+  dict_size_to_input_ratio: 50.0

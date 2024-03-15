@@ -6,7 +6,7 @@ metric:
   goal: minimize
 parameters:
   lr:
-    values: [1e-2, 1e-3, 1e-4]
+    values: [1e-2, 1e-3]
   effective_batch_size:
     values: [20]
   loss:
@@ -14,14 +14,14 @@ parameters:
       sparsity:
         parameters:
           coeff:
-            values: [1e-1, 5e-2]
+            values: [10, 1]
   saes:
     parameters:
       sae_positions:
-        values: [blocks.1.hook_resid_post, blocks.3.hook_resid_post, blocks.5.hook_resid_post, blocks.7.hook_resid_post]
+        values: [blocks.1.hook_resid_post, blocks.3.hook_resid_post, blocks.7.hook_resid_post]
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
-- sparsify/scripts/train_tlens_saes/tinystories_1M_layerwise.yaml
+- sparsify/scripts/train_tlens_saes/tinystories_1M.yaml
