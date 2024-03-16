@@ -6,7 +6,7 @@ seed: 0
 tlens_model_name: roneneldan/TinyStories-1M
 tlens_model_path: null
 
-n_samples: 900_000  # 918604 samples of 512 tokens
+n_samples: 450_000  # 918604 samples of 512 tokens
 save_every_n_samples: null
 eval_every_n_samples: 20_000
 eval_n_samples: 500
@@ -15,7 +15,7 @@ collect_act_frequency_every_n_samples: 10_000
 act_frequency_n_tokens: 500_000  #500k tokens is ~977 samples
 batch_size: 20
 effective_batch_size: 20
-lr: 1e-3
+lr: 1e-2
 adam_beta1: 0.9  # pytorch defaults to 0.9
 lr_schedule: cosine
 warmup_samples: 20_000
@@ -24,7 +24,7 @@ max_grad_norm: 1.0
 loss:
   sparsity:
     p_norm: 1.0
-    coeff: 6.0
+    coeff: 10.0
   in_to_orig:
     hook_positions: hook_resid_post
     coeff: 0.0  # log these positions but don't use them in the loss

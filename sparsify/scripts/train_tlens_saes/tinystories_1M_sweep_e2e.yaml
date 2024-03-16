@@ -6,11 +6,11 @@ metric:
   goal: minimize
 parameters:
   n_samples:
-    values: [900_000]
+    values: [450_000]
   effective_batch_size:
     values: [20]
   lr:
-    values: [1e-2, 1e-3]
+    values: [1e-2]
   adam_beta1:
     values: [0.9]
   lr_schedule:
@@ -26,7 +26,7 @@ parameters:
           p_norm:
             values: [1.0]
           coeff:
-            values: [10, 1]
+            values: [2, 4, 8, 14, 20, 30]
       in_to_orig:
         parameters:
           hook_positions:
