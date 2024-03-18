@@ -32,6 +32,7 @@ def main(agent_id: str, gpu_idxs: tuple[int, ...] | int | None = None) -> None:
 
     assert isinstance(gpu_idxs, tuple), "gpu_idxs must be a tuple of integers"
 
+    print(f"Running wandb agent {agent_id} on GPUs {gpu_idxs}")
     for idx in gpu_idxs:
         session_exists = subprocess.run(f"tmux has-session -t {idx}".split(), capture_output=True)
         if session_exists.returncode == 0:
