@@ -5,6 +5,8 @@ metric:
   name: val_loss
   goal: minimize
 parameters:
+  seed:
+    values: [0]
   n_samples:
     values: [450_000]
   effective_batch_size:
@@ -47,6 +49,14 @@ parameters:
         values: [blocks.1.hook_resid_post, blocks.3.hook_resid_post, blocks.7.hook_resid_post]
       dict_size_to_input_ratio:
         values: [50.0]
+  train_data:
+    parameters:
+      seed:
+        values: [0]
+  eval_data:
+    parameters:
+      seed:
+        values: [0]
 
 command:
 - ${env}
