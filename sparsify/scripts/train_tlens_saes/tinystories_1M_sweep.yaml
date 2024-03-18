@@ -6,7 +6,7 @@ metric:
   goal: minimize
 parameters:
   n_samples:
-    values: [400_000]
+    values: [450_000]
   effective_batch_size:
     values: [20]
   lr:
@@ -23,24 +23,28 @@ parameters:
     parameters:
       sparsity:
         parameters:
+          p_norm:
+            values: [1.0]
           coeff:
-            values: [3e-2, 5e-2, 8e-2]
+            values: [2, 4, 8, 14, 20, 30]
       in_to_orig:
-        values: [null]
+        parameters:
+          hook_positions:
+            values: [hook_resid_post]
+          coeff:
+            values: [0.0]
       out_to_in:
         parameters:
           coeff:
-            values: [1.0]
+            values: [0.0]
       logits_kl:
-        values: [null]
+        parameters:
+          coeff:
+            values: [1.0]
   saes:
     parameters:
       sae_positions:
-        values:
-          - blocks.1.hook_resid_post
-          - blocks.3.hook_resid_post
-          - blocks.5.hook_resid_post
-          - blocks.7.hook_resid_post
+        values: [blocks.1.hook_resid_post, blocks.3.hook_resid_post, blocks.7.hook_resid_post]
       dict_size_to_input_ratio:
         values: [50.0]
 
@@ -48,4 +52,4 @@ command:
 - ${env}
 - ${interpreter}
 - ${program}
-- sparsify/scripts/train_tlens_saes/tinystories_1M_layerwise.yaml
+- sparsify/scripts/train_tlens_saes/tinystories_1M.yaml
