@@ -2,8 +2,8 @@
 
 Usage:
     The script can be invoked from the command line, providing the wandb agent ID and optionally,
-    a comma-separated list of GPU indices. If no GPU indices are provided, the script will
-    automatically use all available GPUs.
+    GPU indices separated by a comma. If no GPU indices are provided, the script will automatically
+    use all available GPUs.
 
     Example command to run the script specifying GPUs:
         python run_wandb_sweep.py your_agent_id 0,1,4
@@ -18,18 +18,19 @@ import torch
 from fire import Fire
 
 
-def main(agent_id: str, gpu_idxs_str: str = "") -> None:
+def main(agent_id: str, gpu_idxs: tuple[int, ...] | int | None = None) -> None:
     """Run the training script with specified GPU indices.
 
     Args:
         agent_id: The wandb agent ID.
-        gpu_idxs: A comma-separated string of GPU indices to use. Use all available GPUs if empty.
+        gpu_idxs: The GPU indices to use for training. If None, all available GPUs will be used.
     """
-    # Check if the user has specified GPU indices
-    if gpu_idxs_str == "":
-        gpu_idxs = [int(idx) for idx in gpu_idxs_str.split(",")]
-    else:
-        gpu_idxs = list(range(torch.cuda.device_count()))
+    if isinstance(gpu_idxs, int):
+        gpu_idxs = (gpu_idxs,)
+    elif gpu_idxs is None:
+        gpu_idxs = tuple(range(torch.cuda.device_count()))
+
+    assert isinstance(gpu_idxs, tuple), "gpu_idxs must be a tuple of integers"
 
     for idx in gpu_idxs:
         session_exists = subprocess.run(f"tmux has-session -t {idx}".split(), capture_output=True)
