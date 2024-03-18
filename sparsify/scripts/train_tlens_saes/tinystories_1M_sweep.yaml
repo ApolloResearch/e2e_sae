@@ -12,7 +12,7 @@ parameters:
   effective_batch_size:
     values: [20]
   lr:
-    values: [1e-2]
+    values: [1e-2, 5e-3, 1e-3]
   adam_beta1:
     values: [0.9]
   lr_schedule:
@@ -28,7 +28,7 @@ parameters:
           p_norm:
             values: [1.0]
           coeff:
-            values: [2, 4, 8, 14, 20, 30]
+            values: [50, 30, 20]
       in_to_orig:
         parameters:
           hook_positions:
@@ -46,9 +46,9 @@ parameters:
   saes:
     parameters:
       sae_positions:
-        values: [blocks.1.hook_resid_post, blocks.3.hook_resid_post, blocks.7.hook_resid_post]
+        values: [blocks.1.hook_resid_post]
       dict_size_to_input_ratio:
-        values: [50.0]
+        values: [5.0, 10.0]
   train_data:
     parameters:
       seed:
