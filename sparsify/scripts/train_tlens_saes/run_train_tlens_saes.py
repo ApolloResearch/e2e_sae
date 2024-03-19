@@ -164,8 +164,8 @@ def get_run_name(config: Config) -> str:
             coeff_info += f"_logits-kl-{config.loss.logits_kl.coeff}"
 
         run_suffix = (
-            f"{'-'.join(config.saes.sae_positions)}_"
-            f"ratio-{config.saes.dict_size_to_input_ratio}_lr-{config.lr}_{coeff_info}"
+            f"{coeff_info}_lr-{config.lr}_ratio-{config.saes.dict_size_to_input_ratio}_"
+            f"{'-'.join(config.saes.sae_positions)}"
         )
     return config.wandb_run_name_prefix + run_suffix
 

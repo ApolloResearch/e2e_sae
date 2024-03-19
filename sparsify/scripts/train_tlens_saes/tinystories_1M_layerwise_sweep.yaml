@@ -1,29 +1,33 @@
 program: sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py
-name: logits_kl
+name: layerwise
 method: grid
 metric:
   name: val_loss
   goal: minimize
 parameters:
   n_samples:
-    values: [450_000]
+    values: [400_000]
   lr:
-    values: [1e-2, 5e-3, 1e-3]
+    values: [5e-2, 1e-2]
   loss:
     parameters:
       sparsity:
         parameters:
           coeff:
-            values: [50, 30, 20]
+            values: [3e-2, 5e-2, 8e-2]
   saes:
     parameters:
       sae_positions:
-        values: [blocks.1.hook_resid_post]
+        values:
+          - blocks.1.hook_resid_post
+          - blocks.3.hook_resid_post
+          - blocks.5.hook_resid_post
+          - blocks.7.hook_resid_post
       dict_size_to_input_ratio:
-        values: [5.0, 10.0]
+        values: [50.0]
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
-- sparsify/scripts/train_tlens_saes/tinystories_1M.yaml
+- sparsify/scripts/train_tlens_saes/tinystories_1M_layerwise.yaml

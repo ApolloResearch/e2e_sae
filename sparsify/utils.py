@@ -233,19 +233,17 @@ def init_wandb(config: T, project: str, sweep_config_path: Path | str | None) ->
     Returns:
         Config updated with sweep hyperparameters (if any).
     """
-    load_dotenv(override=True)
     if sweep_config_path is not None:
         with open(sweep_config_path) as f:
             sweep_data = yaml.safe_load(f)
+        wandb.init(config=sweep_data)
     else:
-        sweep_data = {}
-    wandb.init(
-        project=project,
-        entity=os.getenv("WANDB_ENTITY"),
-        config=sweep_data,
-    )
+        load_dotenv(override=True)
+        wandb.init(
+            project=project,
+            entity=os.getenv("WANDB_ENTITY"),
+        )
     # Update the config with the hyperparameters for this sweep (if any)
     config = replace_pydantic_model(config, wandb.config)
-    wandb.config = config.model_dump(mode="json")
-    wandb.save()
+    wandb.config.update(config.model_dump(mode="json"))
     return config
