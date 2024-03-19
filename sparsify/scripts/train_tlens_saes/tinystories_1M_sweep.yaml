@@ -1,62 +1,26 @@
 program: sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py
-name: layerwise
+name: logits_kl
 method: grid
 metric:
   name: val_loss
   goal: minimize
 parameters:
-  seed:
-    values: [0]
   n_samples:
     values: [450_000]
-  effective_batch_size:
-    values: [20]
   lr:
     values: [1e-2, 5e-3, 1e-3]
-  adam_beta1:
-    values: [0.9]
-  lr_schedule:
-    values: [cosine]
-  warmup_samples:
-    values: [20_000]
-  max_grad_norm:
-    values: [1.0]
   loss:
     parameters:
       sparsity:
         parameters:
-          p_norm:
-            values: [1.0]
           coeff:
             values: [50, 30, 20]
-      in_to_orig:
-        parameters:
-          hook_positions:
-            values: [hook_resid_post]
-          coeff:
-            values: [0.0]
-      out_to_in:
-        parameters:
-          coeff:
-            values: [0.0]
-      logits_kl:
-        parameters:
-          coeff:
-            values: [1.0]
   saes:
     parameters:
       sae_positions:
         values: [blocks.1.hook_resid_post]
       dict_size_to_input_ratio:
         values: [5.0, 10.0]
-  train_data:
-    parameters:
-      seed:
-        values: [0]
-  eval_data:
-    parameters:
-      seed:
-        values: [0]
 
 command:
 - ${env}

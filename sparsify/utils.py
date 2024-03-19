@@ -245,6 +245,5 @@ def init_wandb(config: T, project: str, sweep_config_path: Path | str | None) ->
         )
     # Update the config with the hyperparameters for this sweep (if any)
     config = replace_pydantic_model(config, wandb.config)
-    wandb.config = config.model_dump(mode="json")
-    wandb.save()
+    wandb.config.update(config.model_dump(mode="json"))
     return config
