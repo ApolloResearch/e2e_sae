@@ -203,13 +203,13 @@ def evaluate(
     eval_config = config
     eval_cache_positions = cache_positions
     if log_resid_reconstruction and config.loss.in_to_orig is None:
+        # Update cache_positions with all hook_resid_post positions
+        all_resids = [f"blocks.{i}.hook_resid_post" for i in range(model.tlens_model.cfg.n_layers)]
         # Record the reconstruction loss and explained var at hook_resid_post by setting
         # in_to_orig.coeff to 0.0
         eval_config = replace_pydantic_model(
-            config, {"loss": {"in_to_orig": {"hook_positions": ["hook_resid_post"], "coeff": 0.0}}}
+            config, {"loss": {"in_to_orig": {"hook_positions": all_resids, "coeff": 0.0}}}
         )
-        # Update cache_positions with all hook_resid_post positions
-        all_resids = [f"blocks.{i}.hook_resid_post" for i in range(model.tlens_model.cfg.n_layers)]
         eval_cache_positions = list(
             set(all_resids) | (set(cache_positions) if cache_positions else set())
         )
@@ -339,7 +339,6 @@ def train(
     if config.wandb_project:
         assert wandb.run, "wandb.run must be initialized before calling train."
         wandb.run.name = run_name
-        wandb.save()
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     save_dir = config.save_dir / f"{run_name}_{timestamp}" if config.save_dir else None
@@ -562,11 +561,14 @@ def main(
     raw_sae_positions = filter_names(list(tlens_model.hook_dict.keys()), config.saes.sae_positions)
     cache_positions: list[str] | None = None
     if config.loss.in_to_orig is not None:
-        cache_positions = filter_names(
-            list(tlens_model.hook_dict.keys()), config.loss.in_to_orig.hook_positions
-        )
-        # Don't add a cache position if there is already an SAE at that position
-        cache_positions = [pos for pos in cache_positions if pos not in raw_sae_positions] or None
+        assert set(config.loss.in_to_orig.hook_positions).issubset(
+            set(tlens_model.hook_dict.keys())
+        ), "Some hook_positions in config.loss.in_to_orig.hook_positions are not in the model."
+        # Don't add a cache position if there is already an SAE at that position which will cache
+        # the inputs anyway
+        cache_positions = [
+            pos for pos in config.loss.in_to_orig.hook_positions if pos not in raw_sae_positions
+        ]
 
     model = SAETransformer(
         config=config, tlens_model=tlens_model, raw_sae_positions=raw_sae_positions
