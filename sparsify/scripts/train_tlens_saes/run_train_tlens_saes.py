@@ -28,7 +28,6 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
-from transformers import get_cosine_schedule_with_warmup
 
 from sparsify.data import DatasetConfig, create_data_loader
 from sparsify.hooks import SAEActs
@@ -44,6 +43,7 @@ from sparsify.models.transformers import SAETransformer
 from sparsify.types import RootPath, Samples
 from sparsify.utils import (
     filter_names,
+    get_cosine_schedule_with_warmup,
     get_linear_lr_schedule,
     init_wandb,
     load_config,
