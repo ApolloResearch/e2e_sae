@@ -18,17 +18,15 @@ effective_batch_size: 20
 lr: 1e-2
 adam_beta1: 0.9  # pytorch defaults to 0.9
 lr_schedule: cosine
-warmup_samples: 20_000
 min_lr_factor: 0.1
+warmup_samples: 20_000
 max_grad_norm: 1.0
 
 loss:
   sparsity:
     p_norm: 1.0
     coeff: 10.0
-  in_to_orig:
-    hook_positions: hook_resid_post
-    coeff: 0.0  # log these positions but don't use them in the loss
+  in_to_orig: null
   out_to_orig: null
   out_to_in:
     coeff: 0.0

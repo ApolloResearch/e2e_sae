@@ -357,7 +357,7 @@ if __name__ == "__main__":
             tokenizer_name="gpt2",
             hugging_face_username="apollo-research",
             context_size=1024,
-            # Get just the first few (each file is 11GB so this should be enough for a large dataset)
+            # Get the first few (each file is 11GB so this should be enough for a large dataset)
             data_files=[
                 "train/00.jsonl.zst",
                 "train/01.jsonl.zst",

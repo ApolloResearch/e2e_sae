@@ -51,6 +51,9 @@ class InToOrigLoss(BaseModel):
     """Config for the loss between the input and original activations.
 
     The input activations may come from the input to an SAE or the activations at a cache_hook.
+
+    Note that `run_train_tlens_saes.evaluate` will automatically log the in_to_orig loss for all
+    residual stream positions, so you do not need to set values here with coeff=0.0 for logging.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -59,9 +62,9 @@ class InToOrigLoss(BaseModel):
         list[str], BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
     ] = Field(
         ...,
-        description="The hook positions at which to compare raw and SAE-augmented activations with."
-        "E.g. 'hook_resid_post' or ['blocks.3.hook_resid_post', 'hook_mlp_out']. Each entry gets "
-        " matched to all hook positions that contain the given string.",
+        description="The exact hook positions at which to compare raw and SAE-augmented "
+        "activations. E.g. 'blocks.3.hook_resid_post' or "
+        "['blocks.3.hook_resid_post', 'blocks.5.hook_resid_post'].",
     )
 
     def calc_loss(
@@ -196,8 +199,8 @@ def calc_loss(
                 continue
 
             var: Float[Tensor, "batch_token"] | None = None  # noqa: F821
-            if isinstance(loss_config, InToOrigLoss):
-                # Note that out_to_in may calculate losses using CacheActs rather than SAEActs.
+            if isinstance(loss_config, InToOrigLoss) and name in loss_config.hook_positions:
+                # Note that out_to_in can calculate losses using CacheActs or SAEActs.
                 loss_val = loss_config.calc_loss(new_act.input, orig_act)
                 var = calc_explained_variance(new_act.input, orig_act)
             elif isinstance(loss_config, OutToOrigLoss):
@@ -212,7 +215,9 @@ def calc_loss(
                 assert isinstance(new_act, SAEActs)
                 loss_val = loss_config.calc_loss(new_act.c, dense_dim=new_act.input.shape[-1])
             else:
-                assert loss_config is None, f"Unknown loss config {loss_config}"
+                assert loss_config is None or (
+                    isinstance(loss_config, InToOrigLoss) and name not in loss_config.hook_positions
+                ), f"Unexpected loss_config {loss_config} for name {name}"
                 continue
 
             loss = loss + loss_config.coeff * loss_val

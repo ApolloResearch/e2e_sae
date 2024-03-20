@@ -47,6 +47,7 @@ from sparsify.utils import (
     get_linear_lr_schedule,
     init_wandb,
     load_config,
+    replace_pydantic_model,
     save_module,
     set_seed,
 )
@@ -177,24 +178,50 @@ def get_run_name(config: Config) -> str:
 
 @torch.inference_mode()
 def evaluate(
-    config: Config, model: SAETransformer, device: torch.device, cache_positions: list[str] | None
+    config: Config,
+    model: SAETransformer,
+    device: torch.device,
+    cache_positions: list[str] | None,
+    log_resid_reconstruction: bool = True,
 ) -> dict[str, float]:
     """Evaluate the model on the eval dataset.
 
     Accumulates metrics over the entire eval dataset and then divides by the total number of tokens.
 
+    Args:
+        config: The config object.
+        model: The SAETransformer model.
+        device: The device to run the model on.
+        cache_positions: The positions to cache activations at.
+        log_resid_reconstruction: Whether to log the reconstruction loss and explained variance
+            at hook_resid_post in all layers.
     Returns:
         Dictionary of metrics.
     """
-    assert config.eval_data is not None, "No eval dataset specified in the config."
     model.saes.eval()
-    eval_loader = create_data_loader(config.eval_data, batch_size=config.batch_size)[0]
 
-    if config.eval_n_samples is None:
+    eval_config = config
+    eval_cache_positions = cache_positions
+    if log_resid_reconstruction and config.loss.in_to_orig is None:
+        # Update cache_positions with all hook_resid_post positions
+        all_resids = [f"blocks.{i}.hook_resid_post" for i in range(model.tlens_model.cfg.n_layers)]
+        # Record the reconstruction loss and explained var at hook_resid_post by setting
+        # in_to_orig.coeff to 0.0
+        eval_config = replace_pydantic_model(
+            config, {"loss": {"in_to_orig": {"hook_positions": all_resids, "coeff": 0.0}}}
+        )
+        eval_cache_positions = list(
+            set(all_resids) | (set(cache_positions) if cache_positions else set())
+        )
+
+    assert eval_config.eval_data is not None, "No eval dataset specified in the config."
+    eval_loader = create_data_loader(eval_config.eval_data, batch_size=eval_config.batch_size)[0]
+
+    if eval_config.eval_n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
         n_batches = None if isinstance(eval_loader.dataset, IterableDataset) else len(eval_loader)
     else:
-        n_batches = math.ceil(config.eval_n_samples / config.batch_size)
+        n_batches = math.ceil(eval_config.eval_n_samples / eval_config.batch_size)
 
     total_tokens = 0
     # Accumulate metrics over the entire eval dataset and later divide by the total number of tokens
@@ -204,19 +231,22 @@ def evaluate(
         if n_batches is not None and batch_idx >= n_batches:
             break
 
-        tokens = batch[config.eval_data.column_name].to(device=device)
+        tokens = batch[eval_config.eval_data.column_name].to(device=device)
         n_tokens = tokens.shape[0] * tokens.shape[1]
         total_tokens += n_tokens
 
         # Run through the raw transformer without SAEs
         orig_logits, orig_acts = model.forward_raw(
-            tokens=tokens, run_entire_model=True, final_layer=None, cache_positions=cache_positions
+            tokens=tokens,
+            run_entire_model=True,
+            final_layer=None,
+            cache_positions=eval_cache_positions,
         )
         # Run through the SAE-augmented model
         new_logits, new_acts = model.forward(
             tokens=tokens,
             sae_positions=model.raw_sae_positions,
-            cache_positions=cache_positions,
+            cache_positions=eval_cache_positions,
         )
         assert new_logits is not None, "new_logits should not be None during evaluation."
 
@@ -225,7 +255,7 @@ def evaluate(
             new_acts=new_acts,
             orig_logits=orig_logits,
             new_logits=new_logits,
-            loss_configs=config.loss,
+            loss_configs=eval_config.loss,
             is_log_step=True,
             train=False,
         )[1]
@@ -309,7 +339,6 @@ def train(
     if config.wandb_project:
         assert wandb.run, "wandb.run must be initialized before calling train."
         wandb.run.name = run_name
-        wandb.save()
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     save_dir = config.save_dir / f"{run_name}_{timestamp}" if config.save_dir else None
@@ -530,14 +559,16 @@ def main(
     )
 
     raw_sae_positions = filter_names(list(tlens_model.hook_dict.keys()), config.saes.sae_positions)
-    # TODO: Use consistent naming for sae positions and cache positions (get rid of "names")
     cache_positions: list[str] | None = None
     if config.loss.in_to_orig is not None:
-        cache_positions = filter_names(
-            list(tlens_model.hook_dict.keys()), config.loss.in_to_orig.hook_positions
-        )
-        # Don't add a cache position if there is already an SAE at that position
-        cache_positions = [pos for pos in cache_positions if pos not in raw_sae_positions] or None
+        assert set(config.loss.in_to_orig.hook_positions).issubset(
+            set(tlens_model.hook_dict.keys())
+        ), "Some hook_positions in config.loss.in_to_orig.hook_positions are not in the model."
+        # Don't add a cache position if there is already an SAE at that position which will cache
+        # the inputs anyway
+        cache_positions = [
+            pos for pos in config.loss.in_to_orig.hook_positions if pos not in raw_sae_positions
+        ]
 
     model = SAETransformer(
         config=config, tlens_model=tlens_model, raw_sae_positions=raw_sae_positions
