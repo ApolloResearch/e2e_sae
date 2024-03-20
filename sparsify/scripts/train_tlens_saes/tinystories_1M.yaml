@@ -28,7 +28,8 @@ loss:
     coeff: 10.0
   in_to_orig: null
   out_to_orig: null
-  out_to_in: null
+  out_to_in:
+    coeff: 0.0
   logits_kl:
     coeff: 1.0
 train_data:
