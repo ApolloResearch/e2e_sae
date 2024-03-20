@@ -24,9 +24,8 @@ Two types of dashboards can be created:
         effect for predicting the correct next token - default). 
         Saved in dashboards_config.save_dir/prompt_dashboards
 
-This script uses the ApolloResearch/rib_vis fork of Callum McDouglal's sae_vis package:
-https://github.com/ApolloResearch/rib_vis/blob/non_sae_version/sae_vis/data_fetching_fns.py
-because it relies on the SAE-architecture agnostic function parse_activation_data()
+This script currently relies on an old commit of Callum McDouglal's sae_vis package: 
+https://github.com/callummcdougall/sae_vis/commit/b28a0f7c7e936f4bea05528d952dfcd438533cce 
 """
 import math
 from collections.abc import Iterable
