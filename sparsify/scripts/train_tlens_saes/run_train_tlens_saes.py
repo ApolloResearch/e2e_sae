@@ -203,7 +203,8 @@ def evaluate(
     eval_config = config
     eval_cache_positions = cache_positions
     if log_resid_reconstruction and config.loss.in_to_orig is None:
-        # For eval, we always record the reconstruction loss and explained var at hook_resid_post
+        # Record the reconstruction loss and explained var at hook_resid_post by setting
+        # in_to_orig.coeff to 0.0
         eval_config = replace_pydantic_model(
             config, {"loss": {"in_to_orig": {"hook_positions": ["hook_resid_post"], "coeff": 0.0}}}
         )
@@ -559,7 +560,6 @@ def main(
     )
 
     raw_sae_positions = filter_names(list(tlens_model.hook_dict.keys()), config.saes.sae_positions)
-    # TODO: Use consistent naming for sae positions and cache positions (get rid of "names")
     cache_positions: list[str] | None = None
     if config.loss.in_to_orig is not None:
         cache_positions = filter_names(
