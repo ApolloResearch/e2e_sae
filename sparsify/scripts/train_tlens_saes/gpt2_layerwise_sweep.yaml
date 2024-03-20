@@ -1,0 +1,22 @@
+program: sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py
+name: gpt2_layerwise
+method: grid
+metric:
+  name: val_loss
+  goal: minimize
+parameters:
+  n_samples:
+    values: [400_000]
+  lr:
+    values: [5e-6, 1e-5, 5e-5]
+  loss:
+    parameters:
+      sparsity:
+        parameters:
+          coeff:
+            values: [6.0, 8.0]
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- sparsify/scripts/train_tlens_saes/gpt2_layerwise.yaml

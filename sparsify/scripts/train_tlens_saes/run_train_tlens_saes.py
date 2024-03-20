@@ -231,7 +231,11 @@ def evaluate(
         if n_batches is not None and batch_idx >= n_batches:
             break
 
-        tokens = batch[eval_config.eval_data.column_name].to(device=device)
+        # tokens = batch[eval_config.eval_data.column_name].to(device=device)
+        # Train on only 128
+        tokens: Int[Tensor, "batch pos"] = batch[eval_config.eval_data.column_name][:, :128].to(
+            device=device
+        )
         n_tokens = tokens.shape[0] * tokens.shape[1]
         total_tokens += n_tokens
 
@@ -354,7 +358,10 @@ def train(
     samples_since_output_metric_collection: int = 0
 
     for batch_idx, batch in tqdm(enumerate(train_loader), total=n_batches, desc="Steps"):
-        tokens: Int[Tensor, "batch pos"] = batch[config.train_data.column_name].to(device=device)
+        # Train on only 128
+        tokens: Int[Tensor, "batch pos"] = batch[config.train_data.column_name][:, :128].to(
+            device=device
+        )
 
         total_samples += tokens.shape[0]
         total_tokens += tokens.shape[0] * tokens.shape[1]
