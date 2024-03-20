@@ -18,6 +18,7 @@ effective_batch_size: 20
 lr: 1e-3
 adam_beta1: 0.9  # pytorch defaults to 0.9
 lr_schedule: cosine
+min_lr_factor: 0.1
 warmup_samples: 20_000
 max_grad_norm: 1.0
 
