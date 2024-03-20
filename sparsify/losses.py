@@ -51,6 +51,9 @@ class InToOrigLoss(BaseModel):
     """Config for the loss between the input and original activations.
 
     The input activations may come from the input to an SAE or the activations at a cache_hook.
+
+    Note that `run_train_tlens_saes.evaluate` will automatically log the in_to_orig loss for all
+    residual stream positions, so you do not need to set values here with coeff=0.0 for logging.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
