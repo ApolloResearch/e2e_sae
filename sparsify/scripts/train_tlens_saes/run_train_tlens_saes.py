@@ -28,7 +28,6 @@ from torch import Tensor
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
-from transformers import get_cosine_schedule_with_warmup
 
 from sparsify.data import DatasetConfig, create_data_loader
 from sparsify.hooks import SAEActs
@@ -44,6 +43,7 @@ from sparsify.models.transformers import SAETransformer
 from sparsify.types import RootPath, Samples
 from sparsify.utils import (
     filter_names,
+    get_cosine_schedule_with_warmup,
     get_linear_lr_schedule,
     init_wandb,
     load_config,
@@ -95,6 +95,11 @@ class Config(BaseModel):
     lr: PositiveFloat
     adam_beta1: NonNegativeFloat
     lr_schedule: Literal["linear", "cosine"] = "cosine"
+    min_lr_factor: NonNegativeFloat = Field(
+        0.1,
+        description="The minimum learning rate as a factor of the initial learning rate. Used "
+        "in the cooldown phase of a linear or cosine schedule.",
+    )
     warmup_samples: NonNegativeInt = 0
     cooldown_samples: NonNegativeInt = 0
     max_grad_norm: PositiveFloat | None = None
@@ -276,6 +281,7 @@ def train(
             optimizer,
             num_warmup_steps=config.warmup_samples // effective_batch_size,
             num_training_steps=config.n_samples // effective_batch_size,
+            min_lr_factor=config.min_lr_factor,
         )
     else:
         assert config.lr_schedule == "linear"
@@ -284,6 +290,7 @@ def train(
             cooldown_samples=config.cooldown_samples,
             n_samples=config.n_samples,
             effective_batch_size=effective_batch_size,
+            min_lr_factor=config.min_lr_factor,
         )
         scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lr_schedule)
 
