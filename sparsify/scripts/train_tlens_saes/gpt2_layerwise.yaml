@@ -1,6 +1,6 @@
-wandb_project: gpt2-layerwise_play
+wandb_project: gpt2-layerwise
 wandb_run_name: null
-wandb_run_name_prefix: "linear-schedule_ctx128_"
+wandb_run_name_prefix: "ctx128_seed1"
 
 seed: 0
 tlens_model_name: gpt2-small
@@ -15,18 +15,17 @@ collect_act_frequency_every_n_samples: 10_000
 act_frequency_n_tokens: 500_000  #500k tokens is ~977 samples
 batch_size: 80
 effective_batch_size: 160
-lr: 1e-4
+lr: 0.05
 adam_beta1: 0.9  # pytorch defaults to 0.9
-lr_schedule: linear
+lr_schedule: cosine
 min_lr_factor: 0.1
 warmup_samples: 20_000
-cooldown_samples: 20_000
 max_grad_norm: 1.0
 
 loss:
   sparsity:
     p_norm: 1.0
-    coeff: 4.0
+    coeff: 0.1
   in_to_orig: null
   out_to_orig: null
   out_to_in:

@@ -5,16 +5,18 @@ metric:
   name: val_loss
   goal: minimize
 parameters:
+  seed:
+    values: [1]
   n_samples:
-    values: [400_000]
+    values: [1_000_000]
   lr:
-    values: [5e-6, 1e-5, 5e-5]
+    values: [5e-3, 8e-3, 1e-2]
   loss:
     parameters:
       sparsity:
         parameters:
           coeff:
-            values: [6.0, 8.0]
+            values: [1.5, 1.8]
 command:
 - ${env}
 - ${interpreter}
