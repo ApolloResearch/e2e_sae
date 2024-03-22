@@ -10,18 +10,29 @@ from torch import Tensor
 from sparsify.hooks import CacheActs, SAEActs
 
 
+def _layer_norm_pre(x: Float[Tensor, "... dim"], eps: float = 1e-5) -> Float[Tensor, "... dim"]:
+    """Layernorm without the affine transformation."""
+    x = x - x.mean(dim=-1, keepdim=True)
+    scale = (x.pow(2).mean(-1, keepdim=True) + eps).sqrt()
+    return x / scale
+
+
 def calc_explained_variance(
-    pred: Float[Tensor, "... dim"], target: Float[Tensor, "... dim"]
+    pred: Float[Tensor, "... dim"], target: Float[Tensor, "... dim"], layer_norm: bool = False
 ) -> Float[Tensor, "..."]:
     """Calculate the explained variance of the pred and target.
 
     Args:
         pred: The prediction to compare to the target.
         target: The target to compare the prediction to.
+        layer_norm: Whether to apply layer norm to the pred and target before calculating the loss.
 
     Returns:
         The explained variance between the prediction and target for each batch and sequence pos.
     """
+    if layer_norm:
+        pred = _layer_norm_pre(pred)
+        target = _layer_norm_pre(target)
     sample_dims = tuple(range(pred.ndim - 1))
     per_token_l2_loss = (pred - target).pow(2).sum(dim=-1)
     total_variance = (target - target.mean(dim=sample_dims)).pow(2).sum(dim=-1)
@@ -199,18 +210,34 @@ def calc_loss(
                 continue
 
             var: Float[Tensor, "batch_token"] | None = None  # noqa: F821
+            var_ln: Float[Tensor, "batch_token"] | None = None  # noqa: F821
             if isinstance(loss_config, InToOrigLoss) and name in loss_config.hook_positions:
                 # Note that out_to_in can calculate losses using CacheActs or SAEActs.
                 loss_val = loss_config.calc_loss(new_act.input, orig_act)
-                var = calc_explained_variance(new_act.input, orig_act)
+                var = calc_explained_variance(
+                    new_act.input.detach().clone(), orig_act, layer_norm=False
+                )
+                var_ln = calc_explained_variance(
+                    new_act.input.detach().clone(), orig_act, layer_norm=True
+                )
             elif isinstance(loss_config, OutToOrigLoss):
                 assert isinstance(new_act, SAEActs)
                 loss_val = loss_config.calc_loss(new_act.output, orig_act)
-                var = calc_explained_variance(new_act.output, orig_act)
+                var = calc_explained_variance(
+                    new_act.output.detach().clone(), orig_act, layer_norm=False
+                )
+                var_ln = calc_explained_variance(
+                    new_act.output.detach().clone(), orig_act, layer_norm=True
+                )
             elif isinstance(loss_config, OutToInLoss):
                 assert isinstance(new_act, SAEActs)
                 loss_val = loss_config.calc_loss(new_act.input, new_act.output)
-                var = calc_explained_variance(new_act.input, new_act.output)
+                var = calc_explained_variance(
+                    new_act.input.detach().clone(), new_act.output, layer_norm=False
+                )
+                var_ln = calc_explained_variance(
+                    new_act.input.detach().clone(), new_act.output, layer_norm=True
+                )
             elif isinstance(loss_config, SparsityLoss):
                 assert isinstance(new_act, SAEActs)
                 loss_val = loss_config.calc_loss(new_act.c, dense_dim=new_act.input.shape[-1])
@@ -225,10 +252,13 @@ def calc_loss(
 
             if (
                 var is not None
+                and var_ln is not None
                 and is_log_step
                 and isinstance(loss_config, InToOrigLoss | OutToOrigLoss | OutToInLoss)
             ):
                 loss_dict[f"{prefix}/{config_type}/explained_variance/{name}"] = var.mean()
                 loss_dict[f"{prefix}/{config_type}/explained_variance_std/{name}"] = var.std()
+                loss_dict[f"{prefix}/{config_type}/explained_variance_ln/{name}"] = var_ln.mean()
+                loss_dict[f"{prefix}/{config_type}/explained_variance_ln_std/{name}"] = var_ln.std()
 
     return loss, loss_dict
