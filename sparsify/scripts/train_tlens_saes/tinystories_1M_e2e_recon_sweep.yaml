@@ -1,0 +1,48 @@
+program: sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py
+name: logits_kl_recon
+method: grid
+metric:
+  name: val_loss
+  goal: minimize
+parameters:
+  wandb_run_name_prefix:
+    values: [e2e-recon_]
+  n_samples:
+    values: [250_000]
+  lr:
+    values: [0.001]
+  loss:
+    parameters:
+      sparsity:
+        parameters:
+          coeff:
+            values: [150, 100, 50]
+      in_to_orig:
+        parameters:
+          total_coeff:
+            values: [2000, 1000, 500, 100]
+      logits_kl:
+        parameters:
+          coeff:
+            values: [0.5]
+  saes:
+    parameters:
+      sae_positions:
+        values: [blocks.3.hook_resid_post]
+      dict_size_to_input_ratio:
+        values: [50.0]
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- sparsify/scripts/train_tlens_saes/tinystories_1M.yaml
+
+# e2e coeffs with lr=0.01 with max_grad_norm=1.0.
+# layer 1: 50.0 - 0.5
+# layer 3: 70.0 - 1.0
+# layer 7: 100? - 1.0
+
+# layer 6: 200, 100, 80
+# layer 3: 50, 40, 30
+# layer 0: 35, 3

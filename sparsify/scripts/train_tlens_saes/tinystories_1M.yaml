@@ -25,7 +25,13 @@ loss:
   sparsity:
     p_norm: 1.0
     coeff: 3.0
-  in_to_orig: null
+  in_to_orig:
+    hook_positions:
+      - blocks.4.hook_resid_post
+      - blocks.5.hook_resid_post
+      - blocks.6.hook_resid_post
+      - blocks.7.hook_resid_post
+    total_coeff: 1000
   out_to_orig: null
   out_to_in:
     coeff: 0.0
