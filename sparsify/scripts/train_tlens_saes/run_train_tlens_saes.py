@@ -203,17 +203,23 @@ def evaluate(
 
     eval_config = config
     eval_cache_positions = cache_positions
+    eval_loss_config_updates = {}
     if log_resid_reconstruction and config.loss.in_to_orig is None:
         # Update cache_positions with all hook_resid_post positions
         all_resids = [f"blocks.{i}.hook_resid_post" for i in range(model.tlens_model.cfg.n_layers)]
         # Record the reconstruction loss and explained var at hook_resid_post by setting
         # in_to_orig.total_coeff to 0.0
-        eval_config = replace_pydantic_model(
-            config, {"loss": {"in_to_orig": {"hook_positions": all_resids, "total_coeff": 0.0}}}
+        eval_loss_config_updates.update(
+            {"in_to_orig": {"hook_positions": all_resids, "total_coeff": 0.0}}
         )
         eval_cache_positions = list(
             set(all_resids) | (set(cache_positions) if cache_positions else set())
         )
+    if config.loss.logits_kl is None:
+        # If we're not training with logits_kl ensure that we eval with it
+        eval_loss_config_updates.update({"logits_kl": {"coeff": 0.0}})
+
+    eval_config = replace_pydantic_model(config, {"loss": eval_loss_config_updates})
 
     assert eval_config.eval_data is not None, "No eval dataset specified in the config."
     eval_loader = create_data_loader(eval_config.eval_data, batch_size=eval_config.batch_size)[0]
