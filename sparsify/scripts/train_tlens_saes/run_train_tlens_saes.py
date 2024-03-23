@@ -168,6 +168,8 @@ def get_run_name(config: Config) -> str:
             coeff_info += f"_inp-to-out-{config.loss.out_to_in.coeff}"
         if config.loss.logits_kl is not None and config.loss.logits_kl.coeff > 0:
             coeff_info += f"_logits-kl-{config.loss.logits_kl.coeff}"
+        if config.loss.in_to_orig is not None and config.loss.in_to_orig.total_coeff > 0:
+            coeff_info += f"_inp-to-orig-{config.loss.in_to_orig.total_coeff}"
 
         run_suffix = (
             f"{coeff_info}_lr-{config.lr}_ratio-{config.saes.dict_size_to_input_ratio}_"
@@ -206,9 +208,9 @@ def evaluate(
         # Update cache_positions with all hook_resid_post positions
         all_resids = [f"blocks.{i}.hook_resid_post" for i in range(model.tlens_model.cfg.n_layers)]
         # Record the reconstruction loss and explained var at hook_resid_post by setting
-        # in_to_orig.coeff to 0.0
+        # in_to_orig.total_coeff to 0.0
         eval_config = replace_pydantic_model(
-            config, {"loss": {"in_to_orig": {"hook_positions": all_resids, "coeff": 0.0}}}
+            config, {"loss": {"in_to_orig": {"hook_positions": all_resids, "total_coeff": 0.0}}}
         )
         eval_cache_positions = list(
             set(all_resids) | (set(cache_positions) if cache_positions else set())

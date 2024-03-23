@@ -68,7 +68,9 @@ class InToOrigLoss(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
-    coeff: float
+    total_coeff: float = Field(
+        ..., description="The sum of coefficients equally weighted across all hook_positions."
+    )
     hook_positions: Annotated[
         list[str], BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
     ] = Field(
@@ -77,6 +79,11 @@ class InToOrigLoss(BaseModel):
         "activations. E.g. 'blocks.3.hook_resid_post' or "
         "['blocks.3.hook_resid_post', 'blocks.5.hook_resid_post'].",
     )
+
+    @property
+    def coeff(self) -> float:
+        """The coefficient for the loss of each hook position."""
+        return self.total_coeff / len(self.hook_positions)
 
     def calc_loss(
         self, input: Float[Tensor, "... dim"], orig: Float[Tensor, "... dim"]
