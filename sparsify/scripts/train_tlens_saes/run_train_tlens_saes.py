@@ -164,11 +164,11 @@ def get_run_name(config: Config) -> str:
     else:
         coeff_info = f"lpcoeff-{config.loss.sparsity.coeff}"
         if config.loss.out_to_in is not None and config.loss.out_to_in.coeff > 0:
-            coeff_info += f"_inp-to-out-{config.loss.out_to_in.coeff}"
+            coeff_info += f"_in-to-out-{config.loss.out_to_in.coeff}"
         if config.loss.logits_kl is not None and config.loss.logits_kl.coeff > 0:
             coeff_info += f"_logits-kl-{config.loss.logits_kl.coeff}"
         if config.loss.in_to_orig is not None and config.loss.in_to_orig.total_coeff > 0:
-            coeff_info += f"_inp-to-orig-{config.loss.in_to_orig.total_coeff}"
+            coeff_info += f"_in-to-orig-{config.loss.in_to_orig.total_coeff}"
 
         run_suffix = (
             f"{coeff_info}_lr-{config.lr}_ratio-{config.saes.dict_size_to_input_ratio}_"
