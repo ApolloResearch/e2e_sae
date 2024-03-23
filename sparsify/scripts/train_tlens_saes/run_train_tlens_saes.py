@@ -94,7 +94,6 @@ class Config(BaseModel):
     batch_size: PositiveInt
     effective_batch_size: PositiveInt | None = None
     lr: PositiveFloat
-    adam_beta1: NonNegativeFloat
     lr_schedule: Literal["linear", "cosine"] = "cosine"
     min_lr_factor: NonNegativeFloat = Field(
         0.1,
@@ -299,9 +298,7 @@ def train(
         else:
             param.requires_grad = False
     optimizer = torch.optim.Adam(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=config.lr,
-        betas=(config.adam_beta1, 0.999),
+        filter(lambda p: p.requires_grad, model.parameters()), lr=config.lr
     )
 
     effective_batch_size = config.effective_batch_size or config.batch_size
