@@ -1,0 +1,54 @@
+wandb_project: gpt2-layerwise
+wandb_run_name: null
+wandb_run_name_prefix: ""
+
+seed: 0
+tlens_model_name: gpt2-small
+tlens_model_path: null
+
+n_samples: 450_000
+save_every_n_samples: null
+eval_every_n_samples: 40_000
+eval_n_samples: 2000
+log_every_n_grad_steps: 20
+collect_act_frequency_every_n_samples: 20_000
+act_frequency_n_tokens: 500_000
+batch_size: 14
+effective_batch_size: 14
+lr: 1e-3
+lr_schedule: cosine
+min_lr_factor: 0.1
+warmup_samples: 20_000
+max_grad_norm: 10.0
+
+loss:
+  sparsity:
+    p_norm: 1.0
+    coeff: 1.0
+  in_to_orig: null
+  out_to_orig: null
+  out_to_in:
+    coeff: 1.0
+  logits_kl: null
+train_data:
+  dataset_name: apollo-research/Skylion007-openwebtext-tokenizer-gpt2
+  is_tokenized: true
+  tokenizer_name: gpt2
+  streaming: true
+  split: train
+  n_ctx: 1024
+  seed: 0
+eval_data:
+  dataset_name: apollo-research/Skylion007-openwebtext-tokenizer-gpt2
+  is_tokenized: true
+  tokenizer_name: gpt2
+  streaming: true
+  split: train
+  n_ctx: 1024
+  seed: 0
+saes:
+  retrain_saes: false
+  pretrained_sae_paths: null
+  sae_positions:
+    - blocks.2.hook_resid_pre
+  dict_size_to_input_ratio: 60.0
