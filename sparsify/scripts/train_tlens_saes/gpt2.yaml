@@ -27,7 +27,8 @@ loss:
     coeff: 0.001
   in_to_orig: null
   out_to_orig: null
-  out_to_in: null
+  out_to_in:
+    coeff: 0.0
   logits_kl:
     coeff: 1.0
 train_data:
@@ -45,7 +46,7 @@ eval_data:
   streaming: true
   split: train
   n_ctx: 1024
-  seed: 0
+  seed: 42
 saes:
   retrain_saes: false
   pretrained_sae_paths: null

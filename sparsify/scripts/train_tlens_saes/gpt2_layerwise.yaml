@@ -45,7 +45,7 @@ eval_data:
   streaming: true
   split: train
   n_ctx: 1024
-  seed: 0
+  seed: 42
 saes:
   retrain_saes: false
   pretrained_sae_paths: null
