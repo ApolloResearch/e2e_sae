@@ -178,7 +178,7 @@ def get_run_name(config: Config) -> str:
     if config.wandb_run_name:
         run_suffix = config.wandb_run_name
     else:
-        coeff_info = f"lpcoeff-{config.loss.sparsity.coeff}"
+        coeff_info = f"seed-{config.seed}_lpcoeff-{config.loss.sparsity.coeff}"
         if config.loss.out_to_in is not None and config.loss.out_to_in.coeff > 0:
             coeff_info += f"_in-to-out-{config.loss.out_to_in.coeff}"
         if config.loss.logits_kl is not None and config.loss.logits_kl.coeff > 0:
