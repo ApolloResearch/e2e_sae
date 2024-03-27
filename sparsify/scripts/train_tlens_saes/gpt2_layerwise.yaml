@@ -6,10 +6,10 @@ seed: 0
 tlens_model_name: gpt2-small
 tlens_model_path: null
 
-n_samples: 450_000
+n_samples: 400_000
 save_every_n_samples: null
-eval_every_n_samples: 20_000
-eval_n_samples: 200
+eval_every_n_samples: 40_000
+eval_n_samples: 500
 log_every_n_grad_steps: 20
 collect_act_frequency_every_n_samples: 40_000
 act_frequency_n_tokens: 500_000

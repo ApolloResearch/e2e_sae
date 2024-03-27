@@ -5,8 +5,6 @@ metric:
   name: val_loss
   goal: minimize
 parameters:
-  wandb_run_name_prefix:
-    values: ["seed0_"]
   seed:
     values: [0]
   n_samples:
