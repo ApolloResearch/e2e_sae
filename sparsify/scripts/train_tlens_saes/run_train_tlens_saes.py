@@ -81,7 +81,11 @@ class Config(BaseModel):
         "parameters.",
     )
     wandb_run_name_prefix: str = Field("", description="Name that is prepended to the run name")
-    seed: NonNegativeInt = 0
+    seed: NonNegativeInt = Field(
+        0,
+        description="Seed set at start of script. Used for train_data.seed and eval_data.seed "
+        "if they are not set explicitly.",
+    )
     tlens_model_name: str | None = None
     tlens_model_path: RootPath | None = None
     save_dir: RootPath | None = Path(__file__).parent / "out"
@@ -129,6 +133,18 @@ class Config(BaseModel):
         assert (values.get("tlens_model_name") is not None) + (
             values.get("tlens_model_path") is not None
         ) == 1, "Must specify exactly one of tlens_model_name or tlens_model_path."
+        return values
+
+    @model_validator(mode="before")
+    @classmethod
+    def proliferate_seed(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Use `seed` for train_data.seed and eval_data.seed if not explicitly set."""
+        seed = values.get("seed")
+        if seed is not None:
+            if values.get("train_data") is not None and values["train_data"].get("seed") is None:
+                values["train_data"]["seed"] = seed
+            if values.get("eval_data") is not None and values["eval_data"].get("seed") is None:
+                values["eval_data"]["seed"] = seed
         return values
 
     @model_validator(mode="after")
