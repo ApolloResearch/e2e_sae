@@ -39,8 +39,6 @@ parameters:
         values: [train]
       n_ctx:
         values: [1024]
-      seed:
-        values: [0]
   eval_data:
     parameters:
       dataset_name:
@@ -55,8 +53,6 @@ parameters:
         values: [train]
       n_ctx:
         values: [1024]
-      seed:
-        values: [42]
 command:
 - ${env}
 - ${interpreter}
