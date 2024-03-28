@@ -24,7 +24,9 @@ parameters:
       out_to_orig:
         values: [null]
       out_to_in:
-        values: [0.0]
+        parameters:
+          coeff:
+            values: [0.0]
       logits_kl:
         parameters:
           coeff:
