@@ -38,7 +38,6 @@ train_data:
   streaming: true
   split: train
   n_ctx: 512
-  seed: 0
 eval_data:
   dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
   is_tokenized: true
@@ -46,7 +45,6 @@ eval_data:
   streaming: true
   split: validation
   n_ctx: 512
-  seed: 0
 saes:
   retrain_saes: false
   pretrained_sae_paths: null
