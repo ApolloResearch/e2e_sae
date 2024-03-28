@@ -24,7 +24,9 @@ def main(config_path_or_obj: Path | str | Config) -> None:
     raw_config = load_config(config_path_or_obj, config_model=Config)
     set_seed(raw_config.seed)
 
-    data_loader = create_data_loader(raw_config.train_data, batch_size=raw_config.batch_size)[0]
+    data_loader = create_data_loader(
+        raw_config.train_data, batch_size=raw_config.batch_size, global_seed=raw_config.seed
+    )[0]
     tlens_model = load_tlens_model(raw_config.tlens_model_name, raw_config.tlens_model_path)
 
     raw_sae_positions = filter_names(

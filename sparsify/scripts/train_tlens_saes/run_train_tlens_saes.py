@@ -83,7 +83,7 @@ class Config(BaseModel):
     wandb_run_name_prefix: str = Field("", description="Name that is prepended to the run name")
     seed: NonNegativeInt = Field(
         0,
-        description="Seed set at start of script. Used for train_data.seed and eval_data.seed "
+        description="Seed set at start of script. Also used for train_data.seed and eval_data.seed "
         "if they are not set explicitly.",
     )
     tlens_model_name: str | None = None
@@ -133,18 +133,6 @@ class Config(BaseModel):
         assert (values.get("tlens_model_name") is not None) + (
             values.get("tlens_model_path") is not None
         ) == 1, "Must specify exactly one of tlens_model_name or tlens_model_path."
-        return values
-
-    @model_validator(mode="before")
-    @classmethod
-    def proliferate_seed(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Use `seed` for train_data.seed and eval_data.seed if not explicitly set."""
-        seed = values.get("seed")
-        if seed is not None:
-            if values.get("train_data") is not None and values["train_data"].get("seed") is None:
-                values["train_data"]["seed"] = seed
-            if values.get("eval_data") is not None and values["eval_data"].get("seed") is None:
-                values["eval_data"]["seed"] = seed
         return values
 
     @model_validator(mode="after")
@@ -238,7 +226,9 @@ def evaluate(
     eval_config = replace_pydantic_model(config, {"loss": eval_loss_config_updates})
 
     assert eval_config.eval_data is not None, "No eval dataset specified in the config."
-    eval_loader = create_data_loader(eval_config.eval_data, batch_size=eval_config.batch_size)[0]
+    eval_loader = create_data_loader(
+        eval_config.eval_data, batch_size=eval_config.batch_size, global_seed=eval_config.seed
+    )[0]
 
     if eval_config.eval_n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
@@ -574,7 +564,9 @@ def main(
     set_seed(config.seed)
     logger.info(config)
 
-    train_loader = create_data_loader(config.train_data, batch_size=config.batch_size)[0]
+    train_loader = create_data_loader(
+        config.train_data, batch_size=config.batch_size, global_seed=config.seed
+    )[0]
     tlens_model = load_tlens_model(
         tlens_model_name=config.tlens_model_name, tlens_model_path=config.tlens_model_path
     )
