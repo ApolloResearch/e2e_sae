@@ -8,10 +8,10 @@ tlens_model_path: null
 
 n_samples: 400_000  # 918604 samples of 512 tokens
 save_every_n_samples: null
-eval_every_n_samples: 20_000
+eval_every_n_samples: 40_000
 eval_n_samples: 500
 log_every_n_grad_steps: 20
-collect_act_frequency_every_n_samples: 10_000
+collect_act_frequency_every_n_samples: 40_000
 act_frequency_n_tokens: 500_000  #500k tokens is ~977 samples
 batch_size: 20
 effective_batch_size: 20
@@ -24,7 +24,7 @@ max_grad_norm: 1.0
 loss:
   sparsity:
     p_norm: 1.0
-    coeff: 1e-3
+    coeff: 1e-2
   in_to_orig: null
   out_to_orig: null
   out_to_in:
@@ -37,7 +37,6 @@ train_data:
   streaming: true
   split: train
   n_ctx: 512
-  seed: 0
 eval_data:
   dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
   is_tokenized: true
@@ -45,10 +44,9 @@ eval_data:
   streaming: true
   split: validation
   n_ctx: 512
-  seed: 0
 saes:
   retrain_saes: false
   pretrained_sae_paths: null
   sae_positions:
-    - blocks.1.hook_resid_post
+    - blocks.4.hook_resid_pre
   dict_size_to_input_ratio: 50.0

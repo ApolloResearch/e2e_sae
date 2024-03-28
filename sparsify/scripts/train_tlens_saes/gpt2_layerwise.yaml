@@ -15,7 +15,7 @@ collect_act_frequency_every_n_samples: 40_000
 act_frequency_n_tokens: 500_000
 batch_size: 8
 effective_batch_size: 16
-lr: 1e-3
+lr: 5e-4
 lr_schedule: cosine
 min_lr_factor: 0.1
 warmup_samples: 20_000
@@ -48,5 +48,5 @@ saes:
   retrain_saes: false
   pretrained_sae_paths: null
   sae_positions:
-    - blocks.2.hook_resid_pre
+    - blocks.6.hook_resid_pre
   dict_size_to_input_ratio: 60.0

@@ -18,7 +18,7 @@ parameters:
   saes:
     parameters:
       sae_positions:
-        values: [blocks.1.hook_resid_post]
+        values: [blocks.1.hook_resid_pre]
       dict_size_to_input_ratio:
         values: [5.0, 10.0]
 
