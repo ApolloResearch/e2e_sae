@@ -17,11 +17,23 @@ parameters:
         parameters:
           coeff:
             values: [1, 3, 6, 10, 15, 20, 30]
+      in_to_orig:
+        values: [null]
+      out_to_orig:
+        values: [null]
+      out_to_in:
+        parameters:
+          coeff:
+            values: [1.0]
+      logits_kl:
+        values: [null]
   saes:
     parameters:
       sae_positions:
         values:
           - blocks.10.hook_resid_pre
+      dict_size_to_input_ratio:
+        values: [60.0]
 
   train_data:
     parameters:
