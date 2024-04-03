@@ -1,9 +1,13 @@
 from pathlib import Path
 
+import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import wandb
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import LogNorm
 from wandb.apis.public.runs import Runs
 
 
@@ -118,10 +122,11 @@ def plot_scatter(
     xlabel: str,
     ylabel: str,
     out_file: Path,
+    z: str | None = None,
     xlim: tuple[float | None, float | None] = (None, None),
     ylim: tuple[float | None, float | None] = (None, None),
 ):
-    """Plot a scatter plot with the specified x and y variables, colored by run type.
+    """Plot a scatter plot with the specified x and y variables, colored by run type or z.
 
     Args:
         df: DataFrame containing the data.
@@ -131,50 +136,105 @@ def plot_scatter(
         xlabel: The label for the x-axis.
         ylabel: The label for the y-axis.
         out_file: The filename which the plot will be saved as.
+        z: The variable to use for coloring the points. If not provided, points will be
+            colored by run type.
         xlim: The x-axis limits.
         ylim: The y-axis limits.
     """
     sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
-    plt.figure(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(8, 6))
     run_type_map = {
         "e2e": ("End-to-end", "o"),
         "e2e-recon": ("End-to-end-recon", "s"),
         "layerwise": ("Layerwise", "^"),
     }
 
+    cmap = "plasma_r"
+    norm, vmin, vmax = None, None, None
+    if z is not None:
+        vmin = int(10 ** np.floor(np.log10(df[z].min())))
+        vmax = int(10 ** np.ceil(np.log10(df[z].max())))
+        norm = LogNorm(vmin=vmin, vmax=vmax)
+
     for run_type, (label, marker) in run_type_map.items():
         data = df[df["run_type"] == run_type]
         assert isinstance(data, pd.DataFrame)
         if not data.empty:
-            sns.scatterplot(
-                data=data,
-                x=x,
-                y=y,
-                label=label,
-                marker=marker,
-                s=95,
-                linewidth=1.1,
-            )  # type: ignore
+            if z is None:
+                sns.scatterplot(
+                    data=data,
+                    x=x,
+                    y=y,
+                    label=label,
+                    marker=marker,
+                    s=95,
+                    linewidth=1.1,
+                    ax=ax,
+                )
+            else:
+                sns.scatterplot(
+                    data=data,
+                    x=x,
+                    y=y,
+                    c=data[z],
+                    marker=marker,
+                    s=95,
+                    linewidth=1.1,
+                    cmap=cmap,
+                    norm=norm,
+                    ax=ax,
+                )
+
     for _, row in df.iterrows():
-        plt.text(
-            row[x] + (plt.xlim()[1] - plt.xlim()[0]) * 0.01,  # Adjust the x-position
+        ax.text(
+            row[x] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.01,
             float(row[y]),
             f"{row['sparsity_coeff']}",
             fontsize=8,
-            ha="left",  # Align the text to the left
+            ha="left",
             va="center",
             color="black",
             alpha=0.8,
         )
-    plt.xlim(xlim)
-    plt.ylim(ylim)
-    plt.title(title)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.legend(title="Run Type", loc="best")
+
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+
+    if z is None:
+        ax.legend(title="Run Type", loc="best")
+    else:
+        mappable = ScalarMappable(cmap=cmap, norm=norm)
+        mappable.set_array([])
+        cbar = fig.colorbar(mappable, ax=ax, label=z)
+        assert vmin is not None
+        assert vmax is not None
+        num_ticklabels = int(np.log10(vmax) - np.log10(vmin)) + 1
+        cbar.set_ticks(np.logspace(np.log10(vmin), np.log10(vmax), num=num_ticklabels))
+        cbar.set_ticklabels([f"$10^{{{int(np.log10(t))}}}$" for t in cbar.get_ticks()])
+
+        # Create legend handles manually so we can color the markers black
+        legend_handles = []
+        for run_type, (label, marker) in run_type_map.items():
+            if df[df["run_type"] == run_type].empty:
+                continue
+            legend_handles.append(
+                mlines.Line2D(
+                    [],
+                    [],
+                    marker=marker,
+                    color="black",
+                    linestyle="None",
+                    markersize=8,
+                    label=label,
+                )
+            )
+        ax.legend(handles=legend_handles, title="Run Type", loc="best")
+
     plt.tight_layout()
     plt.savefig(out_file)
-    plt.clf()
 
 
 if __name__ == "__main__":
@@ -242,21 +302,11 @@ if __name__ == "__main__":
         )
         plot_scatter(
             layer_df,
-            x="L0",
-            y="explained_var",
-            title=f"Layer {layer}: L0 vs Explained Variance (label: sparsity coeff)",
-            xlabel="L0",
-            ylabel="Explained Variance",
-            out_file=out_dir / f"l0_vs_explained_var_layer_{layer}.png",
-            ylim=(-1, 1),
-        )
-        plot_scatter(
-            layer_df,
-            x="L0",
-            y="explained_var_ln",
-            title=f"Layer {layer}: L0 vs Post-Layernorm Explained Variance (label: sparsity coeff)",
-            xlabel="L0",
-            ylabel="Post-Layernorm Explained Variance",
-            out_file=out_dir / f"l0_vs_explained_var_ln_layer_{layer}.png",
-            ylim=(-1, 1),
+            x="explained_var_ln",
+            y="CE_diff",
+            z="L0",
+            title=f"Layer {layer}: Explained Variance LN vs CE Loss Difference (label: sparsity coeff)",
+            xlabel="Explained Variance LN",
+            ylabel="CE loss difference\n(original model - model with sae)",
+            out_file=out_dir / f"explained_var_ln_vs_ce_loss_layer_{layer}.png",
         )
