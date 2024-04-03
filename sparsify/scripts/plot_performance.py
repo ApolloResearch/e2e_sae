@@ -71,9 +71,13 @@ def create_run_df(runs: Runs) -> pd.DataFrame:
 
         out_to_in = None
         explained_var = None
+        explained_var_ln = None
         if f"loss/eval/out_to_in/{sae_pos}" in run.summary_metrics:
             out_to_in = run.summary_metrics[f"loss/eval/out_to_in/{sae_pos}"]
             explained_var = run.summary_metrics[f"loss/eval/out_to_in/explained_variance/{sae_pos}"]
+            explained_var_ln = run.summary_metrics[
+                f"loss/eval/out_to_in/explained_variance_ln/{sae_pos}"
+            ]
 
         run_info.append(
             {
@@ -90,6 +94,7 @@ def create_run_df(runs: Runs) -> pd.DataFrame:
                 "out_to_in": out_to_in,
                 "L0": run.summary_metrics[f"sparsity/eval/L_0/{sae_pos}"],
                 "explained_var": explained_var,
+                "explained_var_ln": explained_var_ln,
                 "CE_diff": run.summary_metrics["performance/eval/difference_ce_loss"],
                 "alive_dict_elements": run.summary_metrics[
                     f"sparsity/alive_dict_elements/{sae_pos}"
@@ -113,6 +118,8 @@ def plot_scatter(
     xlabel: str,
     ylabel: str,
     out_file: Path,
+    xlim: tuple[float | None, float | None] = (None, None),
+    ylim: tuple[float | None, float | None] = (None, None),
 ):
     """Plot a scatter plot with the specified x and y variables, colored by run type.
 
@@ -124,6 +131,8 @@ def plot_scatter(
         xlabel: The label for the x-axis.
         ylabel: The label for the y-axis.
         out_file: The filename which the plot will be saved as.
+        xlim: The x-axis limits.
+        ylim: The y-axis limits.
     """
     sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
     plt.figure(figsize=(8, 6))
@@ -157,6 +166,8 @@ def plot_scatter(
             color="black",
             alpha=0.8,
         )
+    plt.xlim(xlim)
+    plt.ylim(ylim)
     plt.title(title)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
@@ -164,58 +175,6 @@ def plot_scatter(
     plt.tight_layout()
     plt.savefig(out_file)
     plt.clf()
-
-
-def plot_l0_vs_ce_loss(df: pd.DataFrame, out_file: Path, layer: int = 0):
-    """Plot L0 vs CE loss difference, colored by run type."""
-    plot_scatter(
-        df,
-        x="L0",
-        y="CE_diff",
-        title=f"Layer {layer}: L0 vs CE Loss Difference (label: sparsity coeff)",
-        xlabel="L0",
-        ylabel="CE loss difference\n(original model - model with sae)",
-        out_file=out_file,
-    )
-
-
-def plot_alive_elements_vs_ce_loss(df: pd.DataFrame, out_file: Path, layer: int = 0):
-    """Plot alive dictionary elements vs CE loss difference, colored by run type."""
-    plot_scatter(
-        df,
-        x="alive_dict_elements",
-        y="CE_diff",
-        title=f"Layer {layer}: Alive Dictionary Elements vs CE Loss Difference (label: sparsity coeff)",
-        xlabel="Alive Dictionary Elements",
-        ylabel="CE loss difference\n(original model - model with sae)",
-        out_file=out_file,
-    )
-
-
-def plot_out_to_in_vs_ce_loss(df: pd.DataFrame, out_file: Path, layer: int = 0):
-    """Plot out_to_in loss on the current layer vs CE loss difference, colored by run type."""
-    plot_scatter(
-        df,
-        x="out_to_in",
-        y="CE_diff",
-        title=f"Layer {layer}: Out-to-In Loss vs CE Loss Difference (label: sparsity coeff)",
-        xlabel="Out-to-In Loss",
-        ylabel="CE loss difference\n(original model - model with sae)",
-        out_file=out_file,
-    )
-
-
-def plot_future_recon_vs_ce_loss(df: pd.DataFrame, out_file: Path, layer: int = 0):
-    """Plot future reconstruction loss (in_to_orig) vs CE loss difference, colored by run type."""
-    plot_scatter(
-        df,
-        x="sum_recon_loss",
-        y="CE_diff",
-        title=f"Layer {layer}: Future Reconstruction Loss vs CE Loss Difference (label: sparsity coeff)",
-        xlabel="Future Reconstruction Loss",
-        ylabel="CE loss difference\n(original model - model with sae)",
-        out_file=out_file,
-    )
 
 
 if __name__ == "__main__":
@@ -235,6 +194,7 @@ if __name__ == "__main__":
 
     # Only use seed=0
     df = df[df["seed"] == 0]
+    print(df)
     assert isinstance(df, pd.DataFrame)
 
     unique_layers = list(df["layer"].unique())
@@ -244,15 +204,59 @@ if __name__ == "__main__":
     for layer in unique_layers:
         layer_df = df[df["layer"] == layer]
         assert isinstance(layer_df, pd.DataFrame)
-        plot_l0_vs_ce_loss(
-            layer_df, out_file=out_dir / f"l0_vs_ce_loss_layer_{layer}.png", layer=layer
+        plot_scatter(
+            layer_df,
+            x="L0",
+            y="CE_diff",
+            title=f"Layer {layer}: L0 vs CE Loss Difference (label: sparsity coeff)",
+            xlabel="L0",
+            ylabel="CE loss difference\n(original model - model with sae)",
+            out_file=out_dir / f"l0_vs_ce_loss_layer_{layer}.png",
         )
-        plot_alive_elements_vs_ce_loss(
-            layer_df, out_file=out_dir / f"alive_elements_vs_ce_loss_layer_{layer}.png", layer=layer
+        plot_scatter(
+            layer_df,
+            x="alive_dict_elements",
+            y="CE_diff",
+            title=f"Layer {layer}: Alive Dictionary Elements vs CE Loss Difference (label: sparsity coeff)",
+            xlabel="Alive Dictionary Elements",
+            ylabel="CE loss difference\n(original model - model with sae)",
+            out_file=out_dir / f"alive_elements_vs_ce_loss_layer_{layer}.png",
         )
-        plot_out_to_in_vs_ce_loss(
-            layer_df, out_file=out_dir / f"out_to_in_vs_ce_loss_layer_{layer}.png", layer=layer
+        plot_scatter(
+            layer_df,
+            x="out_to_in",
+            y="CE_diff",
+            title=f"Layer {layer}: Out-to-In Loss vs CE Loss Difference (label: sparsity coeff)",
+            xlabel="Out-to-In Loss",
+            ylabel="CE loss difference\n(original model - model with sae)",
+            out_file=out_dir / f"out_to_in_vs_ce_loss_layer_{layer}.png",
         )
-        plot_future_recon_vs_ce_loss(
-            layer_df, out_file=out_dir / f"future_recon_vs_ce_loss_layer_{layer}.png", layer=layer
+        plot_scatter(
+            layer_df,
+            x="sum_recon_loss",
+            y="CE_diff",
+            title=f"Layer {layer}: Future Reconstruction Loss vs CE Loss Difference (label: sparsity coeff)",
+            xlabel="Future Reconstruction Loss",
+            ylabel="CE loss difference\n(original model - model with sae)",
+            out_file=out_dir / f"future_recon_vs_ce_loss_layer_{layer}.png",
+        )
+        plot_scatter(
+            layer_df,
+            x="L0",
+            y="explained_var",
+            title=f"Layer {layer}: L0 vs Explained Variance (label: sparsity coeff)",
+            xlabel="L0",
+            ylabel="Explained Variance",
+            out_file=out_dir / f"l0_vs_explained_var_layer_{layer}.png",
+            ylim=(-1, 1),
+        )
+        plot_scatter(
+            layer_df,
+            x="L0",
+            y="explained_var_ln",
+            title=f"Layer {layer}: L0 vs Post-Layernorm Explained Variance (label: sparsity coeff)",
+            xlabel="L0",
+            ylabel="Post-Layernorm Explained Variance",
+            out_file=out_dir / f"l0_vs_explained_var_ln_layer_{layer}.png",
+            ylim=(-1, 1),
         )
