@@ -223,7 +223,11 @@ def evaluate(
         # If we're not training with logits_kl ensure that we eval with it
         eval_loss_config_updates.update({"logits_kl": {"coeff": 0.0}})
 
-    eval_config = replace_pydantic_model(config, {"loss": eval_loss_config_updates})
+    # Use a different seed for evaluation than for training if eval seed not explicitly set
+    eval_config = replace_pydantic_model(
+        config,
+        {"loss": eval_loss_config_updates, "seed": config.seed + 42},
+    )
 
     assert eval_config.eval_data is not None, "No eval dataset specified in the config."
     eval_loader = create_data_loader(
