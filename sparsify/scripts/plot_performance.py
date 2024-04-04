@@ -121,11 +121,11 @@ def plot_scatter(
     title: str,
     xlabel: str,
     ylabel: str,
-    out_file: Path,
+    out_file: str | Path | None = None,
     z: str | None = None,
     xlim: tuple[float | None, float | None] = (None, None),
     ylim: tuple[float | None, float | None] = (None, None),
-):
+) -> None:
     """Plot a scatter plot with the specified x and y variables, colored by run type or z.
 
     Args:
@@ -157,33 +157,22 @@ def plot_scatter(
         norm = LogNorm(vmin=vmin, vmax=vmax)
 
     for run_type, (label, marker) in run_type_map.items():
-        data = df[df["run_type"] == run_type]
-        assert isinstance(data, pd.DataFrame)
+        data = df.loc[df["run_type"] == run_type]
         if not data.empty:
+            scatter_kwargs = {
+                "data": data,
+                "x": x,
+                "y": y,
+                "marker": marker,
+                "s": 95,
+                "linewidth": 1.1,
+                "ax": ax,
+            }
             if z is None:
-                sns.scatterplot(
-                    data=data,
-                    x=x,
-                    y=y,
-                    label=label,
-                    marker=marker,
-                    s=95,
-                    linewidth=1.1,
-                    ax=ax,
-                )
+                scatter_kwargs["label"] = label
             else:
-                sns.scatterplot(
-                    data=data,
-                    x=x,
-                    y=y,
-                    c=data[z],
-                    marker=marker,
-                    s=95,
-                    linewidth=1.1,
-                    cmap=cmap,
-                    norm=norm,
-                    ax=ax,
-                )
+                scatter_kwargs = {**scatter_kwargs, "c": data[z], "cmap": cmap, "norm": norm}
+            sns.scatterplot(**scatter_kwargs)  # type: ignore
 
     for _, row in df.iterrows():
         ax.text(
@@ -218,7 +207,7 @@ def plot_scatter(
         # Create legend handles manually so we can color the markers black
         legend_handles = []
         for run_type, (label, marker) in run_type_map.items():
-            if df[df["run_type"] == run_type].empty:
+            if df.loc[df["run_type"] == run_type].empty:
                 continue
             legend_handles.append(
                 mlines.Line2D(
@@ -234,7 +223,82 @@ def plot_scatter(
         ax.legend(handles=legend_handles, title="Run Type", loc="best")
 
     plt.tight_layout()
-    plt.savefig(out_file)
+    if out_file is not None:
+        plt.savefig(out_file)
+    plt.close(fig)
+
+
+def plot_per_layer_metric(
+    df: pd.DataFrame,
+    sae_layer: int,
+    metric: str,
+    n_layers: int = 8,
+    out_file: str | Path | None = None,
+    ylim: tuple[float | None, float | None] = (None, None),
+    legend_label_cols: list[str] | None = None,
+) -> None:
+    """
+    Plot the per-layer metric (explained variance or reconstruction loss) for different run types.
+
+    Args:
+        df: DataFrame containing the filtered data for the specific layer.
+        sae_layer: The layer where the SAE is applied.
+        metric: The metric to plot ('explained_var' or 'recon_loss').
+        n_layers: The number of layers in the transformer model.
+        out_file: The filename which the plot will be saved as.
+        ylim: The y-axis limits.
+        legend_label_cols: Columns in df that should be used for the legend. Added in addition to
+            the run type.
+    """
+    metric_names = {
+        "explained_var": "Explained Variance",
+        "explained_var_ln": "Layernormed Explained Variance",
+        "recon_loss": "Reconstruction MSE",
+    }
+    metric_name = metric_names[metric] if metric in metric_names else metric
+
+    color_e2e, color_lws, color_e2e_recon = sns.color_palette()[:3]
+    color_map = {"e2e": color_e2e, "layerwise": color_lws, "e2e-recon": color_e2e_recon}
+
+    plt.figure(figsize=(10, 6))
+    xs = np.arange(sae_layer, n_layers)
+
+    def plot_metric(runs: pd.DataFrame, marker: str):
+        for _, row in runs.iterrows():
+            run_type = row["run_type"]
+            assert isinstance(run_type, str)
+            legend_label = run_type
+            if legend_label_cols is not None:
+                assert all(
+                    col in row for col in legend_label_cols
+                ), f"Legend label cols not found in row: {row}"
+                metric_strings = [f"{col}={format(row[col], '.3f')}" for col in legend_label_cols]
+                legend_label += f" ({', '.join(metric_strings)})"
+            ys = [row[f"{metric}_layer-{i}"] for i in range(sae_layer, n_layers)]
+            plt.plot(
+                xs,
+                ys,
+                label=legend_label,
+                color=color_map[run_type],
+                alpha=0.7,
+                marker=marker,
+            )
+
+    plot_metric(df.loc[df["run_type"] == "e2e"], "o")
+    plot_metric(df.loc[df["run_type"] == "layerwise"], "x")
+    plot_metric(df.loc[df["run_type"] == "e2e-recon"], "s")
+
+    # Ensure that the x-axis are only whole numbers
+    plt.xticks(xs, [str(x) for x in xs])
+    plt.ylim(ylim)
+    plt.legend(title="Run Type")
+    plt.title(f"{metric_name} per Layer (SAE layer={sae_layer})")
+    plt.xlabel("Layer")
+    plt.ylabel(metric_name)
+    plt.tight_layout()
+    if out_file is not None:
+        plt.savefig(out_file)
+    plt.close()
 
 
 if __name__ == "__main__":
@@ -242,6 +306,20 @@ if __name__ == "__main__":
     api = wandb.Api()
     project = "sparsify/gpt2"
     runs = api.runs(project)
+
+    n_layers = 12
+    # These runs (keyed by layer number, value is the sparsity coeff), have similar CE loss diff
+    constant_ce_runs = {
+        2: {"e2e": 0.5, "layerwise": 0.8},
+        6: {"e2e": 3, "layerwise": 4},
+        10: {"e2e": 0.5, "layerwise": 3},
+    }
+    # These have similar L0
+    constant_l0_runs = {
+        2: {"e2e": 1.5, "layerwise": 4},
+        6: {"e2e": 1.5, "layerwise": 6},
+        10: {"e2e": 1.5, "layerwise": 10},
+    }
 
     df = create_run_df(runs)
 
@@ -253,17 +331,15 @@ if __name__ == "__main__":
     assert df["ratio"].unique()[0] == 60
 
     # Only use seed=0
-    df = df[df["seed"] == 0]
-    print(df)
-    assert isinstance(df, pd.DataFrame)
+    df = df.loc[df["seed"] == 0]
+    # print(df)
 
     unique_layers = list(df["layer"].unique())
 
     out_dir = Path(__file__).resolve().parent / "out"
     out_dir.mkdir(exist_ok=True)
     for layer in unique_layers:
-        layer_df = df[df["layer"] == layer]
-        assert isinstance(layer_df, pd.DataFrame)
+        layer_df = df.loc[df["layer"] == layer]
         plot_scatter(
             layer_df,
             x="L0",
@@ -296,7 +372,7 @@ if __name__ == "__main__":
             x="sum_recon_loss",
             y="CE_diff",
             title=f"Layer {layer}: Future Reconstruction Loss vs CE Loss Difference (label: sparsity coeff)",
-            xlabel="Future Reconstruction Loss",
+            xlabel="Summed Future Reconstruction Loss",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"future_recon_vs_ce_loss_layer_{layer}.png",
         )
@@ -309,4 +385,33 @@ if __name__ == "__main__":
             xlabel="Explained Variance LN",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"explained_var_ln_vs_ce_loss_layer_{layer}.png",
+        )
+
+        # Per layer plots. Note that per-layer metrics are all taken at hook_resid_post
+        layer_constant_ce_df = layer_df[
+            (
+                (layer_df["sparsity_coeff"] == constant_ce_runs[layer]["e2e"])
+                & (layer_df["run_type"] == "e2e")
+            )
+            | (
+                (layer_df["sparsity_coeff"] == constant_ce_runs[layer]["layerwise"])
+                & (layer_df["run_type"] == "layerwise")
+            )
+        ]
+        plot_per_layer_metric(
+            layer_constant_ce_df,
+            sae_layer=layer,
+            metric="explained_var_ln",
+            n_layers=n_layers,
+            out_file=out_dir / f"explained_var_ln_per_layer_{layer}.png",
+            ylim=(None, 1),
+            legend_label_cols=["sparsity_coeff", "CE_diff"],
+        )
+        plot_per_layer_metric(
+            layer_constant_ce_df,
+            sae_layer=layer,
+            metric="recon_loss",
+            n_layers=n_layers,
+            out_file=out_dir / f"recon_loss_per_layer_{layer}.png",
+            legend_label_cols=["sparsity_coeff", "CE_diff"],
         )
