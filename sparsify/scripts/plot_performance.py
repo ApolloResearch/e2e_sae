@@ -403,7 +403,7 @@ if __name__ == "__main__":
             sae_layer=layer,
             metric="explained_var_ln",
             n_layers=n_layers,
-            out_file=out_dir / f"explained_var_ln_per_layer_{layer}.png",
+            out_file=out_dir / f"explained_var_ln_per_layer_sae_layer_{layer}.png",
             ylim=(None, 1),
             legend_label_cols=["sparsity_coeff", "CE_diff"],
         )
@@ -412,6 +412,6 @@ if __name__ == "__main__":
             sae_layer=layer,
             metric="recon_loss",
             n_layers=n_layers,
-            out_file=out_dir / f"recon_loss_per_layer_{layer}.png",
+            out_file=out_dir / f"recon_loss_per_layer_sae_layer_{layer}.png",
             legend_label_cols=["sparsity_coeff", "CE_diff"],
         )
