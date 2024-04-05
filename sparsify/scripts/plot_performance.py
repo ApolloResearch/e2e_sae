@@ -185,16 +185,17 @@ def plot_scatter(
 
     if sparsity_label:
         for _, row in df.iterrows():
-            ax.text(
-                row[x] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.01,
-                float(row[y]),
-                f"{row['sparsity_coeff']}",
-                fontsize=8,
-                ha="left",
-                va="center",
-                color="black",
-                alpha=0.8,
-            )
+            if row["run_type"] in run_types:
+                ax.text(
+                    row[x] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.01,
+                    float(row[y]),
+                    f"{row['sparsity_coeff']}",
+                    fontsize=8,
+                    ha="left",
+                    va="center",
+                    color="black",
+                    alpha=0.8,
+                )
 
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
