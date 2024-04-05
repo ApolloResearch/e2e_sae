@@ -5,7 +5,6 @@ import random
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Any, TypeVar
 
 import numpy as np
@@ -319,7 +318,7 @@ def init_wandb(config: T, project: str, sweep_config_path: Path | str | None) ->
     cause wandb to choose specific hyperparameters for this instance of the sweep and store them
     in wandb.config. We then update the config with these hyperparameters.
 
-    We also write the final config to a temporary file and upload it to wandb.
+    We also write the final config to wandb as an artifact.
     This is done to ensure that the entire config is saved in wandb, which will not happen by
     default when running a sweep. This is because wandb does not allow overwriting existing config
     keys, which means that any nested keys that have a parent key that already exists in the config
@@ -345,15 +344,11 @@ def init_wandb(config: T, project: str, sweep_config_path: Path | str | None) ->
     # Update the config with the hyperparameters for this sweep (if any)
     config = replace_pydantic_model(config, wandb.config)
 
-    # Upload the final config to wandb as a file.
-    # Note that we need delete=False because wandb.save doesn't upload the file before the context
-    # manager is closed (even with policy="now")
-    with TemporaryDirectory(delete=False) as tmp_dir:
-        f_name = Path(tmp_dir) / "final_config.json"
-        print(f_name)
-        with open(f_name, "w") as f:
-            json.dump(config.model_dump(mode="json"), f, indent=2)
-        wandb.save(str(f_name), policy="now")
+    # Upload the final config to wandb as an artifact
+    artifact = wandb.Artifact("final_config", type="config")
+    with artifact.new_file("final_config.json", mode="w") as f:
+        json.dump(config.model_dump(mode="json"), f, indent=2)
+    wandb.log_artifact(artifact)
 
     # Update the non-frozen keys in the wandb config (only relevant for sweeps)
     wandb.config.update(config.model_dump(mode="json"))
