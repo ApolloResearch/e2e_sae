@@ -323,7 +323,7 @@ if __name__ == "__main__":
     constant_ce_runs = {
         2: {"e2e": 0.5, "layerwise": 0.8},
         6: {"e2e": 3, "layerwise": 4},
-        10: {"e2e": 0.5, "layerwise": 3},
+        10: {"e2e": 0.5, "layerwise": 4},
     }
     # These have similar L0
     constant_l0_runs = {
