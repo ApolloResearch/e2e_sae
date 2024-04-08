@@ -88,6 +88,7 @@ class ActFrequencyMetrics:
 
         Currently collects:
         - The number of alive dictionary elements for each hook.
+        - The indices of the alive dictionary elements for each hook.
         - The histogram of dictionary element activation frequencies for each hook (if
           log_wandb_histogram is True).
 
@@ -108,6 +109,9 @@ class ActFrequencyMetrics:
             log_dict[f"sparsity/alive_dict_elements/{sae_pos}"] = (
                 self.dict_el_frequencies[sae_pos].gt(0).sum().item()
             )
+            log_dict[f"sparsity/alive_dict_elements_indices/{sae_pos}"] = [
+                i for i, v in enumerate(self.dict_el_frequencies[sae_pos]) if v > 0
+            ]
 
             if log_wandb_histogram:
                 data = [[s] for s in self.dict_el_frequencies[sae_pos]]
