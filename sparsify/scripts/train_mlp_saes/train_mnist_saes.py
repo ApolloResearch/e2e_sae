@@ -297,8 +297,8 @@ def train(config: Config) -> None:
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             module=model_mod.sparsifiers,
-            model_path=save_dir / f"epoch_{config.train.n_epochs}.pt",
-        )  # TODO Figure out how to save only saes
+            model_filename=f"epoch_{config.train.n_epochs}.pt",
+        )
     if config.wandb_project:
         wandb.finish()
 
