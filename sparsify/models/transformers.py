@@ -1,5 +1,5 @@
 from functools import partial
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import Any, Literal, cast
 
 import torch
 import tqdm
@@ -12,23 +12,23 @@ from sparsify.hooks import CacheActs, SAEActs, cache_hook, sae_hook
 from sparsify.models.sparsifiers import SAE
 from sparsify.utils import get_hook_shapes
 
-if TYPE_CHECKING:
-    from sparsify.scripts.train_tlens_saes.run_train_tlens_saes import Config
-
 
 class SAETransformer(nn.Module):
     """A transformer model with SAEs at various positions.
 
     Args:
-        config: The config for the model.
         tlens_model: The transformer model.
         raw_sae_positions: A list of all the positions in the tlens_mdoel where SAEs are to be
             placed. These positions may have periods in them, which are replaced with hyphens in
             the keys of the `saes` attribute.
+        dict_size_to_input_ratio: The ratio of the dictionary size to the input size for the SAEs.
     """
 
     def __init__(
-        self, config: "Config", tlens_model: HookedTransformer, raw_sae_positions: list[str]
+        self,
+        tlens_model: HookedTransformer,
+        raw_sae_positions: list[str],
+        dict_size_to_input_ratio: float,
     ):
         super().__init__()
         self.tlens_model = tlens_model.eval()
@@ -44,7 +44,7 @@ class SAETransformer(nn.Module):
             input_size = self.hook_shapes[self.raw_sae_positions[i]][-1]
             self.saes[self.all_sae_positions[i]] = SAE(
                 input_size=input_size,
-                n_dict_components=int(config.saes.dict_size_to_input_ratio * input_size),
+                n_dict_components=int(dict_size_to_input_ratio * input_size),
             )
 
     def forward_raw(

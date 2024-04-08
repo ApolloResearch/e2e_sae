@@ -1164,7 +1164,9 @@ def load_SAETransformer_from_saes_paths(
 
     raw_sae_positions = filter_names(list(tlens_model.hook_dict.keys()), sae_positions)
     model = SAETransformer(
-        config=config, tlens_model=tlens_model, raw_sae_positions=raw_sae_positions
+        tlens_model=tlens_model,
+        raw_sae_positions=raw_sae_positions,
+        dict_size_to_input_ratio=config.saes.dict_size_to_input_ratio,
     ).to(device=device)
 
     all_param_names = [name for name, _ in model.saes.named_parameters()]
