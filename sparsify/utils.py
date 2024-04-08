@@ -1,4 +1,3 @@
-import json
 import math
 import os
 import random
@@ -52,7 +51,8 @@ def save_module(
     config_dict: dict[str, Any],
     save_dir: Path,
     module: nn.Module,
-    model_path: Path,
+    model_filename: str,
+    config_filename: str = "final_config.yaml",
 ) -> None:
     """Save the pytorch module and config to the save_dir.
 
@@ -63,18 +63,18 @@ def save_module(
         config_dict: Dictionary representation of the config to save.
         save_dir: Directory to save the module.
         module: The module to save.
-        model_path: The path to save the model to.
+        model_filename: The filename to save the model to.
+        config_filename: The filename to save the config to.
     """
     # If the save_dir doesn't exist, create it and save the config
     if not save_dir.exists():
         save_dir.mkdir(parents=True)
-        filename = save_dir / "config.yaml"
-        logger.info("Saving config to %s", filename)
-        with open(filename, "w") as f:
+        with open(save_dir / config_filename, "w") as f:
             yaml.dump(config_dict, f)
+        logger.info("Saved config to %s", save_dir / config_filename)
 
-    torch.save(module.state_dict(), model_path)
-    logger.info("Saved model to %s", model_path)
+    torch.save(module.state_dict(), save_dir / model_filename)
+    logger.info("Saved model to %s", save_dir / model_filename)
 
 
 def load_config(config_path_or_obj: Path | str | T, config_model: type[T]) -> T:
@@ -318,12 +318,6 @@ def init_wandb(config: T, project: str, sweep_config_path: Path | str | None) ->
     cause wandb to choose specific hyperparameters for this instance of the sweep and store them
     in wandb.config. We then update the config with these hyperparameters.
 
-    We also write the final config to wandb as an artifact.
-    This is done to ensure that the entire config is saved in wandb, which will not happen by
-    default when running a sweep. This is because wandb does not allow overwriting existing config
-    keys, which means that any nested keys that have a parent key that already exists in the config
-    will not be updated. See https://github.com/wandb/wandb/issues/4345.
-
     Args:
         config: The base config.
         project: The name of the wandb project.
@@ -343,12 +337,6 @@ def init_wandb(config: T, project: str, sweep_config_path: Path | str | None) ->
 
     # Update the config with the hyperparameters for this sweep (if any)
     config = replace_pydantic_model(config, wandb.config)
-
-    # Upload the final config to wandb as an artifact
-    artifact = wandb.Artifact("final_config", type="config")
-    with artifact.new_file("final_config.json", mode="w") as f:
-        json.dump(config.model_dump(mode="json"), f, indent=2)
-    wandb.log_artifact(artifact)
 
     # Update the non-frozen keys in the wandb config (only relevant for sweeps)
     wandb.config.update(config.model_dump(mode="json"))

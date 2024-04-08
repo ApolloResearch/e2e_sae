@@ -4,13 +4,16 @@ Usage:
     python run_train_tlens_saes.py <path/to/config.yaml>
 """
 import math
+import time
 from datetime import datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Annotated, Any, Literal, Self
 
 import fire
 import torch
 import wandb
+import yaml
 from datasets import IterableDataset
 from jaxtyping import Int
 from pydantic import (
@@ -532,10 +535,11 @@ def train(
                 config_dict=config.model_dump(mode="json"),
                 save_dir=save_dir,
                 module=model.saes,
-                model_path=save_dir / f"samples_{total_samples}.pt",
+                model_filename=f"samples_{total_samples}.pt",
+                config_filename="final_config.yaml",
             )
             if config.wandb_project:
-                wandb.save(str(save_dir / f"samples_{total_samples}.pt"))
+                wandb.save(str(save_dir / f"samples_{total_samples}.pt"), policy="now")
 
         if is_last_batch:
             break
@@ -547,10 +551,11 @@ def train(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             module=model.saes,
-            model_path=save_dir / f"samples_{total_samples}.pt",
+            model_filename=f"samples_{total_samples}.pt",
+            config_filename="final_config.yaml",
         )
         if config.wandb_project:
-            wandb.save(str(save_dir / f"samples_{total_samples}.pt"))
+            wandb.save(str(save_dir / f"samples_{total_samples}.pt"), policy="now")
 
     if config.wandb_project:
         wandb.finish()
@@ -564,6 +569,16 @@ def main(
 
     if config.wandb_project:
         config = init_wandb(config, config.wandb_project, sweep_config_path)
+        # Save the config to wandb
+        with TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "final_config.yaml"
+            with open(config_path, "w") as f:
+                yaml.dump(config.model_dump(mode="json"), f, indent=2)
+            wandb.save(str(config_path), policy="now")
+            # Unfortunately wandb.save is async, so we need to wait for it to finish before
+            # continuing, and wandb python api provides no way to do this.
+            # TODO: Find a better way to do this.
+            time.sleep(1)
 
     set_seed(config.seed)
     logger.info(config)
