@@ -41,6 +41,7 @@ from sparsify.metrics import (
     ActFrequencyMetrics,
     calc_output_metrics,
     calc_sparsity_metrics,
+    collect_act_frequency_metrics,
 )
 from sparsify.models.transformers import SAETransformer
 from sparsify.types import RootPath, Samples
@@ -558,6 +559,16 @@ def train(
             wandb.save(str(save_dir / f"samples_{total_samples}.pt"), policy="now")
 
     if config.wandb_project:
+        # Collect and log final activation frequency metrics
+        metrics = collect_act_frequency_metrics(
+            model=model,
+            data_config=config.train_data,
+            batch_size=config.batch_size,
+            global_seed=config.seed,
+            device=device,
+            n_tokens=config.act_frequency_n_tokens,
+        )
+        wandb.log(metrics)
         wandb.finish()
 
 

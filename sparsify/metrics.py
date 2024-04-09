@@ -4,9 +4,12 @@ import wandb
 from einops import einsum, repeat
 from jaxtyping import Float, Int
 from torch import Tensor
+from tqdm import tqdm
 from transformer_lens.utils import lm_cross_entropy_loss
 
+from sparsify.data import DatasetConfig, create_data_loader
 from sparsify.hooks import CacheActs, SAEActs
+from sparsify.models.transformers import SAETransformer
 
 
 def topk_accuracy(
@@ -83,7 +86,9 @@ class ActFrequencyMetrics:
                 self.dict_el_frequencies[sae_pos] += einsum(new_acts_pos.c != 0, "... dim -> dim")
         self.tokens_used += batch_tokens
 
-    def collect_for_logging(self, log_wandb_histogram: bool = True) -> dict[str, list[float] | int]:
+    def collect_for_logging(
+        self, log_wandb_histogram: bool = True, post_training: bool = False
+    ) -> dict[str, list[float] | int]:
         """Collect the activation frequency metrics for logging.
 
         Currently collects:
@@ -98,6 +103,8 @@ class ActFrequencyMetrics:
         Args:
             log_wandb_histogram: Whether to log the dictionary element activation frequency
                 histograms to wandb.
+            post_training: Whether the metrics are being collected post-training. Affects the name
+                of the metrics.
         """
         log_dict = {}
         for sae_pos in self.dict_el_frequencies:
@@ -105,13 +112,18 @@ class ActFrequencyMetrics:
             self.dict_el_frequency_history[sae_pos].append(
                 self.dict_el_frequencies[sae_pos].detach().cpu()
             )
+            alive_elements_name = "alive_dict_elements"
+            alive_indices_name = "alive_dict_elements_indices"
+            if post_training:
+                alive_elements_name += "_final"
+                alive_indices_name += "_final"
 
-            log_dict[f"sparsity/alive_dict_elements/{sae_pos}"] = (
-                self.dict_el_frequencies[sae_pos].gt(0).sum().item()
-            )
-            log_dict[f"sparsity/alive_dict_elements_indices/{sae_pos}"] = [
+            log_dict[f"sparsity/{alive_indices_name}/{sae_pos}"] = [
                 i for i, v in enumerate(self.dict_el_frequencies[sae_pos]) if v > 0
             ]
+            log_dict[f"sparsity/{alive_elements_name}/{sae_pos}"] = len(
+                log_dict[f"sparsity/{alive_indices_name}/{sae_pos}"]
+            )
 
             if log_wandb_histogram:
                 data = [[s] for s in self.dict_el_frequencies[sae_pos]]
@@ -209,4 +221,58 @@ def calc_output_metrics(
         f"{prefix}/orig_vs_sae_top1_consistency": orig_vs_sae_top1_consistency,
         f"{prefix}/orig_vs_sae_statistical_distance": orig_vs_sae_stat_distance,
     }
+    return metrics
+
+
+def collect_act_frequency_metrics(
+    model: SAETransformer,
+    data_config: DatasetConfig,
+    batch_size: int,
+    global_seed: int,
+    device: torch.device,
+    n_tokens: int,
+) -> dict[str, int | list[float]]:
+    """Collect SAE activation frequency metrics for a SAETransformer model.
+    Args:
+        model: The SAETransformer model.
+        data_config: The data configuration to use for calculating the frequency metrics.
+        batch_size: The batch size.
+        global_seed: The global seed. Only matters when data_config.seed is None.
+        device: The device to use.
+        n_tokens: The number of tokens to use for calculating the frequency metrics.
+
+    Returns:
+        A dictionary of the collected metrics (e.g. alive dictionary elements and their indices).
+    """
+
+    data_loader = create_data_loader(data_config, batch_size=batch_size, global_seed=global_seed)[0]
+
+    act_frequency_metrics = ActFrequencyMetrics(
+        dict_sizes={
+            raw_pos: model.saes[all_pos].decoder.in_features
+            for raw_pos, all_pos in zip(
+                model.raw_sae_positions, model.all_sae_positions, strict=True
+            )
+        },
+        device=device,
+    )
+    n_samples = n_tokens // data_config.n_ctx
+    n_batches = n_samples // batch_size
+
+    # Iterate over the data loader and calculate the frequency metrics
+    for batch_idx, batch in tqdm(enumerate(data_loader), total=n_batches, desc="Batches"):
+        if batch_idx >= n_batches:
+            break
+        tokens = batch[data_config.column_name].to(device=device)
+        _, new_acts = model.forward(
+            tokens=tokens,
+            sae_positions=model.raw_sae_positions,
+            cache_positions=None,
+        )
+        act_frequency_metrics.update_dict_el_frequencies(
+            new_acts, batch_tokens=tokens.shape[0] * tokens.shape[1]
+        )
+    metrics = act_frequency_metrics.collect_for_logging(
+        log_wandb_histogram=False, post_training=True
+    )
     return metrics
