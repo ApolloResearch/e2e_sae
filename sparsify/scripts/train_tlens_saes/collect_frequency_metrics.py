@@ -52,7 +52,9 @@ def main(
         return
     train_config_file = train_config_files[0]
     train_config: TrainConfig = TrainConfig(
-        **yaml.safe_load(train_config_file.download(exist_ok=True, replace=True, root="/tmp/"))
+        **yaml.safe_load(
+            train_config_file.download(exist_ok=True, replace=False, root=f"/tmp/{wandb_run_id}")
+        )
     )
 
     tlens_model = load_tlens_model(
@@ -74,7 +76,7 @@ def main(
     # Latest checkpoint
     weight_file = sorted(weight_files, key=lambda x: int(x.name.split(".pt")[0].split("_")[-1]))[-1]
     latest_checkpoint = wandb.restore(
-        weight_file.name, run_path=wandb_run_name, root="/tmp/", replace=True
+        weight_file.name, run_path=wandb_run_name, root=f"/tmp/{wandb_run_id}", replace=False
     )
     assert latest_checkpoint is not None
     model.saes.load_state_dict(torch.load(latest_checkpoint.name, map_location=device))
