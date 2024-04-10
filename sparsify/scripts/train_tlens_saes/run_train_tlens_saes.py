@@ -4,13 +4,16 @@ Usage:
     python run_train_tlens_saes.py <path/to/config.yaml>
 """
 import math
+import time
 from datetime import datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Annotated, Any, Literal, Self
 
 import fire
 import torch
 import wandb
+import yaml
 from datasets import IterableDataset
 from jaxtyping import Int
 from pydantic import (
@@ -38,6 +41,7 @@ from sparsify.metrics import (
     ActFrequencyMetrics,
     calc_output_metrics,
     calc_sparsity_metrics,
+    collect_act_frequency_metrics,
 )
 from sparsify.models.transformers import SAETransformer
 from sparsify.types import RootPath, Samples
@@ -83,7 +87,7 @@ class Config(BaseModel):
     wandb_run_name_prefix: str = Field("", description="Name that is prepended to the run name")
     seed: NonNegativeInt = Field(
         0,
-        description="Seed set at start of script. Used for train_data.seed and eval_data.seed "
+        description="Seed set at start of script. Also used for train_data.seed and eval_data.seed "
         "if they are not set explicitly.",
     )
     tlens_model_name: str | None = None
@@ -135,18 +139,6 @@ class Config(BaseModel):
         ) == 1, "Must specify exactly one of tlens_model_name or tlens_model_path."
         return values
 
-    @model_validator(mode="before")
-    @classmethod
-    def proliferate_seed(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Use `seed` for train_data.seed and eval_data.seed if not explicitly set."""
-        seed = values.get("seed")
-        if seed is not None:
-            if values.get("train_data") is not None and values["train_data"].get("seed") is None:
-                values["train_data"]["seed"] = seed
-            if values.get("eval_data") is not None and values["eval_data"].get("seed") is None:
-                values["eval_data"]["seed"] = seed
-        return values
-
     @model_validator(mode="after")
     def check_effective_batch_size(self) -> Self:
         if self.effective_batch_size is not None:
@@ -178,7 +170,7 @@ def get_run_name(config: Config) -> str:
     if config.wandb_run_name:
         run_suffix = config.wandb_run_name
     else:
-        coeff_info = f"lpcoeff-{config.loss.sparsity.coeff}"
+        coeff_info = f"seed-{config.seed}_lpcoeff-{config.loss.sparsity.coeff}"
         if config.loss.out_to_in is not None and config.loss.out_to_in.coeff > 0:
             coeff_info += f"_in-to-out-{config.loss.out_to_in.coeff}"
         if config.loss.logits_kl is not None and config.loss.logits_kl.coeff > 0:
@@ -235,10 +227,16 @@ def evaluate(
         # If we're not training with logits_kl ensure that we eval with it
         eval_loss_config_updates.update({"logits_kl": {"coeff": 0.0}})
 
-    eval_config = replace_pydantic_model(config, {"loss": eval_loss_config_updates})
+    # Use a different seed for evaluation than for training if eval seed not explicitly set
+    eval_config = replace_pydantic_model(
+        config,
+        {"loss": eval_loss_config_updates, "seed": config.seed + 42},
+    )
 
     assert eval_config.eval_data is not None, "No eval dataset specified in the config."
-    eval_loader = create_data_loader(eval_config.eval_data, batch_size=eval_config.batch_size)[0]
+    eval_loader = create_data_loader(
+        eval_config.eval_data, batch_size=eval_config.batch_size, global_seed=eval_config.seed
+    )[0]
 
     if eval_config.eval_n_samples is None:
         # If streaming (i.e. if the dataset is an IterableDataset), we don't know the length
@@ -538,10 +536,11 @@ def train(
                 config_dict=config.model_dump(mode="json"),
                 save_dir=save_dir,
                 module=model.saes,
-                model_path=save_dir / f"samples_{total_samples}.pt",
+                model_filename=f"samples_{total_samples}.pt",
+                config_filename="final_config.yaml",
             )
             if config.wandb_project:
-                wandb.save(str(save_dir / f"samples_{total_samples}.pt"))
+                wandb.save(str(save_dir / f"samples_{total_samples}.pt"), policy="now")
 
         if is_last_batch:
             break
@@ -553,12 +552,23 @@ def train(
             config_dict=config.model_dump(mode="json"),
             save_dir=save_dir,
             module=model.saes,
-            model_path=save_dir / f"samples_{total_samples}.pt",
+            model_filename=f"samples_{total_samples}.pt",
+            config_filename="final_config.yaml",
         )
         if config.wandb_project:
-            wandb.save(str(save_dir / f"samples_{total_samples}.pt"))
+            wandb.save(str(save_dir / f"samples_{total_samples}.pt"), policy="now")
 
     if config.wandb_project:
+        # Collect and log final activation frequency metrics
+        metrics = collect_act_frequency_metrics(
+            model=model,
+            data_config=config.train_data,
+            batch_size=config.batch_size,
+            global_seed=config.seed,
+            device=device,
+            n_tokens=config.act_frequency_n_tokens,
+        )
+        wandb.log(metrics)
         wandb.finish()
 
 
@@ -570,11 +580,23 @@ def main(
 
     if config.wandb_project:
         config = init_wandb(config, config.wandb_project, sweep_config_path)
+        # Save the config to wandb
+        with TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "final_config.yaml"
+            with open(config_path, "w") as f:
+                yaml.dump(config.model_dump(mode="json"), f, indent=2)
+            wandb.save(str(config_path), policy="now")
+            # Unfortunately wandb.save is async, so we need to wait for it to finish before
+            # continuing, and wandb python api provides no way to do this.
+            # TODO: Find a better way to do this.
+            time.sleep(1)
 
     set_seed(config.seed)
     logger.info(config)
 
-    train_loader = create_data_loader(config.train_data, batch_size=config.batch_size)[0]
+    train_loader = create_data_loader(
+        config.train_data, batch_size=config.batch_size, global_seed=config.seed
+    )[0]
     tlens_model = load_tlens_model(
         tlens_model_name=config.tlens_model_name, tlens_model_path=config.tlens_model_path
     )
@@ -592,7 +614,9 @@ def main(
         ]
 
     model = SAETransformer(
-        config=config, tlens_model=tlens_model, raw_sae_positions=raw_sae_positions
+        tlens_model=tlens_model,
+        raw_sae_positions=raw_sae_positions,
+        dict_size_to_input_ratio=config.saes.dict_size_to_input_ratio,
     ).to(device=device)
 
     all_param_names = [name for name, _ in model.saes.named_parameters()]

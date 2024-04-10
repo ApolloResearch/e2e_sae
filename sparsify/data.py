@@ -17,7 +17,7 @@ class DatasetConfig(BaseModel):
     streaming: bool = True
     split: str
     n_ctx: int
-    seed: int = 0
+    seed: int | None = None
     column_name: str = "input_ids"
     """The name of the column in the dataset that contains the tokenized samples. Typically
     'input_ids' for datasets stored with sparsify/upload_hf_dataset.py, or "tokens" for datasets
@@ -25,18 +25,28 @@ class DatasetConfig(BaseModel):
 
 
 def create_data_loader(
-    dataset_config: DatasetConfig, batch_size: int, buffer_size: int = 1000
+    dataset_config: DatasetConfig, batch_size: int, buffer_size: int = 1000, global_seed: int = 0
 ) -> tuple[DataLoader[Samples], AutoTokenizer]:
-    """Create a DataLoader for the given dataset."""
+    """Create a DataLoader for the given dataset.
+
+    Args:
+        dataset_config: The configuration for the dataset.
+        batch_size: The batch size.
+        buffer_size: The buffer size for streaming datasets.
+        global_seed: Used for shuffling if dataset_config.seed is None.
+
+    Returns:
+        A tuple of the DataLoader and the tokenizer.
+    """
     dataset = load_dataset(
         dataset_config.dataset_name, streaming=dataset_config.streaming, split=dataset_config.split
     )
-
+    seed = dataset_config.seed if dataset_config.seed is not None else global_seed
     if dataset_config.streaming:
         assert isinstance(dataset, IterableDataset)
-        dataset = dataset.shuffle(seed=dataset_config.seed, buffer_size=buffer_size)
+        dataset = dataset.shuffle(seed=seed, buffer_size=buffer_size)
     else:
-        dataset = dataset.shuffle(seed=dataset_config.seed)
+        dataset = dataset.shuffle(seed=seed)
 
     tokenizer = AutoTokenizer.from_pretrained(dataset_config.tokenizer_name)
     torch_dataset: TorchDataset[Samples]

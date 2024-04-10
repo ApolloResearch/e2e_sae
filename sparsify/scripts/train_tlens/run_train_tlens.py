@@ -149,7 +149,7 @@ def train(config: Config, model: HookedTransformer, device: torch.device) -> Non
                 config_dict=config.model_dump(mode="json"),
                 save_dir=save_dir,
                 module=model,
-                model_path=save_dir / f"epoch_{epoch}.pt",
+                model_filename=f"epoch_{epoch}.pt",
             )
             # TODO: Add evaluation loop
     if config.wandb_project:

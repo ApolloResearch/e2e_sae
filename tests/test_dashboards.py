@@ -25,7 +25,11 @@ def tinystories_model() -> SAETransformer:
     )
     sae_position = "blocks.2.hook_resid_post"
     config = get_tinystories_config({"saes": {"sae_positions": sae_position}})
-    model = SAETransformer(config=config, tlens_model=tlens_model, raw_sae_positions=[sae_position])
+    model = SAETransformer(
+        tlens_model=tlens_model,
+        raw_sae_positions=[sae_position],
+        dict_size_to_input_ratio=config.saes.dict_size_to_input_ratio,
+    )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     return model
@@ -65,7 +69,7 @@ def check_valid_feature_dashboard_htmls(folder: Path):
             assert "<div class='grid-container'>" in html_content
 
 
-@pytest.mark.slow
+@pytest.mark.skip("Currently only works with a GPU")
 def test_generate_dashboards(tinystories_model: SAETransformer, tmp_path: Path):
     # This function also tests compute_feature_acts_on_distribution()
     set_seed(0)

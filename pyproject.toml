@@ -29,7 +29,7 @@ repository = "https://github.com/ApolloResearch/sparsify"
 [project.optional-dependencies]
 dev = [
     "ruff~=0.1.14",
-    "pyright~=1.1.348",
+    "pyright~=1.1.357",
     "pre-commit~=3.6.0",
 ]
 

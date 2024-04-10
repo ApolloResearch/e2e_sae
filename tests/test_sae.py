@@ -52,14 +52,16 @@ def test_load_single_pretrained_sae(tmp_path: Path, retrain_saes: bool):
     pretrained_config = get_tinystories_config({"saes": {"sae_positions": sae_position}})
 
     model = SAETransformer(
-        config=pretrained_config, tlens_model=tlens_model, raw_sae_positions=[sae_position]
+        tlens_model=tlens_model,
+        raw_sae_positions=[sae_position],
+        dict_size_to_input_ratio=pretrained_config.saes.dict_size_to_input_ratio,
     )
     # Save the model.saes to a temp file
     save_module(
         config_dict=pretrained_config.model_dump(mode="json"),
         save_dir=tmp_path,
         module=model.saes,
-        model_path=tmp_path / "sae.pth",
+        model_filename="sae.pth",
     )
 
     # Get a new config that has more than one sae_position (including the one we saved)
@@ -74,7 +76,9 @@ def test_load_single_pretrained_sae(tmp_path: Path, retrain_saes: bool):
     )
     new_tlens_model = HookedTransformer(tlens_config)
     new_model = SAETransformer(
-        config=new_config, tlens_model=new_tlens_model, raw_sae_positions=sae_positions
+        tlens_model=new_tlens_model,
+        raw_sae_positions=sae_positions,
+        dict_size_to_input_ratio=new_config.saes.dict_size_to_input_ratio,
     )
 
     assert isinstance(new_config.saes.pretrained_sae_paths, list)
@@ -142,16 +146,16 @@ def test_load_multiple_pretrained_sae(tmp_path: Path):
         pretrained_config = get_tinystories_config({"saes": {"sae_positions": sae_positions}})
         tlens_model = HookedTransformer(tlens_config)
         model = SAETransformer(
-            config=pretrained_config,
             tlens_model=tlens_model,
             raw_sae_positions=sae_positions,
+            dict_size_to_input_ratio=pretrained_config.saes.dict_size_to_input_ratio,
         )
         # Save the model.saes to a temp file
         save_module(
             config_dict=pretrained_config.model_dump(mode="json"),
             save_dir=tmp_path,
             module=model.saes,
-            model_path=tmp_path / filename,
+            model_filename=filename,
         )
         sae_params.append(model.saes)
 
@@ -166,9 +170,9 @@ def test_load_multiple_pretrained_sae(tmp_path: Path):
     # Create a new model to load in the pretrained SAEs
     new_tlens_model = HookedTransformer(tlens_config)
     new_model = SAETransformer(
-        config=new_config,
         tlens_model=new_tlens_model,
         raw_sae_positions=all_positions,
+        dict_size_to_input_ratio=new_config.saes.dict_size_to_input_ratio,
     )
 
     assert isinstance(new_config.saes.pretrained_sae_paths, list)

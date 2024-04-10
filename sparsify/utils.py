@@ -51,7 +51,8 @@ def save_module(
     config_dict: dict[str, Any],
     save_dir: Path,
     module: nn.Module,
-    model_path: Path,
+    model_filename: str,
+    config_filename: str = "final_config.yaml",
 ) -> None:
     """Save the pytorch module and config to the save_dir.
 
@@ -62,18 +63,18 @@ def save_module(
         config_dict: Dictionary representation of the config to save.
         save_dir: Directory to save the module.
         module: The module to save.
-        model_path: The path to save the model to.
+        model_filename: The filename to save the model to.
+        config_filename: The filename to save the config to.
     """
     # If the save_dir doesn't exist, create it and save the config
     if not save_dir.exists():
         save_dir.mkdir(parents=True)
-        filename = save_dir / "config.yaml"
-        logger.info("Saving config to %s", filename)
-        with open(filename, "w") as f:
+        with open(save_dir / config_filename, "w") as f:
             yaml.dump(config_dict, f)
+        logger.info("Saved config to %s", save_dir / config_filename)
 
-    torch.save(module.state_dict(), model_path)
-    logger.info("Saved model to %s", model_path)
+    torch.save(module.state_dict(), save_dir / model_filename)
+    logger.info("Saved model to %s", save_dir / model_filename)
 
 
 def load_config(config_path_or_obj: Path | str | T, config_model: type[T]) -> T:
@@ -329,14 +330,14 @@ def init_wandb(config: T, project: str, sweep_config_path: Path | str | None) ->
     if sweep_config_path is not None:
         with open(sweep_config_path) as f:
             sweep_data = yaml.safe_load(f)
-        wandb.init(config=sweep_data)
+        wandb.init(config=sweep_data, save_code=True)
     else:
         load_dotenv(override=True)
-        wandb.init(
-            project=project,
-            entity=os.getenv("WANDB_ENTITY"),
-        )
+        wandb.init(project=project, entity=os.getenv("WANDB_ENTITY"), save_code=True)
+
     # Update the config with the hyperparameters for this sweep (if any)
     config = replace_pydantic_model(config, wandb.config)
+
+    # Update the non-frozen keys in the wandb config (only relevant for sweeps)
     wandb.config.update(config.model_dump(mode="json"))
     return config
