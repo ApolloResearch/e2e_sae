@@ -19,7 +19,7 @@ dependencies = [
     "python-dotenv~=1.0.1",
     "zstandard~=0.22.0",
     "matplotlib>=3.5.3",
-    "eindex-callum@git+https://github.com/callummcdougall/eindex"
+    "eindex-callum@git+https://github.com/callummcdougall/eindex",
     "sae_vis@git+https://github.com/callummcdougall/sae_vis"
 ]
 
