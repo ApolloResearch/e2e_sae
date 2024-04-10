@@ -10,11 +10,10 @@ from sparsify.models.transformers import SAETransformer
 from sparsify.scripts.generate_dashboards import (
     DashboardsConfig,
     compute_feature_acts,
-    create_vocab_dict,
     generate_dashboards,
 )
 from sparsify.utils import set_seed
-from tests.utils import get_tinystories_config
+from tests.utils import TINYSTORIES_CONFIG, get_tinystories_config
 
 Tokenizer = PreTrainedTokenizer | PreTrainedTokenizerFast
 
@@ -48,17 +47,6 @@ def test_compute_feature_acts(tinystories_model: SAETransformer):
         assert acts.shape[2] == 7  # feature_indices
 
 
-def test_create_vocab_dict(tinystories_model: SAETransformer):
-    tokenizer = tinystories_model.tlens_model.tokenizer
-    assert tokenizer is not None
-    vocab_dict = create_vocab_dict(tokenizer)
-    assert isinstance(tokenizer, PreTrainedTokenizerFast)
-    assert len(vocab_dict) == len(tokenizer.vocab)
-    for token_id, token_str in vocab_dict.items():
-        assert isinstance(token_id, int)
-        assert isinstance(token_str, str)
-
-
 def check_valid_feature_dashboard_htmls(folder: Path):
     assert folder.exists()
     for html_file in folder.iterdir():
@@ -68,31 +56,13 @@ def check_valid_feature_dashboard_htmls(folder: Path):
             html_content = f.read()
             assert isinstance(html_content, str)
             assert len(html_content) > 100
-            assert "Plotly.newPlot('histogram-acts'" in html_content
-            assert '<div id="histogram-acts" class="plotly-hist' in html_content
-            assert '<div id="histogram-logits" class="plotly-hist' in html_content
-            assert "var barHeightsLogits = [" in html_content
-            assert "var barHeightsFreq = [" in html_content
-            assert '</span><span class="hover-text"' in html_content
-            assert '<div class="tooltip" id=' in html_content
-
-
-def check_valid_prompt_dashboard_htmls(folder: Path):
-    assert folder.exists()
-    for html_file in folder.iterdir():
-        assert html_file.name.endswith(".html")
-        assert html_file.exists()
-        with open(html_file) as f:
-            html_content = f.read()
-            assert isinstance(html_content, str)
-            assert len(html_content) > 100
-            assert "<div class='grid-container'>'" in html_content
-            assert "Feature #" in html_content
-            assert '<div id="histogram-logits" class="plotly-hist' in html_content
-            assert "var barHeightsLogits = [" in html_content
-            assert "var barHeightsFreq = [" in html_content
-            assert '</span><span class="hover-text"' in html_content
-            assert '<div class="tooltip" id=' in html_content
+            assert "Plotly.newPlot(histId" in html_content
+            assert "function defineData() {" in html_content
+            assert "function generateTokHtmlElement(" in html_content
+            assert "function setupLogitTables(" in html_content
+            assert "function createVis(" in html_content
+            assert "function createDropdowns(" in html_content
+            assert "<div class='grid-container'>" in html_content
 
 
 @pytest.mark.slow
@@ -101,9 +71,10 @@ def test_generate_dashboards(tinystories_model: SAETransformer, tmp_path: Path):
     set_seed(0)
     dashboards_config = DashboardsConfig(
         n_samples=10,
-        batch_size=2,
-        minibatch_size_features=5,
+        batch_size=10,
+        minibatch_size_features=100,
         save_dir=Path(tmp_path),
+        sae_config_path=Path(TINYSTORIES_CONFIG),
         sae_positions=["blocks.2.hook_resid_post"],
         pretrained_sae_paths=None,
         feature_indices=list(range(5)),
@@ -116,5 +87,5 @@ def test_generate_dashboards(tinystories_model: SAETransformer, tmp_path: Path):
     )
     generate_dashboards(tinystories_model, dashboards_config)
     check_valid_feature_dashboard_htmls(
-        tmp_path / "feature-dashboards" / "dashboards_blocks.2.hook_resid_post"
+        tmp_path / Path("feature-dashboards") / Path("dashboards_blocks.2.hook_resid_post")
     )

@@ -4,6 +4,7 @@
 wandb/
 .data/
 .checkpoints/
+tests/saes_for_tests/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

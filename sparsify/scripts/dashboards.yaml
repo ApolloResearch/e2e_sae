@@ -1,22 +1,28 @@
 pretrained_sae_paths: null # Paths of the pretrained SAEs to load. Should be a path to a .pt file, or a list of them. Can also be provided as a second argument in the command line.
 sae_config_path: null # Path to the config file used to train the SAEs (if null, we'll assume it's at pretrained_sae_paths[0].parent / "config.yaml")
-n_samples: 10_000
-batch_size: 64
-minibatch_size_features: 128 # Num features in each batch of calculations. Lower to avoid OOM errors
+n_samples: 3000
+batch_size: 16
+minibatch_size_features: 100 # Num features in each batch of calculations. Lower to avoid OOM errors
 data: # DatasetConfig for the data which will be used to generate the dashboards
-  dataset_name: 'apollo-research/roneneldan-TinyStories-tokenizer-gpt2'
+  dataset_name: 'apollo-research/Skylion007-openwebtext-tokenizer-gpt2'
   is_tokenized: True
   tokenizer_name: 'gpt2'
-  split: "validation"
-  n_ctx: 512
-save_dir: null # The directory for saving the HTML feature dashboard files
+  split: "train"
+  n_ctx: 1024
+save_dir: '/data/jordan_tensor/sparsify_dashboards/tests/saes_for_tests/gpt2layer6/big_dashboards' # The directory for saving the HTML feature dashboard files
+save_json_data: false
 sae_positions: null # The names of the SAE positions to generate dashboards for. e.g.'blocks.2.hook_resid_post'. If None, then all positions will be generated
 feature_indices: null # The features for which to generate dashboards on each SAE. If none, then we'll generate dashbaords for every feature.
 prompt_centric: # Used to generate prompt-centric (rather than feature-centric) dashboards. Feature-centric dashboards will also be generated for every feature appaearing in these
-  n_random_prompt_dashboards: 50 # The number of random prompts to generate prompt-centric dashboards for.
+  n_random_prompt_dashboards: 10 # The number of random prompts to generate prompt-centric dashboards for.
   data: null # "DatasetConfig for getting random prompts. If None, then non-prompt-centric data will be used
   prompts: # Specific prompts on which to generate prompt-centric feature dashboards. A feature-centric dashboard will be generated for every token position in each prompt.
-    - "Sally met Mike at the show. She brought popcorn for him."
-  str_score: "loss_effect" # The ordering metric for which features are most important in prompt-centric dashboards. Can be one of 'act_size', 'act_quantile', or 'loss_effect'
+    - "Sally met Mike at the show. She brought popcorn for him. They ate it together"
+    - 'One day, a little girl named Lily was playing in the park with her mommy. They saw a big slide and wanted to go on it. Lily said, "Mommy, can I go on the slide?"'
+    - "It was time for the lecture to begin. Little Tom was excited to come to the high school and learn something new."
+    - "Once upon a time there were two friends named Fluffy and Daisy. They were very playful and loved to watch the world together."
+    - "There were two friends named Jack and Jill. Jack and Jill loved to"
+    - "It was a sunny morning and a little girl was taking a walk with her puppy. Her puppy was very excited and pulled at the leash, but the girl was very gentle with him."
+  str_score: "act_quantile" # The ordering metric for which features are most important in prompt-centric dashboards. Can be one of 'act_size', 'act_quantile', or 'loss_effect'
   num_top_features: 10 # How many of the most relevant features to show for each prompt in the prompt-centric dashboards
 seed: 0
