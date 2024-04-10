@@ -17,9 +17,9 @@ from sparsify.utils import filter_names
 
 # These runs (keyed by layer number, value is the sparsity coeff), have similar CE loss diff
 CONSTANT_CE_RUNS = {
-    2: {"e2e": 0.5, "local": 0.8},
-    6: {"e2e": 3, "local": 4},
-    10: {"e2e": 0.5, "local": 4},
+    2: {"e2e": 0.5, "local": 0.8, "e2e-recon": 10},
+    6: {"e2e": 3, "local": 4, "e2e-recon": 50},
+    10: {"e2e": 1.5, "local": 6, "e2e-recon": 25},
 }
 # These have similar L0
 CONSTANT_L0_RUNS = {
@@ -93,10 +93,9 @@ def plot_umap(
     colors = sns.color_palette()[: len(labels)]
     plt.figure(figsize=(10, 10))
     for i, label in enumerate(labels):
-        embed = embedding[i * n_elements_per_label[i] : (i + 1) * n_elements_per_label[i]]  # type: ignore
         plt.scatter(
-            embed,
-            embed,
+            embedding[i * n_elements_per_label[i] : (i + 1) * n_elements_per_label[i], 0],  # type: ignore
+            embedding[i * n_elements_per_label[i] : (i + 1) * n_elements_per_label[i], 1],  # type: ignore
             label=label,
             s=1,
             color=colors[i],
