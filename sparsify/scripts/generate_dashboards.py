@@ -245,9 +245,7 @@ def compute_feature_acts_on_distribution(
         - The residual stream activations of the model at the final layer (or at stop_at_layer)
         - The tokens used as input to the model
     """
-    data_loader, _ = create_data_loader(
-        dataset_config, batch_size=batch_size, buffer_size=batch_size
-    )
+    data_loader, _ = create_data_loader(dataset_config, batch_size, buffer_size=batch_size)
     if raw_sae_positions is None:
         raw_sae_positions = model.raw_sae_positions
         assert raw_sae_positions is not None
@@ -271,8 +269,8 @@ def compute_feature_acts_on_distribution(
     for batch in tqdm(data_loader, total=n_batches, desc="Computing feature acts"):
         batch_tokens: Int[Tensor, "..."] = batch[dataset_config.column_name].to(device=device)
         batch_feature_acts, batch_final_resid_acts = compute_feature_acts(
-            model=model,
-            tokens=batch_tokens,
+            model,
+            batch_tokens,
             raw_sae_positions=raw_sae_positions,
             feature_indices=feature_indices,
             stop_at_layer=stop_at_layer,
@@ -288,7 +286,7 @@ def compute_feature_acts_on_distribution(
     tokens: Int[Tensor, "..."] = torch.cat(tokens_list, dim=0)
     feature_acts: dict[str, Float[Tensor, "... some_feats"]] = {}
     for sae_name in raw_sae_positions:
-        feature_acts[sae_name] = torch.cat(tensors=feature_acts_lists[sae_name], dim=0)
+        feature_acts[sae_name] = torch.cat(feature_acts_lists[sae_name], dim=0)
     return feature_acts, final_resid_acts, tokens
 
 
@@ -378,9 +376,9 @@ def get_dashboards_data(
         )
     # If we haven't supplied any feature indicies, assume that we want all of them
     feature_indices_tensors = feature_indices_to_tensordict(
-        feature_indices_in=feature_indices,
-        raw_sae_positions=raw_sae_positions,
-        model=model,
+        feature_indices,
+        raw_sae_positions,
+        model,
     )
     for sae_name in raw_sae_positions:
         assert (
@@ -396,9 +394,9 @@ def get_dashboards_data(
             batch_size is not None
         ), "If no tokens are supplied, then a batch_size must be supplied"
         feature_acts, final_resid_acts, tokens = compute_feature_acts_on_distribution(
-            model=model,
-            dataset_config=dataset_config,
-            batch_size=batch_size,
+            model,
+            dataset_config,
+            batch_size,
             raw_sae_positions=raw_sae_positions,
             feature_indices=feature_indices_tensors,
             n_samples=n_samples,
@@ -406,8 +404,8 @@ def get_dashboards_data(
     else:
         tokens.to(device)
         feature_acts, final_resid_acts = compute_feature_acts(
-            model=model,
-            tokens=tokens,
+            model,
+            tokens,
             raw_sae_positions=raw_sae_positions,
             feature_indices=feature_indices_tensors,
         )
@@ -451,13 +449,13 @@ def get_dashboards_data(
             feature_resid_dir_batches = feature_resid_dirs.split(minibatch_size_features)
         for i in tqdm(iterable=range(len(feature_batches)), desc="Parsing activation data"):
             new_feature_data, _ = parse_feature_data(
-                tokens=tokens,
-                feature_indices=feature_batches[i],
-                all_feat_acts=feature_acts_batches[i].to_dense().to(device),
-                feature_resid_dir=feature_resid_dir_batches[i].to(device),
-                all_resid_post=final_resid_acts.to(device),
-                W_U=W_U.to(device),
-                cfg=cfg,
+                tokens,
+                feature_batches[i],
+                feature_acts_batches[i].to_dense().to(device),
+                feature_resid_dir_batches[i].to(device),
+                final_resid_acts.to(device),
+                W_U.to(device),
+                cfg,
             )
             dashboards_data[sae_name].update(new_feature_data)
 
@@ -518,8 +516,8 @@ def get_prompt_data(
         feature_indices[sae_name] = list(dashboards_data[sae_name].feature_data_dict.keys())
 
     feature_acts, final_resid_acts = compute_feature_acts(
-        model=model,
-        tokens=tokens,
+        model,
+        tokens,
         raw_sae_positions=raw_sae_positions,
         feature_indices=feature_indices,
     )
@@ -543,14 +541,14 @@ def get_prompt_data(
         )
 
         scores_dicts[sae_name] = parse_prompt_data(
-            tokens=tokens,
-            str_toks=str_tokens,
-            sae_vis_data=dashboards_data[sae_name],
-            feat_acts=feature_acts[sae_name].squeeze(dim=0).to(device),
-            feature_resid_dir=feature_resid_dirs.to(device),
-            resid_post=final_resid_acts.to(device),
+            tokens,
+            str_tokens,
+            dashboards_data[sae_name],
+            feature_acts[sae_name].squeeze(dim=0).to(device),
+            feature_resid_dirs.to(device),
+            final_resid_acts.to(device),
+            model.tlens_model.W_U.to(device),
             feature_idx=feature_indices[sae_name],
-            W_U=model.tlens_model.W_U.to(device),
             num_top_features=num_top_features,
         )
     return dashboards_data, scores_dicts
@@ -692,6 +690,7 @@ def generate_prompt_dashboard_html_files(
                         dashboards_data[sae_name]
                         .feature_data_dict[feature_idx]
                         ._get_html_data_prompt_centric(
+                            layout=LAYOUT_PROMPT_VIS,
                             decode_fn=decode_fn,
                             column_idx=i,
                             bold_idx=_seq_pos,
@@ -721,9 +720,9 @@ def generate_prompt_dashboard_html_files(
 
             # Save our full HTML
             HTML_OBJ.get_html(
-                layout=LAYOUT_PROMPT_VIS,
-                filename=filename,
-                first_key=first_key,
+                LAYOUT_PROMPT_VIS,
+                filename,
+                first_key,
             )
     return used_features
 
@@ -801,10 +800,10 @@ def generate_random_prompt_dashboards(
             seq_pos = [seq_pos_c - 1, seq_pos_c, seq_pos_c + 1]
         # Generate dashboards for three consecutive positions in the prompt, chosen randomly
         used_features_now = generate_prompt_dashboard_html_files(
-            model=model,
-            tokens=batch_tokens,
-            str_tokens=str_tokens,
-            dashboards_data=dashboards_data,
+            model,
+            batch_tokens,
+            str_tokens,
+            dashboards_data,
             seq_pos=seq_pos,
             save_dir=save_dir,
         )
@@ -850,7 +849,7 @@ def generate_dashboards(
 
     # Get the data used in the dashboards
     dashboards_data: dict[str, SaeVisData] = get_dashboards_data(
-        model=model,
+        model,
         dataset_config=dashboards_config.data,
         sae_positions=raw_sae_positions,
         # We need data for every feature if we're generating prompt-centric dashboards:
@@ -872,7 +871,7 @@ def generate_dashboards(
     dashboard_html_saving_folder = save_dir / Path("feature-dashboards")
     dashboard_html_saving_folder.mkdir(parents=True, exist_ok=True)
     generate_feature_dashboard_html_files(
-        dashboards_data=dashboards_data,
+        dashboards_data,
         minibatch_size_features=dashboards_config.minibatch_size_features,
         save_dir=dashboard_html_saving_folder,
     )
@@ -885,9 +884,9 @@ def generate_dashboards(
         # Generate random prompt-centric dashboards
         if dashboards_config.prompt_centric.n_random_prompt_dashboards > 0:
             used_features_now = generate_random_prompt_dashboards(
-                model=model,
-                dashboards_data=dashboards_data,
-                dashboards_config=dashboards_config,
+                model,
+                dashboards_data,
+                dashboards_config,
                 save_dir=prompt_dashboard_saving_folder,
             )
             for sae_name in used_features:
@@ -903,10 +902,10 @@ def generate_dashboards(
                 str_tokens = tokenizer.convert_ids_to_tokens(list_tokens)
                 assert isinstance(str_tokens, list)
                 used_features_now = generate_prompt_dashboard_html_files(
-                    model=model,
-                    tokens=torch.Tensor(tokens).to(dtype=torch.int).unsqueeze(dim=0),
-                    str_tokens=str_tokens,
-                    dashboards_data=dashboards_data,
+                    model,
+                    torch.Tensor(tokens).to(dtype=torch.int).unsqueeze(dim=0),
+                    str_tokens,
+                    dashboards_data,
                     save_dir=prompt_dashboard_saving_folder,
                 )
                 for sae_name in used_features:
@@ -952,9 +951,7 @@ def load_SAETransformer_from_saes_paths(
         assert pretrained_sae_paths is not None, "pretrained_sae_paths must be given or in config"
     logger.info(config)
 
-    tlens_model = load_tlens_model(
-        tlens_model_name=config.tlens_model_name, tlens_model_path=config.tlens_model_path
-    )
+    tlens_model = load_tlens_model(config.tlens_model_name, config.tlens_model_path)
     assert tlens_model is not None
 
     if sae_positions is None:
@@ -962,17 +959,17 @@ def load_SAETransformer_from_saes_paths(
 
     raw_sae_positions = filter_names(list(tlens_model.hook_dict.keys()), sae_positions)
     model = SAETransformer(
-        tlens_model=tlens_model,
-        raw_sae_positions=raw_sae_positions,
-        dict_size_to_input_ratio=config.saes.dict_size_to_input_ratio,
+        tlens_model,
+        raw_sae_positions,
+        config.saes.dict_size_to_input_ratio,
     ).to(device=device)
 
     all_param_names = [name for name, _ in model.saes.named_parameters()]
     trainable_param_names = load_pretrained_saes(
-        saes=model.saes,
-        pretrained_sae_paths=pretrained_sae_paths,
-        all_param_names=all_param_names,
-        retrain_saes=config.saes.retrain_saes,
+        model.saes,
+        pretrained_sae_paths,
+        all_param_names,
+        config.saes.retrain_saes,
     )
     return model, config, trainable_param_names
 
@@ -981,7 +978,7 @@ def main(
     config_path_or_obj: Path | str | DashboardsConfig,
     pretrained_sae_paths: Path | str | list[Path] | list[str] | None,
 ) -> None:
-    dashboards_config = load_config(config_path_or_obj, config_model=DashboardsConfig)
+    dashboards_config = load_config(config_path_or_obj, DashboardsConfig)
     logger.info(dashboards_config)
 
     if pretrained_sae_paths is None:

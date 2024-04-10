@@ -69,7 +69,7 @@ def check_valid_feature_dashboard_htmls(folder: Path):
             assert "<div class='grid-container'>" in html_content
 
 
-@pytest.mark.skip("Currently only works with a GPU")
+@pytest.mark.slow()
 def test_generate_dashboards(tinystories_model: SAETransformer, tmp_path: Path):
     # This function also tests compute_feature_acts_on_distribution()
     set_seed(0)
