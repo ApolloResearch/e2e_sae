@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Literal
 
 import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
@@ -7,15 +8,28 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import wandb
+from matplotlib import colors as mcolors
 from matplotlib.cm import ScalarMappable
-from matplotlib.colors import LogNorm
 
 from sparsify.analysis import create_run_df
 
 RUN_TYPE_MAP = {
     "e2e": ("End-to-end", "o"),
-    "e2e-recon": ("End-to-end-recon", "s"),
-    "local": ("local", "^"),
+    "e2e-recon": ("End-to-end-recon", "X"),
+    "local": ("Local", "^"),
+}
+
+# These runs (keyed by layer number, value is the sparsity coeff), have similar CE loss diff
+CONSTANT_CE_RUNS = {
+    2: {"e2e": 0.5, "local": 0.8, "e2e-recon": 10},
+    6: {"e2e": 3, "local": 4, "e2e-recon": 50},
+    10: {"e2e": 1.5, "local": 6, "e2e-recon": 25},
+}
+# These have similar L0
+CONSTANT_L0_RUNS = {
+    2: {"e2e": 1.5, "local": 4},
+    6: {"e2e": 1.5, "local": 6},
+    10: {"e2e": 1.5, "local": 10},
 }
 
 
@@ -29,11 +43,13 @@ def plot_scatter(
     out_file: str | Path | None = None,
     z: str | None = None,
     xlim: tuple[float | None, float | None] = (None, None),
+    x_annotation: tuple[float, str] | None = None,
     ylim: tuple[float | None, float | None] = (None, None),
     run_types: tuple[str, ...] = ("e2e", "local", "e2e-recon"),
     sparsity_label: bool = False,
+    plot_type: Literal["scatter", "line"] | None = None,
 ) -> None:
-    """Plot a scatter plot with the specified x and y variables, colored by run type or z.
+    """Plot a scatter or line plot with the specified x and y variables, colored by run type or z.
 
     Args:
         df: DataFrame containing the data.
@@ -46,19 +62,24 @@ def plot_scatter(
         z: The variable to use for coloring the points. If not provided, points will be
             colored by run type.
         xlim: The x-axis limits.
+        x_annotation: A tuple of (x, label) to annotate the plot with.
         ylim: The y-axis limits.
         run_types: The run types to include in the plot.
         sparsity_label: Whether to label the points with the sparsity coefficient.
+        plot_type: The type of plot to create. Either 'scatter' or 'line'.
     """
+    plot_type = plot_type if plot_type is not None else ("line" if z is None else "scatter")
     sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
     fig, ax = plt.subplots(figsize=(8, 6))
+
+    marker_size = 95 if len(run_types) < 3 else 60
 
     cmap = "plasma_r"
     norm, vmin, vmax = None, None, None
     if z is not None:
         vmin = int(10 ** np.floor(np.log10(df[z].min())))
         vmax = int(10 ** np.ceil(np.log10(df[z].max())))
-        norm = LogNorm(vmin=vmin, vmax=vmax)
+        norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
 
     for run_type in run_types:
         if run_type not in RUN_TYPE_MAP:
@@ -66,20 +87,27 @@ def plot_scatter(
         label, marker = RUN_TYPE_MAP[run_type]
         data = df.loc[df["run_type"] == run_type]
         if not data.empty:
-            scatter_kwargs = {
+            plot_kwargs = {
                 "data": data,
                 "x": x,
                 "y": y,
                 "marker": marker,
-                "s": 95,
                 "linewidth": 1.1,
                 "ax": ax,
+                "alpha": 0.8,
             }
+            if plot_type == "scatter":
+                plot_kwargs["s"] = marker_size
             if z is None:
-                scatter_kwargs["label"] = label
+                plot_kwargs["label"] = label
             else:
-                scatter_kwargs = {**scatter_kwargs, "c": data[z], "cmap": cmap, "norm": norm}
-            sns.scatterplot(**scatter_kwargs)  # type: ignore
+                plot_kwargs = {**plot_kwargs, "c": data[z], "cmap": cmap, "norm": norm}
+            if plot_type == "scatter":
+                sns.scatterplot(**plot_kwargs)  # type: ignore
+            elif plot_type == "line":
+                sns.lineplot(**plot_kwargs)  # type: ignore
+            else:
+                raise ValueError(f"Invalid plot type: {plot_type}")
 
     if sparsity_label:
         for _, row in df.iterrows():
@@ -95,6 +123,19 @@ def plot_scatter(
                     alpha=0.8,
                 )
 
+    if x_annotation is not None:
+        x_val, annotation_label = x_annotation
+        ax.axvline(x_val, color="black", linestyle="--", linewidth=1)
+        ax.text(
+            x_val,
+            ax.get_ylim()[0] - (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.02,
+            annotation_label,
+            fontsize=8,
+            ha="left",
+            va="center",
+            color="black",
+            alpha=0.8,
+        )
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
     ax.set_title(title)
@@ -144,7 +185,7 @@ def plot_per_layer_metric(
     n_layers: int = 8,
     out_file: str | Path | None = None,
     ylim: tuple[float | None, float | None] = (None, None),
-    legend_label_cols: list[str] | None = None,
+    legend_label_cols_and_precision: list[tuple[str, int]] | None = None,
     run_types: Sequence[str] = ("e2e", "local", "e2e-recon"),
 ) -> None:
     """
@@ -157,8 +198,8 @@ def plot_per_layer_metric(
         n_layers: The number of layers in the transformer model.
         out_file: The filename which the plot will be saved as.
         ylim: The y-axis limits.
-        legend_label_cols: Columns in df that should be used for the legend. Added in addition to
-            the run type.
+        legend_label_cols_and_precision: Columns in df that should be used for the legend, along
+            with their precision. Added in addition to the run type.
         run_types: The run types to include in the plot.
     """
     metric_names = {
@@ -179,11 +220,14 @@ def plot_per_layer_metric(
             run_type = row["run_type"]
             assert isinstance(run_type, str)
             legend_label = run_type
-            if legend_label_cols is not None:
+            if legend_label_cols_and_precision is not None:
                 assert all(
-                    col in row for col in legend_label_cols
+                    col in row for col, _ in legend_label_cols_and_precision
                 ), f"Legend label cols not found in row: {row}"
-                metric_strings = [f"{col}={format(row[col], '.3f')}" for col in legend_label_cols]
+                metric_strings = [
+                    f"{col}={format(row[col], f'.{prec}f')}"
+                    for col, prec in legend_label_cols_and_precision
+                ]
                 legend_label += f" ({', '.join(metric_strings)})"
             ys = [row[f"{metric}_layer-{i}"] for i in range(sae_layer, n_layers)]
             plt.plot(
@@ -213,25 +257,18 @@ def plot_per_layer_metric(
 
 if __name__ == "__main__":
     # Plot gpt2 performance
-    run_types = ("e2e", "local")
+    # run_types = ("e2e", "local")
+    run_types = ("e2e", "local", "e2e-recon")
+    # out_dir = Path(__file__).resolve().parent / "out" / "e2e_local"
+    out_dir = Path(__file__).resolve().parent / "out" / "e2e_local_e2e-recon"
+    out_dir.mkdir(exist_ok=True)
 
     api = wandb.Api()
     project = "sparsify/gpt2"
     runs = api.runs(project)
 
     n_layers = 12
-    # These runs (keyed by layer number, value is the sparsity coeff), have similar CE loss diff
-    constant_ce_runs = {
-        2: {"e2e": 0.5, "local": 0.8},
-        6: {"e2e": 3, "local": 4},
-        10: {"e2e": 0.5, "local": 4},
-    }
-    # These have similar L0
-    constant_l0_runs = {
-        2: {"e2e": 1.5, "local": 4},
-        6: {"e2e": 1.5, "local": 6},
-        10: {"e2e": 1.5, "local": 10},
-    }
+    d_resid = 768
 
     df = create_run_df(runs)
 
@@ -244,22 +281,24 @@ if __name__ == "__main__":
 
     # Only use seed=0
     df = df.loc[df["seed"] == 0]
+    # Ignore runs that have an L0 bigger than d_resid
+    df = df.loc[df["L0"] <= d_resid]
     # print(df)
 
     unique_layers = list(df["layer"].unique())
-
-    out_dir = Path(__file__).resolve().parent / "out"
-    out_dir.mkdir(exist_ok=True)
     for layer in unique_layers:
         layer_df = df.loc[df["layer"] == layer]
         plot_scatter(
             layer_df,
             x="L0",
             y="CE_diff",
+            # z="alive_dict_elements",
             title=f"Layer {layer}: L0 vs CE Loss Difference",
             xlabel="L0",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"l0_vs_ce_loss_layer_{layer}.png",
+            xlim=(None, d_resid + 1),
+            x_annotation=(d_resid, "d_resid"),
             sparsity_label=False,
             run_types=run_types,
         )
@@ -267,10 +306,24 @@ if __name__ == "__main__":
             layer_df,
             x="alive_dict_elements",
             y="CE_diff",
+            z="L0",
             title=f"Layer {layer}: Alive Dictionary Elements vs CE Loss Difference",
             xlabel="Alive Dictionary Elements",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"alive_elements_vs_ce_loss_layer_{layer}.png",
+            sparsity_label=False,
+            run_types=run_types,
+        )
+        plot_scatter(
+            layer_df,
+            x="L0",
+            y="alive_dict_elements",
+            title=f"Layer {layer}: L0 vs Alive Dictionary Elements",
+            xlabel="L0",
+            ylabel="Alive Dictionary Elements",
+            out_file=out_dir / f"l0_vs_alive_dict_elements_layer_{layer}.png",
+            xlim=(None, d_resid + 1),
+            x_annotation=(d_resid, "d_resid"),
             sparsity_label=False,
             run_types=run_types,
         )
@@ -312,12 +365,16 @@ if __name__ == "__main__":
         # Per layer plots. Note that per-layer metrics are all taken at hook_resid_post
         layer_constant_ce_df = layer_df[
             (
-                (layer_df["sparsity_coeff"] == constant_ce_runs[layer]["e2e"])
+                (layer_df["sparsity_coeff"] == CONSTANT_CE_RUNS[layer]["e2e"])
                 & (layer_df["run_type"] == "e2e")
             )
             | (
-                (layer_df["sparsity_coeff"] == constant_ce_runs[layer]["local"])
+                (layer_df["sparsity_coeff"] == CONSTANT_CE_RUNS[layer]["local"])
                 & (layer_df["run_type"] == "local")
+            )
+            | (
+                (layer_df["sparsity_coeff"] == CONSTANT_CE_RUNS[layer]["e2e-recon"])
+                & (layer_df["run_type"] == "e2e-recon")
             )
         ]
         plot_per_layer_metric(
@@ -327,7 +384,7 @@ if __name__ == "__main__":
             n_layers=n_layers,
             out_file=out_dir / f"explained_var_ln_per_layer_sae_layer_{layer}.png",
             ylim=(None, 1),
-            legend_label_cols=["sparsity_coeff", "CE_diff"],
+            legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
             run_types=run_types,
         )
         plot_per_layer_metric(
@@ -336,6 +393,6 @@ if __name__ == "__main__":
             metric="recon_loss",
             n_layers=n_layers,
             out_file=out_dir / f"recon_loss_per_layer_sae_layer_{layer}.png",
-            legend_label_cols=["sparsity_coeff", "CE_diff"],
+            legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
             run_types=run_types,
         )

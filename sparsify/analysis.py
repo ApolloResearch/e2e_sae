@@ -1,4 +1,5 @@
 import pandas as pd
+from wandb.apis.public import Run
 from wandb.apis.public.runs import Runs
 
 
@@ -13,6 +14,22 @@ def _get_run_type(kl_coeff: float | None, in_to_orig_coeff: float | None) -> str
     if kl_coeff is not None and kl_coeff > 0:
         return "e2e"
     return "local"
+
+
+def _extract_per_layer_metrics(
+    run: Run, metric_prefix: str, layer_prefix: str, sae_layer: int, sae_pos: str
+) -> dict[str, float]:
+    """Extract the per layer metrics from the run summary metrics."""
+    layers = {
+        f"{layer_prefix}-{key.split('blocks.')[1].split('.')[0]}": value
+        for key, value in run.summary_metrics.items()
+        if key.startswith(f"{metric_prefix}/blocks")
+    }
+    # Overwrite the SAE layer with the out_to_in for that layer. This is so that we get the
+    # reconstruction/variance at the output of the SAE rather than the input
+    out_to_in_prefix = metric_prefix.replace("in_to_orig", "out_to_in")
+    layers[f"{layer_prefix}-{sae_layer}"] = run.summary_metrics[f"{out_to_in_prefix}/{sae_pos}"]
+    return layers
 
 
 def create_run_df(runs: Runs) -> pd.DataFrame:
@@ -37,26 +54,34 @@ def create_run_df(runs: Runs) -> pd.DataFrame:
 
         run_type = _get_run_type(kl_coeff, in_to_orig_coeff)
 
+        # The out_to_in in the below is to handle the e2e+recon loss runs which specified
+        # future layers in the in_to_orig but not the output of the SAE at the current layer
+        # (i.e. at hook_resid_post). Note that now if you leave in_to_orig as None, it will
+        # default to calculating in_to_orig at all layers at hook_resid_post.
         # The explained variance at each layer
-        explained_var_layers = {
-            f"explained_var_layer-{key.split('blocks.')[1].split('.')[0]}": value
-            for key, value in run.summary_metrics.items()
-            if key.startswith("loss/eval/in_to_orig/explained_variance/blocks")
-        }
+        explained_var_layers = _extract_per_layer_metrics(
+            run=run,
+            metric_prefix="loss/eval/in_to_orig/explained_variance",
+            layer_prefix="explained_var_layer",
+            sae_layer=sae_layer,
+            sae_pos=sae_pos,
+        )
 
-        # Explained variance ln at each layer
-        explained_var_ln_layers = {
-            f"explained_var_ln_layer-{key.split('blocks.')[1].split('.')[0]}": value
-            for key, value in run.summary_metrics.items()
-            if key.startswith("loss/eval/in_to_orig/explained_variance_ln/blocks")
-        }
+        explained_var_ln_layers = _extract_per_layer_metrics(
+            run=run,
+            metric_prefix="loss/eval/in_to_orig/explained_variance_ln",
+            layer_prefix="explained_var_ln_layer",
+            sae_layer=sae_layer,
+            sae_pos=sae_pos,
+        )
 
-        # Reconstruction loss at each layer
-        recon_loss_layers = {
-            f"recon_loss_layer-{key.split('blocks.')[1].split('.')[0]}": value
-            for key, value in run.summary_metrics.items()
-            if key.startswith("loss/eval/in_to_orig/blocks")
-        }
+        recon_loss_layers = _extract_per_layer_metrics(
+            run=run,
+            metric_prefix="loss/eval/in_to_orig",
+            layer_prefix="recon_loss_layer",
+            sae_layer=sae_layer,
+            sae_pos=sae_pos,
+        )
 
         if "dict_size_to_input_ratio" in run.config["saes"]:
             ratio = float(run.config["saes"]["dict_size_to_input_ratio"])
