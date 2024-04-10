@@ -135,7 +135,7 @@ def get_run_ids(api: wandb.Api, project_name: str, layer_num: int) -> tuple[str,
         & (df["layer"] == layer_num)
     ]["id"].values
     local_series = df.loc[
-        (df["run_type"] == "layerwise")
+        (df["run_type"] == "local")
         & (df["sparsity_coeff"] == CONSTANT_CE_RUNS[layer_num]["local"])
         & (df["layer"] == layer_num)
     ]["id"].values

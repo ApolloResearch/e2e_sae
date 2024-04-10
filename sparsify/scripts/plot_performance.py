@@ -15,7 +15,7 @@ from sparsify.analysis import create_run_df
 RUN_TYPE_MAP = {
     "e2e": ("End-to-end", "o"),
     "e2e-recon": ("End-to-end-recon", "s"),
-    "layerwise": ("Layerwise", "^"),
+    "local": ("local", "^"),
 }
 
 
@@ -30,7 +30,7 @@ def plot_scatter(
     z: str | None = None,
     xlim: tuple[float | None, float | None] = (None, None),
     ylim: tuple[float | None, float | None] = (None, None),
-    run_types: tuple[str, ...] = ("e2e", "layerwise", "e2e-recon"),
+    run_types: tuple[str, ...] = ("e2e", "local", "e2e-recon"),
     sparsity_label: bool = False,
 ) -> None:
     """Plot a scatter plot with the specified x and y variables, colored by run type or z.
@@ -145,7 +145,7 @@ def plot_per_layer_metric(
     out_file: str | Path | None = None,
     ylim: tuple[float | None, float | None] = (None, None),
     legend_label_cols: list[str] | None = None,
-    run_types: Sequence[str] = ("e2e", "layerwise", "e2e-recon"),
+    run_types: Sequence[str] = ("e2e", "local", "e2e-recon"),
 ) -> None:
     """
     Plot the per-layer metric (explained variance or reconstruction loss) for different run types.
@@ -169,7 +169,7 @@ def plot_per_layer_metric(
     metric_name = metric_names[metric] if metric in metric_names else metric
 
     color_e2e, color_lws, color_e2e_recon = sns.color_palette()[:3]
-    color_map = {"e2e": color_e2e, "layerwise": color_lws, "e2e-recon": color_e2e_recon}
+    color_map = {"e2e": color_e2e, "local": color_lws, "e2e-recon": color_e2e_recon}
 
     plt.figure(figsize=(10, 6))
     xs = np.arange(sae_layer, n_layers)
@@ -213,6 +213,8 @@ def plot_per_layer_metric(
 
 if __name__ == "__main__":
     # Plot gpt2 performance
+    run_types = ("e2e", "local")
+
     api = wandb.Api()
     project = "sparsify/gpt2"
     runs = api.runs(project)
@@ -220,15 +222,15 @@ if __name__ == "__main__":
     n_layers = 12
     # These runs (keyed by layer number, value is the sparsity coeff), have similar CE loss diff
     constant_ce_runs = {
-        2: {"e2e": 0.5, "layerwise": 0.8},
-        6: {"e2e": 3, "layerwise": 4},
-        10: {"e2e": 0.5, "layerwise": 4},
+        2: {"e2e": 0.5, "local": 0.8},
+        6: {"e2e": 3, "local": 4},
+        10: {"e2e": 0.5, "local": 4},
     }
     # These have similar L0
     constant_l0_runs = {
-        2: {"e2e": 1.5, "layerwise": 4},
-        6: {"e2e": 1.5, "layerwise": 6},
-        10: {"e2e": 1.5, "layerwise": 10},
+        2: {"e2e": 1.5, "local": 4},
+        6: {"e2e": 1.5, "local": 6},
+        10: {"e2e": 1.5, "local": 10},
     }
 
     df = create_run_df(runs)
@@ -254,52 +256,57 @@ if __name__ == "__main__":
             layer_df,
             x="L0",
             y="CE_diff",
-            title=f"Layer {layer}: L0 vs CE Loss Difference (label: sparsity coeff)",
+            title=f"Layer {layer}: L0 vs CE Loss Difference",
             xlabel="L0",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"l0_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=True,
+            sparsity_label=False,
+            run_types=run_types,
         )
         plot_scatter(
             layer_df,
             x="alive_dict_elements",
             y="CE_diff",
-            title=f"Layer {layer}: Alive Dictionary Elements vs CE Loss Difference (label: sparsity coeff)",
+            title=f"Layer {layer}: Alive Dictionary Elements vs CE Loss Difference",
             xlabel="Alive Dictionary Elements",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"alive_elements_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=True,
+            sparsity_label=False,
+            run_types=run_types,
         )
         plot_scatter(
             layer_df,
             x="out_to_in",
             y="CE_diff",
-            title=f"Layer {layer}: Out-to-In Loss vs CE Loss Difference (label: sparsity coeff)",
+            title=f"Layer {layer}: Out-to-In Loss vs CE Loss Difference",
             xlabel="Out-to-In Loss",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"out_to_in_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=True,
+            sparsity_label=False,
+            run_types=run_types,
         )
         plot_scatter(
             layer_df,
             x="sum_recon_loss",
             y="CE_diff",
-            title=f"Layer {layer}: Future Reconstruction Loss vs CE Loss Difference (label: sparsity coeff)",
+            title=f"Layer {layer}: Future Reconstruction Loss vs CE Loss Difference",
             xlabel="Summed Future Reconstruction Loss",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"future_recon_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=True,
+            sparsity_label=False,
+            run_types=run_types,
         )
         plot_scatter(
             layer_df,
             x="explained_var_ln",
             y="CE_diff",
             z="L0",
-            title=f"Layer {layer}: Explained Variance LN vs CE Loss Difference (label: sparsity coeff)",
+            title=f"Layer {layer}: Explained Variance LN vs CE Loss Difference",
             xlabel="Explained Variance LN",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"explained_var_ln_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=True,
+            sparsity_label=False,
+            run_types=run_types,
         )
 
         # Per layer plots. Note that per-layer metrics are all taken at hook_resid_post
@@ -309,8 +316,8 @@ if __name__ == "__main__":
                 & (layer_df["run_type"] == "e2e")
             )
             | (
-                (layer_df["sparsity_coeff"] == constant_ce_runs[layer]["layerwise"])
-                & (layer_df["run_type"] == "layerwise")
+                (layer_df["sparsity_coeff"] == constant_ce_runs[layer]["local"])
+                & (layer_df["run_type"] == "local")
             )
         ]
         plot_per_layer_metric(
@@ -321,6 +328,7 @@ if __name__ == "__main__":
             out_file=out_dir / f"explained_var_ln_per_layer_sae_layer_{layer}.png",
             ylim=(None, 1),
             legend_label_cols=["sparsity_coeff", "CE_diff"],
+            run_types=run_types,
         )
         plot_per_layer_metric(
             layer_constant_ce_df,
@@ -329,4 +337,5 @@ if __name__ == "__main__":
             n_layers=n_layers,
             out_file=out_dir / f"recon_loss_per_layer_sae_layer_{layer}.png",
             legend_label_cols=["sparsity_coeff", "CE_diff"],
+            run_types=run_types,
         )

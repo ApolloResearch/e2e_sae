@@ -12,7 +12,7 @@ def _get_run_type(kl_coeff: float | None, in_to_orig_coeff: float | None) -> str
         return "e2e-recon"
     if kl_coeff is not None and kl_coeff > 0:
         return "e2e"
-    return "layerwise"
+    return "local"
 
 
 def create_run_df(runs: Runs) -> pd.DataFrame:
@@ -61,7 +61,7 @@ def create_run_df(runs: Runs) -> pd.DataFrame:
         if "dict_size_to_input_ratio" in run.config["saes"]:
             ratio = float(run.config["saes"]["dict_size_to_input_ratio"])
         else:
-            # layerwise runs didn't store the ratio in the config for these runs
+            # local runs didn't store the ratio in the config for these runs
             ratio = float(run.name.split("ratio-")[1].split("_")[0])
 
         out_to_in = None
