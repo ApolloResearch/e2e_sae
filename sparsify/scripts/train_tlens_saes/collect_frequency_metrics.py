@@ -1,4 +1,7 @@
 """Script for calculating frequency metrics for a trained SAETransformer model.
+
+This script will resume a wandb run, store the metrics, and then finish the run again.
+
 Usage:
     python collect_frequency_metrics.py <wandb_project> <wandb_run_id> \
         [--batch_size=<batch_size>] [--n_tokens=<n_tokens>]
@@ -47,13 +50,11 @@ def main(
     run: Run = api.run(wandb_run_name)
 
     train_config_files = [file for file in run.files() if file.name.endswith("final_config.yaml")]
-    if len(train_config_files) != 1:
-        logger.error(f"Found {len(train_config_files)} config files for {run.name}. Skipping.")
-        return
-    train_config_file = train_config_files[0]
-    train_config: TrainConfig = TrainConfig(
+
+    assert len(train_config_files) == 1
+    train_config = TrainConfig(
         **yaml.safe_load(
-            train_config_file.download(exist_ok=True, replace=False, root=f"/tmp/{wandb_run_id}")
+            train_config_files[0].download(replace=False, exist_ok=True, root=f"/tmp/{run.id}/")
         )
     )
 
