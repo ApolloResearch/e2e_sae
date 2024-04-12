@@ -33,7 +33,7 @@ CONSTANT_L0_RUNS = {
 }
 
 
-def plot_scatter(
+def plot_scatter_or_line(
     df: pd.DataFrame,
     x: str,
     y: str,
@@ -43,7 +43,6 @@ def plot_scatter(
     out_file: str | Path | None = None,
     z: str | None = None,
     xlim: tuple[float | None, float | None] = (None, None),
-    x_annotation: tuple[float, str] | None = None,
     ylim: tuple[float | None, float | None] = (None, None),
     run_types: tuple[str, ...] = ("e2e", "local", "e2e-recon"),
     sparsity_label: bool = False,
@@ -62,7 +61,6 @@ def plot_scatter(
         z: The variable to use for coloring the points. If not provided, points will be
             colored by run type.
         xlim: The x-axis limits.
-        x_annotation: A tuple of (x, label) to annotate the plot with.
         ylim: The y-axis limits.
         run_types: The run types to include in the plot.
         sparsity_label: Whether to label the points with the sparsity coefficient.
@@ -98,6 +96,8 @@ def plot_scatter(
             }
             if plot_type == "scatter":
                 plot_kwargs["s"] = marker_size
+            elif plot_type == "line":
+                plot_kwargs["orient"] = "y"
             if z is None:
                 plot_kwargs["label"] = label
             else:
@@ -122,20 +122,6 @@ def plot_scatter(
                     color="black",
                     alpha=0.8,
                 )
-
-    if x_annotation is not None:
-        x_val, annotation_label = x_annotation
-        ax.axvline(x_val, color="black", linestyle="--", linewidth=1)
-        ax.text(
-            x_val,
-            ax.get_ylim()[0] - (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.02,
-            annotation_label,
-            fontsize=8,
-            ha="left",
-            va="center",
-            color="black",
-            alpha=0.8,
-        )
     ax.set_xlim(xlim)
     ax.set_ylim(ylim)
     ax.set_title(title)
@@ -172,7 +158,7 @@ def plot_scatter(
             )
         ax.legend(handles=legend_handles, title="Run Type", loc="best")
 
-    plt.tight_layout()
+    # plt.tight_layout()
     if out_file is not None:
         plt.savefig(out_file)
     plt.close(fig)
@@ -283,30 +269,45 @@ if __name__ == "__main__":
     df = df.loc[df["seed"] == 0]
     # Ignore runs that have an L0 bigger than d_resid
     df = df.loc[df["L0"] <= d_resid]
+    # Only use the e2e+recon run in layer 10 that has kl_coeff=0.75
+    df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.75))]
+
     # print(df)
 
+    # ylims for plots with ce_diff on the y axis
+    ce_diff_ylims = {
+        2: (-0.2, 0),
+        6: (-0.4, 0),
+        10: (-0.4, 0),
+    }
+    l0_diff_xlims = {
+        2: (0, 200),
+        6: (0, 600),
+        10: (0, 600),
+    }
     unique_layers = list(df["layer"].unique())
     for layer in unique_layers:
         layer_df = df.loc[df["layer"] == layer]
-        plot_scatter(
+
+        plot_scatter_or_line(
             layer_df,
             x="L0",
             y="CE_diff",
-            # z="alive_dict_elements",
+            xlim=l0_diff_xlims[layer],
+            ylim=ce_diff_ylims[layer],
             title=f"Layer {layer}: L0 vs CE Loss Difference",
             xlabel="L0",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"l0_vs_ce_loss_layer_{layer}.png",
-            xlim=(None, d_resid + 1),
-            x_annotation=(d_resid, "d_resid"),
-            sparsity_label=False,
+            sparsity_label=True,
             run_types=run_types,
         )
-        plot_scatter(
+        plot_scatter_or_line(
             layer_df,
             x="alive_dict_elements",
             y="CE_diff",
             z="L0",
+            ylim=ce_diff_ylims[layer],
             title=f"Layer {layer}: Alive Dictionary Elements vs CE Loss Difference",
             xlabel="Alive Dictionary Elements",
             ylabel="CE loss difference\n(original model - model with sae)",
@@ -314,7 +315,7 @@ if __name__ == "__main__":
             sparsity_label=False,
             run_types=run_types,
         )
-        plot_scatter(
+        plot_scatter_or_line(
             layer_df,
             x="L0",
             y="alive_dict_elements",
@@ -322,38 +323,43 @@ if __name__ == "__main__":
             xlabel="L0",
             ylabel="Alive Dictionary Elements",
             out_file=out_dir / f"l0_vs_alive_dict_elements_layer_{layer}.png",
-            xlim=(None, d_resid + 1),
-            x_annotation=(d_resid, "d_resid"),
+            xlim=l0_diff_xlims[layer],
             sparsity_label=False,
             run_types=run_types,
+            plot_type="scatter",
         )
-        plot_scatter(
+        plot_scatter_or_line(
             layer_df,
             x="out_to_in",
             y="CE_diff",
+            ylim=ce_diff_ylims[layer],
             title=f"Layer {layer}: Out-to-In Loss vs CE Loss Difference",
             xlabel="Out-to-In Loss",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"out_to_in_vs_ce_loss_layer_{layer}.png",
             sparsity_label=False,
             run_types=run_types,
+            plot_type="scatter",
         )
-        plot_scatter(
+        plot_scatter_or_line(
             layer_df,
             x="sum_recon_loss",
             y="CE_diff",
+            ylim=ce_diff_ylims[layer],
             title=f"Layer {layer}: Future Reconstruction Loss vs CE Loss Difference",
             xlabel="Summed Future Reconstruction Loss",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"future_recon_vs_ce_loss_layer_{layer}.png",
             sparsity_label=False,
             run_types=run_types,
+            plot_type="scatter",
         )
-        plot_scatter(
+        plot_scatter_or_line(
             layer_df,
             x="explained_var_ln",
             y="CE_diff",
             z="L0",
+            ylim=ce_diff_ylims[layer],
             title=f"Layer {layer}: Explained Variance LN vs CE Loss Difference",
             xlabel="Explained Variance LN",
             ylabel="CE loss difference\n(original model - model with sae)",
