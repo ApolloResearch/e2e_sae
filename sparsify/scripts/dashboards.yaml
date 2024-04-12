@@ -9,7 +9,7 @@ data: # DatasetConfig for the data which will be used to generate the dashboards
   tokenizer_name: 'gpt2'
   split: "train"
   n_ctx: 1024
-save_dir: '/data/jordan_tensor/sparsify_dashboards/tests/saes_for_tests/gpt2layer6/big_dashboards' # The directory for saving the HTML feature dashboard files
+save_dir: null # The directory for saving the HTML feature dashboard files
 save_json_data: false
 sae_positions: null # The names of the SAE positions to generate dashboards for. e.g.'blocks.2.hook_resid_post'. If None, then all positions will be generated
 feature_indices: null # The features for which to generate dashboards on each SAE. If none, then we'll generate dashbaords for every feature.

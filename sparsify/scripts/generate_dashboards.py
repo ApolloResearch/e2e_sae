@@ -145,7 +145,8 @@ class DashboardsConfig(BaseModel):
     )
     save_dir: RootPath | None = Field(
         default=None,
-        description="The directory for saving the HTML feature dashboard files",
+        description="The directory for saving the HTML feature dashboard files. If none, they "
+        "will be saved in pretrained_sae_paths[0].parent",
     )
     save_json_data: bool = Field(
         default=False,
