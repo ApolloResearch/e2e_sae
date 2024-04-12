@@ -18,11 +18,11 @@ prompt_centric: # Used to generate prompt-centric (rather than feature-centric) 
   data: null # "DatasetConfig for getting random prompts. If None, then non-prompt-centric data will be used
   prompts: # Specific prompts on which to generate prompt-centric feature dashboards. A feature-centric dashboard will be generated for every token position in each prompt.
     - "Sally met Mike at the show. She brought popcorn for him. They ate it together"
-    - 'One day, a little girl named Lily was playing in the park with her mommy. They saw a big slide and wanted to go on it. Lily said, "Mommy, can I go on the slide?"'
-    - "It was time for the lecture to begin. Little Tom was excited to come to the high school and learn something new."
-    - "Once upon a time there were two friends named Fluffy and Daisy. They were very playful and loved to watch the world together."
-    - "There were two friends named Jack and Jill. Jack and Jill loved to"
-    - "It was a sunny morning and a little girl was taking a walk with her puppy. Her puppy was very excited and pulled at the leash, but the girl was very gentle with him."
+    - 'Lily asked, "Mommy, can I go on the slide?"'
+    - "It was time for the lecture to begin."
+    - "A man was taken to hospital after the crash"
+    - "CAMPAIGN The campaign will focus on three core goals:"
+    - "new_list = [n**2 for n in numbers if n%2==0]"
   str_score: "act_quantile" # The ordering metric for which features are most important in prompt-centric dashboards. Can be one of 'act_size', 'act_quantile', or 'loss_effect'
   num_top_features: 10 # How many of the most relevant features to show for each prompt in the prompt-centric dashboards
 seed: 0
