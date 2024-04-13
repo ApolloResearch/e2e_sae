@@ -12,6 +12,8 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
+from sparsify.settings import REPO_ROOT
+
 # Regions keyed by layer number
 REGIONS = {
     2: {
@@ -153,7 +155,7 @@ def plot_with_grid(embeds: dict[str, tuple[int, int] | Float[Tensor, "n_both_dic
 
 if __name__ == "__main__":
     # Select your layer here
-    layer = 6
+    layer = 2
 
     # TODO: Use a dataclass/pydantic base model for the regions to avoid type errors
     filename = REGIONS[layer]["file"]
@@ -174,10 +176,15 @@ if __name__ == "__main__":
         assert isinstance(coords, dict)
         print(f"Region: {description} ({coords})")
         e2e_indices, local_indices = get_dict_indices_for_embedding_range(embeds, **coords)
+
+        filename = REGIONS[layer]["file"]
+        assert isinstance(filename, str)
+        path_from_repo_root = (embed_dir / filename).relative_to(REPO_ROOT)
         with open(embed_dir / f"layer-{layer}_region-{i}.json", "w") as f:
             json.dump(
                 {
-                    "embedding_file": REGIONS[layer]["file"],
+                    "embedding_file": str(path_from_repo_root),
+                    "run_labels": embeds["labels"],
                     "description": description,
                     "coords": coords,
                     "e2e": e2e_indices,

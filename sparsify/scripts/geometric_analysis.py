@@ -202,7 +202,7 @@ def plot_umap(
     )
     plt.title(f"UMAP of alive dictionary elements in {sae_pos}: {label_elements}")
     plt.savefig(outdir / f"umap_{sae_pos}.png")
-    embeds = {"n_elements_per_dict": n_elements_per_dict, "embedding": embedding}
+    embeds = {"n_elements_per_dict": n_elements_per_dict, "embedding": embedding, "labels": labels}
     torch.save(embeds, outdir / f"umap_embeds_{sae_pos}.pt")
 
 
