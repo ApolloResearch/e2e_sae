@@ -241,6 +241,51 @@ def plot_per_layer_metric(
     plt.close()
 
 
+def plot_seed_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
+    """Plot the CE loss difference vs L0 for each layer, comparing different seeds.
+
+    Args:
+        df: DataFrame containing the data.
+        out_dir: The directory to save the plots to.
+        run_types: The run types to include in the plot.
+    """
+    model_name = df["model_name"].unique()[0]
+    seed_dir = out_dir / f"seed_comparison_{model_name}"
+    seed_dir.mkdir(exist_ok=True, parents=True)
+
+    seeds = df["seed"].unique()
+    colors = sns.color_palette("tab10", n_colors=len(seeds))
+
+    for run_type in run_types:
+        layer_df = df.loc[(df["run_type"] == run_type)]
+
+        # Get only the layer-sparsity pairs that have more than one seed
+        layer_df = layer_df.groupby(["layer", "sparsity_coeff"]).filter(
+            lambda x: x["seed"].nunique() > 1
+        )
+        if layer_df.empty:
+            continue
+        plt.figure(figsize=(8, 6))
+        for i, seed in enumerate(seeds):
+            seed_df = layer_df.loc[layer_df["seed"] == seed]
+            plt.scatter(
+                seed_df["L0"],
+                seed_df["CE_diff"],
+                label=f"Seed {seed}",
+                color=colors[i],
+                alpha=0.8,
+            )
+        layers = ",".join([str(l) for l in layer_df["layer"].unique()])
+        plt.title(f"Layers {layers}: L0 vs CE Loss Difference (run_type={run_type})")
+        plt.xlabel("L0")
+        plt.ylabel("CE loss difference\n(original model - model with sae)")
+        plt.legend(title="Seed", loc="best")
+        plt.grid()
+        plt.tight_layout()
+        plt.savefig(seed_dir / f"l0_vs_ce_loss_layers_{layers}_{run_type}.png")
+        plt.close()
+
+
 if __name__ == "__main__":
     # Plot gpt2 performance
     # run_types = ("e2e", "local")
@@ -264,14 +309,17 @@ if __name__ == "__main__":
     assert df["lr"].unique()[0] == 5e-4
     assert df["n_samples"].unique()[0] == 400_000
     assert df["ratio"].unique()[0] == 60
+    assert df["model_name"].nunique() == 1
 
-    # Only use seed=0
-    df = df.loc[df["seed"] == 0]
     # Ignore runs that have an L0 bigger than d_resid
     df = df.loc[df["L0"] <= d_resid]
     # Only use the e2e+recon run in layer 10 that has kl_coeff=0.75
     df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.75))]
 
+    plot_seed_comparison(df, out_dir=Path(__file__).resolve().parent / "out", run_types=run_types)
+
+    # Only use seed=0 for remaining plots
+    df = df.loc[df["seed"] == 0]
     # print(df)
 
     # ylims for plots with ce_diff on the y axis
