@@ -55,6 +55,7 @@ def test_load_single_pretrained_sae(tmp_path: Path, retrain_saes: bool):
         tlens_model=tlens_model,
         raw_sae_positions=[sae_position],
         dict_size_to_input_ratio=pretrained_config.saes.dict_size_to_input_ratio,
+        init_decoder_orthogonal=False,
     )
     # Save the model.saes to a temp file
     save_module(
@@ -79,6 +80,7 @@ def test_load_single_pretrained_sae(tmp_path: Path, retrain_saes: bool):
         tlens_model=new_tlens_model,
         raw_sae_positions=sae_positions,
         dict_size_to_input_ratio=new_config.saes.dict_size_to_input_ratio,
+        init_decoder_orthogonal=False,
     )
 
     assert isinstance(new_config.saes.pretrained_sae_paths, list)
@@ -149,6 +151,7 @@ def test_load_multiple_pretrained_sae(tmp_path: Path):
             tlens_model=tlens_model,
             raw_sae_positions=sae_positions,
             dict_size_to_input_ratio=pretrained_config.saes.dict_size_to_input_ratio,
+            init_decoder_orthogonal=False,
         )
         # Save the model.saes to a temp file
         save_module(
@@ -173,6 +176,7 @@ def test_load_multiple_pretrained_sae(tmp_path: Path):
         tlens_model=new_tlens_model,
         raw_sae_positions=all_positions,
         dict_size_to_input_ratio=new_config.saes.dict_size_to_input_ratio,
+        init_decoder_orthogonal=False,
     )
 
     assert isinstance(new_config.saes.pretrained_sae_paths, list)

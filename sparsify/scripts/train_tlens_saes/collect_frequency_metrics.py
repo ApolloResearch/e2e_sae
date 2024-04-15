@@ -70,6 +70,7 @@ def main(
         tlens_model=tlens_model,
         raw_sae_positions=raw_sae_positions,
         dict_size_to_input_ratio=train_config.saes.dict_size_to_input_ratio,
+        init_decoder_orthogonal=False,
     ).to(device=device)
 
     # Weights file should be the largest .pt file. All have format (samples_*.pt)
