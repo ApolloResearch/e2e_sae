@@ -563,7 +563,7 @@ def train(
         metrics = collect_act_frequency_metrics(
             model=model,
             data_config=config.train_data,
-            batch_size=config.batch_size,
+            batch_size=config.batch_size // 2,  # Hack to prevent OOM. TODO: Solve this properly
             global_seed=config.seed,
             device=device,
             n_tokens=config.act_frequency_n_tokens,
