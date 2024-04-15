@@ -285,6 +285,11 @@ def plot_seed_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[st
         plt.savefig(seed_dir / f"l0_vs_ce_loss_layers_{layers}_{run_type}.png")
         plt.close()
 
+        # Also write all the "id"s to file
+        ids = layer_df["id"].unique().tolist()
+        with open(seed_dir / f"ids_layers_{layers}_{run_type}.txt", "w") as f:
+            f.write(",".join(ids))
+
 
 if __name__ == "__main__":
     # Plot gpt2 performance
@@ -304,11 +309,9 @@ if __name__ == "__main__":
     df = create_run_df(runs)
 
     # These runs were done with the following config:
-    for col in ["lr", "n_samples", "ratio"]:
-        assert df[col].nunique() == 1
-    assert df["lr"].unique()[0] == 5e-4
-    assert df["n_samples"].unique()[0] == 400_000
-    assert df["ratio"].unique()[0] == 60
+    assert df["lr"].nunique() == 1 and df["lr"].unique()[0] == 5e-4
+    assert df["n_samples"].nunique() == 1 and df["n_samples"].unique()[0] == 400_000
+    assert df["ratio"].nunique() == 1 and df["ratio"].unique()[0] == 0.1
     assert df["model_name"].nunique() == 1
 
     # Ignore runs that have an L0 bigger than d_resid
