@@ -12,7 +12,17 @@ class SAE(nn.Module):
     Sparse AutoEncoder
     """
 
-    def __init__(self, input_size: int, n_dict_components: int):
+    def __init__(
+        self, input_size: int, n_dict_components: int, init_decoder_orthogonal: bool = True
+    ):
+        """Initialize the SAE.
+
+        Args:
+            input_size: Dimensionality of input data
+            n_dict_components: Number of dictionary components
+            init_decoder_orthogonal: Initialize the decoder weights to be orthonormal
+        """
+
         super().__init__()
         # self.encoder[0].weight has shape: (n_dict_components, input_size)
         # self.decoder.weight has shape:    (input_size, n_dict_components)
@@ -22,8 +32,9 @@ class SAE(nn.Module):
         self.n_dict_components = n_dict_components
         self.input_size = input_size
 
-        # Initialize so that there are n_dict_components orthonormal vectors
-        self.decoder.weight.data = nn.init.orthogonal_(self.decoder.weight.data.T).T
+        if init_decoder_orthogonal:
+            # Initialize so that there are n_dict_components orthonormal vectors
+            self.decoder.weight.data = nn.init.orthogonal_(self.decoder.weight.data.T).T
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Pass input through the encoder and normalized decoder."""

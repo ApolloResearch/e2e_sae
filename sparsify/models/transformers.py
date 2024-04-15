@@ -29,7 +29,21 @@ class SAETransformer(nn.Module):
         tlens_model: HookedTransformer,
         raw_sae_positions: list[str],
         dict_size_to_input_ratio: float,
+        init_decoder_orthogonal: bool = True,
     ):
+        """Initialize the SAETransformer.
+
+        Args:
+            tlens_model: The transformer model.
+            raw_sae_positions: A list of all the positions in the tlens_mdoel where SAEs are to be
+                placed. These positions may have periods in them, which are replaced with hyphens in
+                the keys of the `saes` attribute and stored in the `all_sae_positions` attribute.
+            dict_size_to_input_ratio: The ratio of the dictionary size to the input size for the
+                SAEs.
+            init_decoder_orthogonal: Whether to initialize the decoder weights of the SAEs to be
+                orthonormal. Not needed when e.g. loading pretrained SAEs. Defaults to True.
+        """
+
         super().__init__()
         self.tlens_model = tlens_model.eval()
         self.raw_sae_positions = raw_sae_positions
@@ -45,6 +59,7 @@ class SAETransformer(nn.Module):
             self.saes[self.all_sae_positions[i]] = SAE(
                 input_size=input_size,
                 n_dict_components=int(dict_size_to_input_ratio * input_size),
+                init_decoder_orthogonal=init_decoder_orthogonal,
             )
 
     def forward_raw(
