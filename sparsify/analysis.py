@@ -103,6 +103,7 @@ def create_run_df(runs: Runs) -> pd.DataFrame:
             {
                 "name": run.name,
                 "id": run.id,
+                "sae_pos": sae_pos,
                 "model_name": run.config["tlens_model_name"],
                 "run_type": run_type,
                 "layer": sae_layer,
