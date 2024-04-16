@@ -16,6 +16,14 @@ def _get_run_type(kl_coeff: float | None, in_to_orig_coeff: float | None) -> str
     return "local"
 
 
+def _get_run_type_using_names(run_name: str) -> str:
+    if "logits-kl-1.0" in run_name and "in-to-orig" not in run_name:
+        return "e2e"
+    if "logits-kl-" in run_name and "in-to-orig" in run_name:
+        return "e2e-recon"
+    return "local"
+
+
 def _extract_per_layer_metrics(
     run: Run, metric_prefix: str, layer_prefix: str, sae_layer: int, sae_pos: str
 ) -> dict[str, float]:
@@ -32,7 +40,9 @@ def _extract_per_layer_metrics(
     return layers
 
 
-def create_run_df(runs: Runs) -> pd.DataFrame:
+def create_run_df(
+    runs: Runs, per_layer_metrics: bool = True, use_run_name: bool = False
+) -> pd.DataFrame:
     run_info = []
     for run in runs:
         if run.state != "finished":
@@ -52,36 +62,43 @@ def create_run_df(runs: Runs) -> pd.DataFrame:
         if "in_to_orig" in run.config["loss"] and run.config["loss"]["in_to_orig"] is not None:
             in_to_orig_coeff = run.config["loss"]["in_to_orig"]["total_coeff"]
 
-        run_type = _get_run_type(kl_coeff, in_to_orig_coeff)
+        if use_run_name:
+            run_type = _get_run_type_using_names(run.name)
+        else:
+            run_type = _get_run_type(kl_coeff, in_to_orig_coeff)
 
-        # The out_to_in in the below is to handle the e2e+recon loss runs which specified
-        # future layers in the in_to_orig but not the output of the SAE at the current layer
-        # (i.e. at hook_resid_post). Note that now if you leave in_to_orig as None, it will
-        # default to calculating in_to_orig at all layers at hook_resid_post.
-        # The explained variance at each layer
-        explained_var_layers = _extract_per_layer_metrics(
-            run=run,
-            metric_prefix="loss/eval/in_to_orig/explained_variance",
-            layer_prefix="explained_var_layer",
-            sae_layer=sae_layer,
-            sae_pos=sae_pos,
-        )
+        explained_var_layers = {}
+        explained_var_ln_layers = {}
+        recon_loss_layers = {}
+        if per_layer_metrics:
+            # The out_to_in in the below is to handle the e2e+recon loss runs which specified
+            # future layers in the in_to_orig but not the output of the SAE at the current layer
+            # (i.e. at hook_resid_post). Note that now if you leave in_to_orig as None, it will
+            # default to calculating in_to_orig at all layers at hook_resid_post.
+            # The explained variance at each layer
+            explained_var_layers = _extract_per_layer_metrics(
+                run=run,
+                metric_prefix="loss/eval/in_to_orig/explained_variance",
+                layer_prefix="explained_var_layer",
+                sae_layer=sae_layer,
+                sae_pos=sae_pos,
+            )
 
-        explained_var_ln_layers = _extract_per_layer_metrics(
-            run=run,
-            metric_prefix="loss/eval/in_to_orig/explained_variance_ln",
-            layer_prefix="explained_var_ln_layer",
-            sae_layer=sae_layer,
-            sae_pos=sae_pos,
-        )
+            explained_var_ln_layers = _extract_per_layer_metrics(
+                run=run,
+                metric_prefix="loss/eval/in_to_orig/explained_variance_ln",
+                layer_prefix="explained_var_ln_layer",
+                sae_layer=sae_layer,
+                sae_pos=sae_pos,
+            )
 
-        recon_loss_layers = _extract_per_layer_metrics(
-            run=run,
-            metric_prefix="loss/eval/in_to_orig",
-            layer_prefix="recon_loss_layer",
-            sae_layer=sae_layer,
-            sae_pos=sae_pos,
-        )
+            recon_loss_layers = _extract_per_layer_metrics(
+                run=run,
+                metric_prefix="loss/eval/in_to_orig",
+                layer_prefix="recon_loss_layer",
+                sae_layer=sae_layer,
+                sae_pos=sae_pos,
+            )
 
         if "dict_size_to_input_ratio" in run.config["saes"]:
             ratio = float(run.config["saes"]["dict_size_to_input_ratio"])
@@ -95,10 +112,17 @@ def create_run_df(runs: Runs) -> pd.DataFrame:
         if f"loss/eval/out_to_in/{sae_pos}" in run.summary_metrics:
             out_to_in = run.summary_metrics[f"loss/eval/out_to_in/{sae_pos}"]
             explained_var = run.summary_metrics[f"loss/eval/out_to_in/explained_variance/{sae_pos}"]
-            explained_var_ln = run.summary_metrics[
-                f"loss/eval/out_to_in/explained_variance_ln/{sae_pos}"
-            ]
+            try:
+                explained_var_ln = run.summary_metrics[
+                    f"loss/eval/out_to_in/explained_variance_ln/{sae_pos}"
+                ]
+            except KeyError:
+                explained_var_ln = None
 
+        try:
+            kl = run.summary_metrics["loss/eval/logits_kl"]
+        except KeyError:
+            kl = None
         run_info.append(
             {
                 "name": run.name,
@@ -126,7 +150,7 @@ def create_run_df(runs: Runs) -> pd.DataFrame:
                 **explained_var_ln_layers,
                 **recon_loss_layers,
                 "sum_recon_loss": sum(recon_loss_layers.values()),
-                "kl": run.summary_metrics["loss/eval/logits_kl"],
+                "kl": kl,
             }
         )
     df = pd.DataFrame(run_info)

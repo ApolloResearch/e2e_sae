@@ -465,12 +465,11 @@ def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[s
             f.write(",".join(ids))
 
 
-if __name__ == "__main__":
+def gpt2_plots():
     # Plot gpt2 performance
     # run_types = ("e2e", "local")
     run_types = ("e2e", "local", "e2e-recon")
-    # out_dir = Path(__file__).resolve().parent / "out" / "e2e_local"
-    out_dir = Path(__file__).resolve().parent / "out" / "e2e_local_e2e-recon"
+    out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
     out_dir.mkdir(exist_ok=True)
 
     api = wandb.Api()
@@ -482,7 +481,6 @@ if __name__ == "__main__":
 
     df = create_run_df(runs)
 
-    # These runs were done with the following config:
     assert df["lr"].nunique() == 1 and df["lr"].unique()[0] == 5e-4
     assert df["model_name"].nunique() == 1
 
@@ -507,6 +505,8 @@ if __name__ == "__main__":
 
     plot_ratio_comparison(df, out_dir=Path(__file__).resolve().parent / "out", run_types=run_types)
 
+    # Use ratio=60 for remaining plots
+    df = df.loc[df["ratio"] == 60]
     # print(df)
 
     # ylims for plots with ce_diff on the y axis
@@ -534,7 +534,7 @@ if __name__ == "__main__":
             xlabel="L0",
             ylabel="CE loss difference\n(original model - model with sae)",
             out_file=out_dir / f"l0_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=True,
+            sparsity_label=False,
             run_types=run_types,
         )
         plot_scatter_or_line(
@@ -637,3 +637,96 @@ if __name__ == "__main__":
             legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
             run_types=run_types,
         )
+
+
+def tinystories_1m_plots():
+    # Plot tinystories_1m performance
+    run_types = ("e2e", "local", "e2e-recon")
+    out_dir = Path(__file__).resolve().parent / "out" / "tinystories-1m" / "_".join(run_types)
+    out_dir.mkdir(exist_ok=True, parents=True)
+
+    api = wandb.Api()
+    project = "sparsify/tinystories-1m-2"
+    runs = api.runs(project)
+
+    d_resid = 64
+
+    df = create_run_df(runs, per_layer_metrics=False, use_run_name=True)
+
+    assert df["model_name"].nunique() == 1
+
+    # Our "final" runs have the following properties:
+    e2e_properties = (
+        (df["lr"] == 0.001)
+        & (df["n_samples"] == 450_000)
+        & (~df["name"].str.contains("nogradnorm"))
+        & (df["run_type"] == "e2e")
+    )
+    local_properties = (
+        (df["lr"] == 0.01) & (df["n_samples"] == 400_000) & (df["run_type"] == "local")
+    )
+    # Note how we only have runs with 250k samples for e2e-recon
+    e2e_recon_properties = (
+        (df["lr"] == 0.001)
+        & (df["n_samples"] == 250_000)
+        & (df["run_type"] == "e2e-recon")
+        & (df["in_to_orig_coeff"] == 1000)  # This is seemed the best for kl_coeff=0.5
+    )
+    df = df.loc[
+        (e2e_properties | local_properties | e2e_recon_properties)
+        & (df["ratio"] == 50)
+        & (df["seed"] == 0)
+    ]
+
+    # Ignore runs that have an L0 bigger than d_resid
+    df = df.loc[df["L0"] <= d_resid]
+
+    # print(df)
+
+    # ylims for plots with ce_diff on the y axis
+    ce_diff_ylims = {
+        0: (-0.4, 0),
+        3: (-0.6, 0),
+        6: (-0.6, 0),
+    }
+    l0_diff_xlims = {
+        0: (0, 40),
+        3: (0, 64),
+        6: (0, 64),
+    }
+
+    unique_layers = list(df["layer"].unique())
+    for layer in unique_layers:
+        layer_df = df.loc[df["layer"] == layer]
+
+        plot_scatter_or_line(
+            layer_df,
+            x="L0",
+            y="CE_diff",
+            xlim=l0_diff_xlims[layer],
+            ylim=ce_diff_ylims[layer],
+            title=f"Layer {layer}: L0 vs CE Loss Difference",
+            xlabel="L0",
+            ylabel="CE loss difference\n(original model - model with sae)",
+            out_file=out_dir / f"l0_vs_ce_loss_layer_{layer}.png",
+            sparsity_label=False,
+            run_types=run_types,
+        )
+        plot_scatter_or_line(
+            layer_df,
+            x="alive_dict_elements",
+            y="CE_diff",
+            z="L0",
+            ylim=ce_diff_ylims[layer],
+            title=f"Layer {layer}: Alive Dictionary Elements vs CE Loss Difference",
+            xlabel="Alive Dictionary Elements",
+            ylabel="CE loss difference\n(original model - model with sae)",
+            out_file=out_dir / f"alive_elements_vs_ce_loss_layer_{layer}.png",
+            sparsity_label=False,
+            run_types=run_types,
+        )
+
+
+if __name__ == "__main__":
+    # gpt2_plots()
+    tinystories_1m_plots()
