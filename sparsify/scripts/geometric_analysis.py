@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -13,24 +13,10 @@ from matplotlib import colors as mcolors
 from torch import Tensor
 from wandb.apis.public import Run
 
-from sparsify.analysis import create_run_df
 from sparsify.loader import load_tlens_model
 from sparsify.models.transformers import SAE, SAETransformer
 from sparsify.scripts.train_tlens_saes.run_train_tlens_saes import Config
 from sparsify.utils import filter_names
-
-# These runs (keyed by layer number, value is the sparsity coeff), have similar CE loss diff
-# CONSTANT_CE_RUNS = {
-#     2: {"e2e": 0.5, "local": 0.8, "e2e-recon": 10},
-#     6: {"e2e": 3, "local": 4, "e2e-recon": 50},
-#     10: {"e2e": 1.5, "local": 6, "e2e-recon": 25},
-# }
-# # These have similar L0
-# CONSTANT_L0_RUNS = {
-#     2: {"e2e": 1.5, "local": 4, "e2e-recon": 35},
-#     6: {"e2e": 1.5, "local": 6, "e2e-recon": 35},
-#     10: {"e2e": 1.5, "local": 10, "e2e-recon": 25},
-# }
 
 CONSTANT_CE_RUNS = {
     2: {"e2e": "ovhfts9n", "local": "ue3lz0n7", "e2e-recon": "visi12en"},
@@ -156,12 +142,17 @@ def plot_cosine_similarity_heatmap(
     plt.savefig(f"cosine_sim_heatmap_{sae_pos}_{labels[0]}_{labels[1]}.png")
 
 
+class AliveElements(NamedTuple):
+    dict_1: Float[Tensor, "n_dense n_dict_elements1"]
+    dict_2: Float[Tensor, "n_dense n_dict_elements2"]
+    raw_sae_pos: str
+    raw_dict_sizes: tuple[int, int]
+    all_alive_indices: tuple[list[int], list[int]]
+
+
 def plot_umap(
-    all_alive_elements: tuple[
-        Float[Tensor, "n_dense n_dict_elements1"], Float[Tensor, "n_dense n_dict_elements2"]
-    ],
+    alive_elements: AliveElements,
     labels: tuple[str, str],
-    sae_pos: str,
     outdir: Path,
     seed: int = 1,
 ):
@@ -170,18 +161,19 @@ def plot_umap(
     Saves the plot and the embedding to the output directory.
 
     Args:
-        all_alive_elements: A tuple of alive dictionary elements for each label.
+        alive_elements: The alive dictionary elements object for the two runs.
         labels: The labels for each set of alive dictionary elements.
-        sae_pos: The SAE position.
         outdir: The output directory to save the plot and embedding.
         seed: The random seed to use for UMAP.
     """
     outdir.mkdir(parents=True, exist_ok=True)
-    n_elements_per_dict: tuple[int, int] = (
-        all_alive_elements[0].shape[1],
-        all_alive_elements[1].shape[1],
+    alive_elements_per_dict: tuple[int, int] = (
+        alive_elements.dict_1.shape[1],
+        alive_elements.dict_2.shape[1],
     )
-    all_alive_elements = torch.cat(all_alive_elements, dim=1).T.detach().numpy()
+    all_alive_elements = (
+        torch.cat([alive_elements.dict_1, alive_elements.dict_2], dim=1).T.detach().numpy()
+    )
     reducer = umap.UMAP(random_state=seed)
     embedding = reducer.fit_transform(all_alive_elements)
 
@@ -189,8 +181,8 @@ def plot_umap(
     plt.figure(figsize=(10, 10))
     for i, label in enumerate(labels):
         plt.scatter(
-            embedding[i * n_elements_per_dict[i] : (i + 1) * n_elements_per_dict[i], 0],  # type: ignore
-            embedding[i * n_elements_per_dict[i] : (i + 1) * n_elements_per_dict[i], 1],  # type: ignore
+            embedding[i * alive_elements_per_dict[i] : (i + 1) * alive_elements_per_dict[i], 0],  # type: ignore
+            embedding[i * alive_elements_per_dict[i] : (i + 1) * alive_elements_per_dict[i], 1],  # type: ignore
             label=label,
             s=1,
             color=colors[i],
@@ -198,66 +190,28 @@ def plot_umap(
         )
     plt.legend()
     label_elements = "_".join(
-        [f"{label}-{n}" for label, n in zip(labels, n_elements_per_dict, strict=False)]
+        [f"{label}-{n}" for label, n in zip(labels, alive_elements_per_dict, strict=False)]
     )
-    plt.title(f"UMAP of alive dictionary elements in {sae_pos}: {label_elements}")
-    plt.savefig(outdir / f"umap_{sae_pos}.png")
-    embeds = {"n_elements_per_dict": n_elements_per_dict, "embedding": embedding, "labels": labels}
-    torch.save(embeds, outdir / f"umap_embeds_{sae_pos}.pt")
-
-
-def get_run_ids(
-    api: wandb.Api,
-    project_name: str,
-    layer_num: int,
-    constant_val: Literal["CE", "l0"],
-    run_types: tuple[str, ...],
-    seed: int = 0,
-) -> dict[str, str]:
-    """Get the run IDs for the e2e, local and e2e+recon runs for a given layer number.
-
-    Args:
-        api: The wandb API.
-        project_name: The name of the wandb project.
-        layer_num: The layer number.
-        constant_val: The constant value to use for the CE loss or L0.
-        run_types: The run types to get the IDs for.
-        seed: The seed to use for the runs.
-
-    Returns:
-        The run IDs for the e2e, local and e2e+recon runs.
-    """
-    runs = api.runs(project_name)
-
-    df = create_run_df(runs)
-
-    # Only use seed=0
-    df = df.loc[df["seed"] == seed]
-
-    constant_dict = CONSTANT_CE_RUNS if constant_val == "CE" else CONSTANT_L0_RUNS
-
-    run_info = {}
-    for run_type in run_types:
-        assert (
-            run_type in constant_dict[layer_num]
-        ), f"Run type {run_type} not found in constant dict"
-
-        series = df.loc[
-            (df["run_type"] == run_type)
-            & (df["sparsity_coeff"] == constant_dict[layer_num][run_type])
-            & (df["layer"] == layer_num)
-        ]["id"].values
-        assert len(series) == 1
-        run_info[run_type] = series[0]
-
-    return run_info
+    plt.title(
+        f"UMAP of alive dictionary elements in {alive_elements.raw_sae_pos}: {label_elements}"
+    )
+    plt.savefig(outdir / f"umap_{alive_elements.raw_sae_pos}.png")
+    embeds = {
+        "alive_elements_per_dict": alive_elements_per_dict,
+        "embedding": embedding,
+        "labels": labels,
+        "raw_sae_pos": alive_elements.raw_sae_pos,
+        "raw_dict_sizes": alive_elements.raw_dict_sizes,
+        "all_alive_indices": alive_elements.all_alive_indices,
+    }
+    torch.save(embeds, outdir / f"umap_embeds_{alive_elements.raw_sae_pos}.pt")
 
 
 def get_alive_dict_elements(
     api: wandb.Api,
     project_name: str,
     runs: list[tuple[str, str]],
-) -> tuple[dict[str, Float[Tensor, "n_dense n_dict_elements"]], str]:
+) -> AliveElements:
     """Get the alive dictionary elements and sae_pos for the e2e and local runs.
 
     Args:
@@ -266,31 +220,20 @@ def get_alive_dict_elements(
         runs: A list of (run_type, run_id) tuples.
 
     Returns:
-        - dictionary of alive dictionary elements for each run, keyed by run type
-        - The raw SAE position common to both runs.
+        AliveElements object containing containing the alive dictionary elements and related info
+        for the two runs.
     """
 
-    raw_sae_pos: str | None = None
-    all_alive_elements = {}
-    for run_type, run_id in runs:
+    assert len(runs) == 2, "Only two runs can be compared at a time"
+
+    raw_sae_pos = None
+    all_alive_elements = []
+    dict_sizes = []
+    all_alive_indices = []
+    for _, run_id in runs:
         run: Run = api.run(f"{project_name}/{run_id}")
         config_files = [file for file in run.files() if "final_config.yaml" in file.name]
-        # if len(config_files) == 0:
-        #     # Some seed=1 runs don't have a final_config.yaml file. Get the required vals from the
-        #     # partial config saved in run.config
-        #     # Use a named tuple to mimic the Config class with keys "tlens_model_name",
-        #     # "tlens_model_path", "saes"
-        #     assert run.config["seed"] == 1
-        #     saes = namedtuple("saes", ["sae_positions", "dict_size_to_input_ratio"])(
-        #         sae_positions=run.config["saes"]["sae_positions"],
-        #         dict_size_to_input_ratio=run.config["saes"]["dict_size_to_input_ratio"],
-        #     )
-        #     config = namedtuple("Config", ["tlens_model_name", "tlens_model_path", "saes"])(
-        #         tlens_model_name=run.config["tlens_model_name"],
-        #         tlens_model_path=run.config["tlens_model_path"],
-        #         saes=saes,
-        #     )
-        # else:
+
         assert len(config_files) == 1
         config = Config(
             **yaml.safe_load(
@@ -322,7 +265,10 @@ def get_alive_dict_elements(
             weight_files, key=lambda x: int(x.name.split(".pt")[0].split("_")[-1])
         )[-1]
         latest_checkpoint = wandb.restore(
-            weight_file.name, run_path=f"{project}/{run.id}", root=f"/tmp/{run.id}/", replace=False
+            weight_file.name,
+            run_path=f"{project_name}/{run.id}",
+            root=f"/tmp/{run.id}/",
+            replace=False,
         )
         assert latest_checkpoint is not None
         model.saes.load_state_dict(torch.load(latest_checkpoint.name, map_location="cpu"))
@@ -335,10 +281,19 @@ def get_alive_dict_elements(
 
         sae: SAE = model.saes[model.all_sae_positions[0]]  # type: ignore
         alive_elements = sae.dict_elements[:, alive_indices]
-        all_alive_elements[run_type] = alive_elements
+
+        all_alive_elements.append(alive_elements)
+        dict_sizes.append(sae.dict_elements.shape[1])
+        all_alive_indices.append(alive_indices)
 
     assert raw_sae_pos is not None
-    return all_alive_elements, raw_sae_pos
+    return AliveElements(
+        dict_1=all_alive_elements[0],
+        dict_2=all_alive_elements[1],
+        raw_sae_pos=raw_sae_pos,
+        raw_dict_sizes=tuple(dict_sizes),
+        all_alive_indices=tuple(all_alive_indices),
+    )
 
 
 if __name__ == "__main__":
@@ -353,13 +308,6 @@ if __name__ == "__main__":
     out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}_{'_'.join(run_types)}"
 
     for layer_num in [2, 6, 10]:
-        # run_ids = get_run_ids(
-        #     api=api,
-        #     project_name="gpt2",
-        #     layer_num=layer_num,
-        #     constant_val=constant_val,
-        #     run_types=run_types,
-        # )
         run_ids = run_dict[layer_num]
         run_info = (
             f"({run_types[0]}-{run_ids[run_types[0]]}, {run_types[1]}-{run_ids[run_types[1]]})"
@@ -379,35 +327,32 @@ if __name__ == "__main__":
         # out_dir = Path(__file__).parent / "out" / "local_seed0_seed1"
         # ###
 
-        alive_dict_elements, raw_sae_pos = get_alive_dict_elements(
+        alive_elements = get_alive_dict_elements(
             api=api,
             project_name=project,
             runs=[(run_type, run_ids[run_type]) for run_type in run_types],
         )
-        dict_elements_1 = alive_dict_elements[run_types[0]]
-        dict_elements_2 = alive_dict_elements[run_types[1]]
 
         ### Get pairwise cosine similarity for dict1. Note that we have make the diagonals
         ### very negative because we don't want to compare the same vector with itself.
-        # dict_elements_2 = dict_elements_1
-        # run_info = f"({run_types[0]}-{run_ids[run_types[0]]}) alive={dict_elements_1.shape[1]}"
+        # alive_elements._replace(dict_2=alive_elements.dict_1)
+        # run_info = f"({run_types[0]}-{run_ids[run_types[0]]}) alive={alive_elements.dict_1.shape[1]}"
         # out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}_{run_types[0]}-pairwise"
         ###
 
-        ###  Make dict_elements2 a random set of the same size as dict_elements_1
+        ###  Make dict_elements2 a random set of the same size as alive_elements.dict_1
         # run_info = f"({run_types[0]}-{run_ids[run_types[0]]}, (random vectors))"
-        # dict_elements_2 = torch.randn_like(dict_elements_1)
-        # dict_elements_2 = F.normalize(dict_elements_2, dim=0)
+        # rand_dict = torch.randn_like(alive_elements.dict_1)
+        # alive_elements._replace(dict_2=F.normalize(rand_dict, dim=0))
 
         # out_dir = Path(__file__).parent / "out" / "e2e_random"
         ###
         plot_umap(
-            (dict_elements_1, dict_elements_2),
+            alive_elements=alive_elements,
             labels=(
                 f"{run_types[0]}-{run_ids[run_types[0]]}",
                 f"{run_types[1]}-{run_ids[run_types[1]]}",
             ),
-            sae_pos=raw_sae_pos,
             outdir=out_dir,
         )
         # cosine_sim = get_cosine_similarity(dict_elements_1, dict_elements_2)
