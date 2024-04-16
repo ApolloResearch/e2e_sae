@@ -728,5 +728,5 @@ def tinystories_1m_plots():
 
 
 if __name__ == "__main__":
-    # gpt2_plots()
+    gpt2_plots()
     tinystories_1m_plots()
