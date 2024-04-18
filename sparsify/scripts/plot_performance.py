@@ -1,3 +1,4 @@
+#%%
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
@@ -41,6 +42,7 @@ def plot_scatter_or_line(
     run_types: tuple[str, ...] = ("e2e", "local", "e2e-recon"),
     sparsity_label: bool = False,
     plot_type: Literal["scatter", "line"] | None = None,
+    ax: plt.Axes | None = None,
 ) -> None:
     """Plot a scatter or line plot with the specified x and y variables, colored by run type or z.
 
@@ -62,7 +64,10 @@ def plot_scatter_or_line(
     """
     plot_type = plot_type if plot_type is not None else ("line" if z is None else "scatter")
     sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
-    fig, ax = plt.subplots(figsize=(8, 6))
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 6))
+    else:
+        fig = ax.get_figure()
 
     marker_size = 95 if len(run_types) < 3 else 60
 
@@ -155,7 +160,7 @@ def plot_scatter_or_line(
     # plt.tight_layout()
     if out_file is not None:
         plt.savefig(out_file)
-    plt.close(fig)
+    # plt.close(fig)
 
 
 def plot_per_layer_metric(
@@ -727,6 +732,96 @@ def tinystories_1m_plots():
         )
 
 
+#%%
+
+def get_df_gpt2():
+    # Plot gpt2 performance
+    # run_types = ("e2e", "local")
+    run_types = ("e2e", "local", "e2e-recon")
+    out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
+    out_dir.mkdir(exist_ok=True)
+
+    api = wandb.Api()
+    project = "sparsify/gpt2"
+    runs = api.runs(project)
+
+    n_layers = 12
+    d_resid = 768
+
+    df = create_run_df(runs)
+
+    assert df["lr"].nunique() == 1 and df["lr"].unique()[0] == 5e-4
+    assert df["model_name"].nunique() == 1
+
+    # Ignore runs that have an L0 bigger than d_resid
+    df = df.loc[df["L0"] <= d_resid]
+    # Only use the e2e+recon run in layer 10 that has kl_coeff=0.75
+    df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.75))]
+    
+    # Only use n_samples=400k for remaining plots
+    df = df.loc[df["n_samples"] == 400_000]
+    # Only use seed=0 for remaining plots
+    df = df.loc[df["seed"] == 0]
+    # Use ratio=60 for remaining plots
+    df = df.loc[df["ratio"] == 60]
+    return df
+
+
+def subplots_frontier(layer_df: pd.DataFrame):
+    fig, axs = plt.subplots(1, 2, figsize=(8, 4), gridspec_kw={"wspace": 0.15, "top": 0.84})
+
+    plot_scatter_or_line(
+        layer_df,
+        x="L0",
+        y="CE_diff",
+        ylim=(-0.4, 0),
+        xlim=(550, 0),
+        title="",
+        xlabel="L0",
+        ylabel="CE Loss Difference",
+        run_types = ("e2e", "local", "e2e-recon"),
+        ax = axs[0]
+    )
+
+    plot_scatter_or_line(
+        layer_df,
+        x="alive_dict_elements",
+        y="CE_diff",
+        xlim=(0, 40_000),
+        ylim=(-0.4, 0),
+        title="",
+        ylabel="CE Loss Difference",
+        xlabel="Alive Directions",
+        # sparsity_label=False,
+        run_types = ("e2e", "local", "e2e-recon"),
+        ax = axs[1]
+    )
+
+    # legend only in bot right
+    axs[1].get_legend().remove()
+    axs[0].get_legend().set_loc("lower left")
+
+    # move axis to right of subplot
+    axs[1].yaxis.set_label_position("right")
+    axs[1].yaxis.set_ticks_position("right")
+    axs[1].yaxis.set_tick_params(color="white")
+
+    axs[1].set_xticks([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"])
+    # being fussy and removing negative signs as it's a bit cleaner
+    axs[0].set_yticks(np.arange(-0.4, 0.01, 0.1), ["0.4", "0.3", "0.2", "0.1", "0"])
+    axs[1].set_yticks(np.arange(-0.4, 0.01, 0.1), ["0.4", "0.3", "0.2", "0.1", "0"])
+
+    axs[0].text(s="Better →", x=1, y=1.02, ha="right", va="bottom", fontsize=10, transform=axs[0].transAxes)
+    axs[1].text(s="← Better", x=0, y=1.02, ha="left", va="bottom", fontsize=10, transform=axs[1].transAxes)
+    axs[0].text(s="Better →", x=1.075, y=1, ha="center", va="top", fontsize=10, transform=axs[0].transAxes, rotation=90)
+
+    plt.suptitle(f"Pareto Frontiers for Layer {layer_df.layer.iloc[0]}")
+
+
 if __name__ == "__main__":
     gpt2_plots()
     tinystories_1m_plots()
+
+    gpt2_df = get_df_gpt2()
+    for layer in gpt2_df.layer.unique():
+        subplots_frontier(gpt2_df.loc[gpt2_df["layer"] == layer])
