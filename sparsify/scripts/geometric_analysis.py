@@ -1,7 +1,10 @@
+import json
 from pathlib import Path
-from typing import Literal, NamedTuple
+from typing import Literal
 
+import matplotlib.patches as patches
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
 import torch
 import torch.nn.functional as F
@@ -10,12 +13,14 @@ import wandb
 import yaml
 from jaxtyping import Float
 from matplotlib import colors as mcolors
+from pydantic import BaseModel, ConfigDict
 from torch import Tensor
 from wandb.apis.public import Run
 
 from sparsify.loader import load_tlens_model
 from sparsify.models.transformers import SAE, SAETransformer
 from sparsify.scripts.train_tlens_saes.run_train_tlens_saes import Config
+from sparsify.settings import REPO_ROOT
 from sparsify.utils import filter_names
 
 CONSTANT_CE_RUNS = {
@@ -28,6 +33,169 @@ CONSTANT_L0_RUNS = {
     6: {"e2e": "tvj2owza", "local": "jup3glm9", "e2e-recon": "2lzle2f0"},
     10: {"e2e": "8crnit9h", "local": "5vmpdgaz", "e2e-recon": "c3nr4wce"},
 }
+
+
+class RegionCoords(BaseModel):
+    xmin: float
+    xmax: float
+    ymin: float
+    ymax: float
+
+
+class Region(BaseModel):
+    coords: RegionCoords
+    description: str
+
+
+class LayerRegions(BaseModel):
+    filename: str
+    regions: list[Region]
+
+
+# Regions of interest keyed by layer number
+REGIONS: dict[int, LayerRegions] = {
+    2: LayerRegions(
+        filename="umap_embeds_blocks.2.hook_resid_pre.pt",
+        regions=[
+            Region(
+                coords=RegionCoords(xmin=-2.7, xmax=-2.3, ymin=1.3, ymax=1.6),
+                description="Local outlier region on left",
+            ),
+            Region(
+                coords=RegionCoords(xmin=9.0, xmax=9.5, ymin=5.5, ymax=6.7),
+                description="Mostly-local line at top",
+            ),
+            Region(
+                coords=RegionCoords(xmin=10.5, xmax=11, ymin=3.6, ymax=3.9),
+                description="E2e cluster near top",
+            ),
+            Region(
+                coords=RegionCoords(xmin=7.5, xmax=8, ymin=0.3, ymax=0.6),
+                description="Local cluster on middle left",
+            ),
+            Region(
+                coords=RegionCoords(xmin=11, xmax=11.2, ymin=-1, ymax=-0.8),
+                description="Random cluster",
+            ),
+        ],
+    ),
+    6: LayerRegions(
+        filename="umap_embeds_blocks.6.hook_resid_pre.pt",
+        regions=[
+            # Region(coords=RegionCoords(xmax=3), description="E2e outlier area in bottom left"),
+            Region(
+                coords=RegionCoords(xmin=1.7, xmax=2.2, ymin=5, ymax=5.3),
+                description="E2e outlier area in bottom left",
+            ),
+            Region(
+                coords=RegionCoords(xmin=3.5, xmax=3.8, ymin=9, ymax=9.4),
+                description="Mostly-local outlier cluster on left",
+            ),
+            Region(
+                coords=RegionCoords(xmin=9.5, xmax=11, ymin=2.5, ymax=4),
+                description="Local line structure at bottom",
+            ),
+            Region(
+                coords=RegionCoords(xmin=10.7, xmax=11, ymin=5.5, ymax=6),
+                description="E2e region above Local line",
+            ),
+            Region(
+                coords=RegionCoords(xmin=10.5, xmax=11, ymin=8.5, ymax=9),
+                description="Random cluster in middle",
+            ),
+        ],
+    ),
+    10: LayerRegions(
+        filename="umap_embeds_blocks.10.hook_resid_pre.pt",
+        regions=[
+            Region(
+                coords=RegionCoords(xmin=2, xmax=2.2, ymin=2.3, ymax=2.5),
+                description="E2e cluster in middle",
+            ),
+            Region(
+                coords=RegionCoords(xmin=6.5, xmax=6.7, ymin=3.5, ymax=3.7),
+                description="Local cluster on right",
+            ),
+            Region(
+                coords=RegionCoords(xmin=0, xmax=0.5, ymin=8, ymax=8.3),
+                description="Mixed cluster in top left",
+            ),
+            Region(
+                coords=RegionCoords(xmin=1, xmax=1.2, ymin=5, ymax=5.2),
+                description="Random cluster in middle",
+            ),
+        ],
+    ),
+}
+
+
+class EmbedInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
+    alive_elements_per_dict: tuple[int, int]
+    embedding: Float[Tensor, "n_both_dicts 2"]
+    raw_sae_pos: str
+    raw_dict_sizes: tuple[int, int]
+    all_alive_indices: tuple[list[int], list[int]]
+
+
+class AliveElements(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
+    dict_1: Float[Tensor, "n_dense n_dict_elements1"]
+    dict_2: Float[Tensor, "n_dense n_dict_elements2"]
+    raw_sae_pos: str
+    raw_dict_sizes: tuple[int, int]
+    all_alive_indices: tuple[list[int], list[int]]
+
+
+def get_dict_indices_for_embedding_range(
+    embed_info: EmbedInfo,
+    xmin: float | None = None,
+    xmax: float | None = None,
+    ymin: float | None = None,
+    ymax: float | None = None,
+) -> tuple[list[int], list[int]]:
+    """Get the indices of the embeddings that fall within the specified region.
+
+    Args:
+        embed_info: Named tuple containing the embedding and other information.
+        xmin: The minimum x value to filter by.
+        xmax: The maximum x value to filter by.
+        ymin: The minimum y value to filter by.
+        ymax: The maximum y value to filter by.
+
+    Returns:
+        - Indices of the first dict whose values lie in the specified region.
+        - Indices of the second dict whose values lie in the specified region.
+    """
+
+    x = embed_info.embedding[:, 0]
+    y = embed_info.embedding[:, 1]
+
+    mask = torch.ones_like(x, dtype=torch.bool)
+    if xmin is not None:
+        mask &= x >= xmin
+    if xmax is not None:
+        mask &= x <= xmax
+    if ymin is not None:
+        mask &= y >= ymin
+    if ymax is not None:
+        mask &= y <= ymax
+
+    output = mask.nonzero().squeeze()
+
+    # Now get the indices of the first and second dict
+    first_alive_dict_indices = output[output < embed_info.alive_elements_per_dict[0]].tolist()
+    raw_second_alive_dict_indices = output[output >= embed_info.alive_elements_per_dict[0]].tolist()
+    # We have to subtract the number of elements in the first dict to get the indices in the second
+    second_alive_dict_indices = [
+        i - embed_info.alive_elements_per_dict[0] for i in raw_second_alive_dict_indices
+    ]
+
+    # Convert the alive dict indices to the original dict indices using all_alive_indices
+    first_dict_indices = [embed_info.all_alive_indices[0][i] for i in first_alive_dict_indices]
+    second_dict_indices = [embed_info.all_alive_indices[1][i] for i in second_alive_dict_indices]
+
+    return first_dict_indices, second_dict_indices
 
 
 def plot_max_cosine_similarity(
@@ -142,31 +310,13 @@ def plot_cosine_similarity_heatmap(
     plt.savefig(f"cosine_sim_heatmap_{sae_pos}_{labels[0]}_{labels[1]}.png")
 
 
-class AliveElements(NamedTuple):
-    dict_1: Float[Tensor, "n_dense n_dict_elements1"]
-    dict_2: Float[Tensor, "n_dense n_dict_elements2"]
-    raw_sae_pos: str
-    raw_dict_sizes: tuple[int, int]
-    all_alive_indices: tuple[list[int], list[int]]
-
-
-def plot_umap(
-    alive_elements: AliveElements,
-    labels: tuple[str, str],
-    outdir: Path,
-    seed: int = 1,
-):
-    """Plot the UMAP of the alive dictionary elements, colored by the labels.
-
-    Saves the plot and the embedding to the output directory.
+def compute_umap_embedding(alive_elements: AliveElements, seed: int = 1) -> EmbedInfo:
+    """Compute the UMAP embedding of the alive dictionary elements and save it to file.
 
     Args:
         alive_elements: The alive dictionary elements object for the two runs.
-        labels: The labels for each set of alive dictionary elements.
-        outdir: The output directory to save the plot and embedding.
         seed: The random seed to use for UMAP.
     """
-    outdir.mkdir(parents=True, exist_ok=True)
     alive_elements_per_dict: tuple[int, int] = (
         alive_elements.dict_1.shape[1],
         alive_elements.dict_2.shape[1],
@@ -176,6 +326,54 @@ def plot_umap(
     )
     reducer = umap.UMAP(random_state=seed)
     embedding = reducer.fit_transform(all_alive_elements)
+    embed_info = EmbedInfo(
+        alive_elements_per_dict=alive_elements_per_dict,
+        embedding=torch.tensor(embedding),
+        raw_sae_pos=alive_elements.raw_sae_pos,
+        raw_dict_sizes=alive_elements.raw_dict_sizes,
+        all_alive_indices=alive_elements.all_alive_indices,
+    )
+    return embed_info
+
+
+def plot_umap(
+    embed_info: EmbedInfo,
+    labels: tuple[str, str],
+    run_types: tuple[str, str],
+    out_file: Path,
+    lims: dict[str, tuple[float | None, float | None]] | None = None,
+    grid: bool = False,
+    regions: list[Region] | None = None,
+):
+    """Plot the UMAP embedding of the alive dictionary elements, colored by the labels.
+
+    Saves the plot to the output directory.
+
+    Args:
+        embedding_file: The file containing the UMAP embedding.
+        labels: The labels for each set of alive dictionary elements.
+        run_types: The types of runs being compared.
+        out_file: The output file to save the plot to.
+        lims: The x and y limits for the plot.
+        grid: Whether to plot a grid in the background.
+        regions: The regions to draw boxes around.
+    """
+    embedding = embed_info.embedding.detach().clone()
+    alive_elements_per_dict = embed_info.alive_elements_per_dict
+    raw_sae_pos = embed_info.raw_sae_pos
+
+    # Ignore all embeddings that are outside the limits
+    if lims is not None:
+        mask = torch.ones(embedding.shape[0], dtype=torch.bool)
+        if lims["x"][0] is not None:
+            mask &= embedding[:, 0] >= lims["x"][0]
+        if lims["x"][1] is not None:
+            mask &= embedding[:, 0] <= lims["x"][1]
+        if lims["y"][0] is not None:
+            mask &= embedding[:, 1] >= lims["y"][0]
+        if lims["y"][1] is not None:
+            mask &= embedding[:, 1] <= lims["y"][1]
+        embedding = embedding[mask]
 
     colors = sns.color_palette()[: len(labels)]
     plt.figure(figsize=(10, 10))
@@ -188,23 +386,43 @@ def plot_umap(
             color=colors[i],
             alpha=0.3,
         )
-    plt.legend()
-    label_elements = "_".join(
-        [f"{label}-{n}" for label, n in zip(labels, alive_elements_per_dict, strict=False)]
-    )
-    plt.title(
-        f"UMAP of alive dictionary elements in {alive_elements.raw_sae_pos}: {label_elements}"
-    )
-    plt.savefig(outdir / f"umap_{alive_elements.raw_sae_pos}.png")
-    embeds = {
-        "alive_elements_per_dict": alive_elements_per_dict,
-        "embedding": embedding,
-        "labels": labels,
-        "raw_sae_pos": alive_elements.raw_sae_pos,
-        "raw_dict_sizes": alive_elements.raw_dict_sizes,
-        "all_alive_indices": alive_elements.all_alive_indices,
-    }
-    torch.save(embeds, outdir / f"umap_embeds_{alive_elements.raw_sae_pos}.pt")
+    # Create legend elements with larger point size
+    legend_elements = [
+        plt.Line2D(
+            [0], [0], marker="o", color="w", label=label, markerfacecolor=color, markersize=10
+        )
+        for label, color in zip(labels, colors, strict=False)
+    ]
+    plt.legend(handles=legend_elements)
+    run_type_str = " and ".join(run_types)
+    plt.title(f"UMAP of alive dictionary elements in {raw_sae_pos}: {run_type_str}")
+
+    if grid:
+        # Put ticks every 0.5 points
+        plt.xticks(np.arange(int(plt.xlim()[0]), int(plt.xlim()[1]), 0.5))
+        plt.yticks(np.arange(int(plt.ylim()[0]), int(plt.ylim()[1]), 0.5))
+        # Make the tick text size smaller
+        plt.tick_params(axis="both", which="major", labelsize=8)
+        plt.grid()
+
+    # Draw square boxes around the identified regions
+    if regions is not None:
+        for region in regions:
+            xmin, xmax = region.coords.xmin, region.coords.xmax
+            ymin, ymax = region.coords.ymin, region.coords.ymax
+            # Don't plot the region if it's outside the limits
+            xlim_min, xlim_max = plt.xlim()
+            ylim_min, ylim_max = plt.ylim()
+            if xmin < xlim_min or xmax > xlim_max or ymin < ylim_min or ymax > ylim_max:
+                continue
+            width = xmax - xmin
+            height = ymax - ymin
+            rect = patches.Rectangle(
+                (xmin, ymin), width, height, linewidth=1, edgecolor="r", facecolor="none"
+            )
+            plt.gca().add_patch(rect)
+
+    plt.savefig(out_file)
 
 
 def get_alive_dict_elements(
@@ -303,9 +521,17 @@ if __name__ == "__main__":
     run_types = ("e2e", "local")
     # run_types = ("local", "e2e")
 
+    # Post-hoc ignore the outliers for gpt2 plots
+    lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
+        2: {"x": (-2.0, None), "y": (None, None)},
+        6: {"x": (4.0, None), "y": (None, None)},
+        10: {"x": (None, None), "y": (None, None)},
+    }
+
     api = wandb.Api()
     run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS  # type: ignore
     out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}_{'_'.join(run_types)}"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     for layer_num in [2, 6, 10]:
         run_ids = run_dict[layer_num]
@@ -347,14 +573,50 @@ if __name__ == "__main__":
 
         # out_dir = Path(__file__).parent / "out" / "e2e_random"
         ###
-        plot_umap(
-            alive_elements=alive_elements,
-            labels=(
-                f"{run_types[0]}-{run_ids[run_types[0]]}",
-                f"{run_types[1]}-{run_ids[run_types[1]]}",
-            ),
-            outdir=out_dir,
+
+        # embed_file = out_dir / f"umap_embeds_{alive_elements.raw_sae_pos}.pt"
+        embed_file = out_dir / REGIONS[layer_num].filename
+        # Can comment this slow part out if just iterating on plotting
+        # embed_info = compute_umap_embedding(alive_elements=alive_elements)
+        # torch.save(embed_info.model_dump(), embed_file)
+
+        embed_info = EmbedInfo(**torch.load(embed_file))
+        umap_file = embed_file.with_suffix(".png")
+        labels = (
+            f"{run_types[0]}-{run_ids[run_types[0]]}",
+            f"{run_types[1]}-{run_ids[run_types[1]]}",
         )
+        plot_umap(
+            embed_info,
+            labels=labels,
+            run_types=run_types,
+            out_file=umap_file,
+            lims=lims[layer_num],
+            grid=False,
+            regions=REGIONS[layer_num].regions,
+        )
+        for i, region in enumerate(REGIONS[layer_num].regions):
+            print(f"Region: {region.description} ({region.coords})")
+            e2e_indices, local_indices = get_dict_indices_for_embedding_range(
+                embed_info, **region.coords.model_dump()
+            )
+
+            region_filename = REGIONS[layer_num].filename
+            path_from_repo_root = (out_dir / region_filename).relative_to(REPO_ROOT)
+            with open(out_dir / f"layer-{layer_num}_region-{i}.json", "w") as f:
+                json.dump(
+                    {
+                        "embedding_file": str(path_from_repo_root),
+                        "run_labels": labels,
+                        "description": region.description,
+                        "coords": region.coords.model_dump(),
+                        "e2e": e2e_indices,
+                        "local": local_indices,
+                    },
+                    f,
+                    indent=2,
+                )
+
         # cosine_sim = get_cosine_similarity(dict_elements_1, dict_elements_2)
         # ### make the diagonal very negative so that it doesn't show up when maxing for getting
         # ### Pairwise cosine similarity
