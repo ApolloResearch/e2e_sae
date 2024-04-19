@@ -456,7 +456,7 @@ def train(
         loss.backward()
         if config.max_grad_norm is not None:
             grad_norm = torch.nn.utils.clip_grad_norm_(
-                model.parameters(), config.max_grad_norm
+                model.saes.parameters(), config.max_grad_norm
             ).item()
 
         if is_grad_step:
