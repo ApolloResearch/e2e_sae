@@ -25,19 +25,42 @@ def _get_run_type_using_names(run_name: str) -> str:
 
 
 def _extract_per_layer_metrics(
-    run: Run, metric_prefix: str, layer_prefix: str, sae_layer: int, sae_pos: str
+    run: Run, metric_key: str, metric_name_prefix: str, sae_layer: int, sae_pos: str
 ) -> dict[str, float]:
-    """Extract the per layer metrics from the run summary metrics."""
-    layers = {
-        f"{layer_prefix}-{key.split('blocks.')[1].split('.')[0]}": value
-        for key, value in run.summary_metrics.items()
-        if key.startswith(f"{metric_prefix}/blocks")
-    }
+    """Extract the per layer metrics from the run summary metrics.
+
+    Note that the layer indices correspond to those collected before that layer. E.g. those from
+    hook_resid_pre rather than hook_resid_post.
+
+    Args:
+        run: The run to extract the metrics from.
+        metric_key: The key to use to extract the metrics from the run summary.
+        metric_name_prefix: The prefix to use for the metric names in the returned dictionary.
+        sae_layer: The layer number of the SAE.
+        sae_pos: The position of the SAE.
+    """
+
+    results: dict[str, float] = {}
+    for key, value in run.summary_metrics.items():
+        if not key.startswith(f"{metric_key}/blocks"):
+            # We don't care about the other metrics
+            continue
+        layer_num_str, hook_pos = key.split(f"{metric_key}/blocks.")[1].split(".")
+        if "pre" in hook_pos:
+            layer_num = int(layer_num_str)
+        elif "post" in hook_pos:
+            layer_num = int(layer_num_str) + 1
+        else:
+            raise ValueError(f"Unknown hook position: {hook_pos}")
+        results[f"{metric_name_prefix}-{layer_num}"] = value
+
     # Overwrite the SAE layer with the out_to_in for that layer. This is so that we get the
     # reconstruction/variance at the output of the SAE rather than the input
-    out_to_in_prefix = metric_prefix.replace("in_to_orig", "out_to_in")
-    layers[f"{layer_prefix}-{sae_layer}"] = run.summary_metrics[f"{out_to_in_prefix}/{sae_pos}"]
-    return layers
+    out_to_in_prefix = metric_key.replace("in_to_orig", "out_to_in")
+    results[f"{metric_name_prefix}-{sae_layer}"] = run.summary_metrics[
+        f"{out_to_in_prefix}/{sae_pos}"
+    ]
+    return results
 
 
 def create_run_df(
@@ -78,24 +101,24 @@ def create_run_df(
             # The explained variance at each layer
             explained_var_layers = _extract_per_layer_metrics(
                 run=run,
-                metric_prefix="loss/eval/in_to_orig/explained_variance",
-                layer_prefix="explained_var_layer",
+                metric_key="loss/eval/in_to_orig/explained_variance",
+                metric_name_prefix="explained_var_layer",
                 sae_layer=sae_layer,
                 sae_pos=sae_pos,
             )
 
             explained_var_ln_layers = _extract_per_layer_metrics(
                 run=run,
-                metric_prefix="loss/eval/in_to_orig/explained_variance_ln",
-                layer_prefix="explained_var_ln_layer",
+                metric_key="loss/eval/in_to_orig/explained_variance_ln",
+                metric_name_prefix="explained_var_ln_layer",
                 sae_layer=sae_layer,
                 sae_pos=sae_pos,
             )
 
             recon_loss_layers = _extract_per_layer_metrics(
                 run=run,
-                metric_prefix="loss/eval/in_to_orig",
-                layer_prefix="recon_loss_layer",
+                metric_key="loss/eval/in_to_orig",
+                metric_name_prefix="recon_loss_layer",
                 sae_layer=sae_layer,
                 sae_pos=sae_pos,
             )

@@ -199,7 +199,7 @@ def plot_per_layer_metric(
     color_map = {"e2e": color_e2e, "local": color_lws, "e2e-recon": color_e2e_recon}
 
     plt.figure(figsize=(10, 6))
-    xs = np.arange(sae_layer, n_layers)
+    xs = np.arange(sae_layer, n_layers + 1)
 
     def plot_metric(runs: pd.DataFrame, marker: str):
         for _, row in runs.iterrows():
@@ -215,7 +215,7 @@ def plot_per_layer_metric(
                     for col, prec in legend_label_cols_and_precision
                 ]
                 legend_label += f" ({', '.join(metric_strings)})"
-            ys = [row[f"{metric}_layer-{i}"] for i in range(sae_layer, n_layers)]
+            ys = [row[f"{metric}_layer-{i}"] for i in range(sae_layer, n_layers + 1)]
             plt.plot(
                 xs,
                 ys,
@@ -703,11 +703,14 @@ def gpt2_plots():
                 & (layer_df["run_type"] == "e2e-recon")
             )
         ]
+        # We didn't track metrics for hook_resid_post in final layer in e2e+recon, though perhaps
+        # we should have (including using the final layer's hook_resid_post in the loss)
+        final_layer = n_layers - 1
         plot_per_layer_metric(
             layer_constant_ce_df,
             sae_layer=layer,
             metric="explained_var_ln",
-            n_layers=n_layers,
+            n_layers=final_layer,
             out_file=out_dir / f"explained_var_ln_per_layer_sae_layer_{layer}.png",
             ylim=(None, 1),
             legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
@@ -717,7 +720,7 @@ def gpt2_plots():
             layer_constant_ce_df,
             sae_layer=layer,
             metric="recon_loss",
-            n_layers=n_layers,
+            n_layers=final_layer,
             out_file=out_dir / f"recon_loss_per_layer_sae_layer_{layer}.png",
             legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
             run_types=run_types,
