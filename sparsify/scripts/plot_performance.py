@@ -12,6 +12,7 @@ from matplotlib import colors as mcolors
 from matplotlib.cm import ScalarMappable
 
 from sparsify.analysis import create_run_df
+from sparsify.log import logger
 
 RUN_TYPE_MAP = {
     "e2e": ("End-to-end", "o"),
@@ -599,7 +600,8 @@ def gpt2_plots():
     n_layers = 12
 
     out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
-    out_dir.mkdir(exist_ok=True)
+    out_dir.mkdir(exist_ok=True, parents=True)
+    logger.info(f"Saving plots to {out_dir}")
 
     df = get_df_gpt2()
 
@@ -772,6 +774,7 @@ def tinystories_1m_plots():
     run_types = ("e2e", "local", "e2e-recon")
     out_dir = Path(__file__).resolve().parent / "out" / "tinystories-1m" / "_".join(run_types)
     out_dir.mkdir(exist_ok=True, parents=True)
+    logger.info(f"Saving plots to {out_dir}")
 
     df = get_tinystories_1m_df()
 
@@ -779,6 +782,8 @@ def tinystories_1m_plots():
     loss_increase_lims = {0: (0.4, 0), 3: (0.6, 0), 6: (0.6, 0)}
     # xlims for plots with L0 on the x axis
     l0_diff_xlims = {0: (40, 0), 3: (64, 0), 6: (64, 0)}
+    # xlims for plots with alive_dict_elements on the x axis
+    alive_dict_elements_xlims = {0: (None, None), 3: (1250, None), 6: (1000, None)}
 
     unique_layers = list(df["layer"].unique())
     for layer in unique_layers:
@@ -796,6 +801,7 @@ def tinystories_1m_plots():
             out_file=out_dir / f"l0_alive_dict_elements_vs_ce_loss_layer_{layer}.png",
             run_types=run_types,
             xlim1=l0_diff_xlims[layer],
+            xlim2=alive_dict_elements_xlims[layer],
             ylim=loss_increase_lims[layer],
         )
 
