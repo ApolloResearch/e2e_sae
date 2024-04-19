@@ -454,12 +454,12 @@ def train(
 
         loss = loss / n_gradient_accumulation_steps
         loss.backward()
-        if config.max_grad_norm is not None:
-            grad_norm = torch.nn.utils.clip_grad_norm_(
-                model.saes.parameters(), config.max_grad_norm
-            ).item()
 
         if is_grad_step:
+            if config.max_grad_norm is not None:
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    model.saes.parameters(), config.max_grad_norm
+                ).item()
             optimizer.step()
             optimizer.zero_grad()
             grad_updates += 1
