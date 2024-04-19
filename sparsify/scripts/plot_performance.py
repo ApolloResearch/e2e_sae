@@ -507,7 +507,8 @@ def plot_two_axes_line(
         xticks2: The x-ticks for the second x-axis.
         ylim: The y-axis limits.
     """
-    fig, axs = plt.subplots(1, 2, figsize=(8, 4), gridspec_kw={"wspace": 0.15, "top": 0.84})
+    sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
+    fig, axs = plt.subplots(1, 2, figsize=(8, 6), gridspec_kw={"wspace": 0.15, "top": 0.84})
 
     for run_type in run_types:
         if run_type not in RUN_TYPE_MAP:
