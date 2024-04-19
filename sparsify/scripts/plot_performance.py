@@ -1,4 +1,4 @@
-#%%
+# %%
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
@@ -69,6 +69,8 @@ def plot_scatter_or_line(
     else:
         fig = ax.get_figure()
 
+    assert ax is not None
+
     marker_size = 95 if len(run_types) < 3 else 60
 
     cmap = "plasma_r"
@@ -121,8 +123,8 @@ def plot_scatter_or_line(
                     color="black",
                     alpha=0.8,
                 )
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
+    ax.set_xlim(xmin=xlim[0], xmax=xlim[1])
+    ax.set_ylim(ymin=ylim[0], ymax=ylim[1])
     ax.set_title(title)
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
@@ -132,6 +134,7 @@ def plot_scatter_or_line(
     else:
         mappable = ScalarMappable(cmap=cmap, norm=norm)
         mappable.set_array([])
+        assert fig is not None
         cbar = fig.colorbar(mappable, ax=ax, label=z)
         assert vmin is not None
         assert vmax is not None
@@ -732,9 +735,10 @@ def tinystories_1m_plots():
         )
 
 
-#%%
+# %%
 
-def get_df_gpt2():
+
+def get_df_gpt2() -> pd.DataFrame:
     # Plot gpt2 performance
     # run_types = ("e2e", "local")
     run_types = ("e2e", "local", "e2e-recon")
@@ -757,7 +761,7 @@ def get_df_gpt2():
     df = df.loc[df["L0"] <= d_resid]
     # Only use the e2e+recon run in layer 10 that has kl_coeff=0.75
     df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.75))]
-    
+
     # Only use n_samples=400k for remaining plots
     df = df.loc[df["n_samples"] == 400_000]
     # Only use seed=0 for remaining plots
@@ -779,8 +783,8 @@ def subplots_frontier(layer_df: pd.DataFrame):
         title="",
         xlabel="L0",
         ylabel="CE Loss Difference",
-        run_types = ("e2e", "local", "e2e-recon"),
-        ax = axs[0]
+        run_types=("e2e", "local", "e2e-recon"),
+        ax=axs[0],
     )
 
     plot_scatter_or_line(
@@ -793,8 +797,8 @@ def subplots_frontier(layer_df: pd.DataFrame):
         ylabel="CE Loss Difference",
         xlabel="Alive Directions",
         # sparsity_label=False,
-        run_types = ("e2e", "local", "e2e-recon"),
-        ax = axs[1]
+        run_types=("e2e", "local", "e2e-recon"),
+        ax=axs[1],
     )
 
     # legend only in bot right
@@ -811,9 +815,22 @@ def subplots_frontier(layer_df: pd.DataFrame):
     axs[0].set_yticks(np.arange(-0.4, 0.01, 0.1), ["0.4", "0.3", "0.2", "0.1", "0"])
     axs[1].set_yticks(np.arange(-0.4, 0.01, 0.1), ["0.4", "0.3", "0.2", "0.1", "0"])
 
-    axs[0].text(s="Better →", x=1, y=1.02, ha="right", va="bottom", fontsize=10, transform=axs[0].transAxes)
-    axs[1].text(s="← Better", x=0, y=1.02, ha="left", va="bottom", fontsize=10, transform=axs[1].transAxes)
-    axs[0].text(s="Better →", x=1.075, y=1, ha="center", va="top", fontsize=10, transform=axs[0].transAxes, rotation=90)
+    axs[0].text(
+        s="Better →", x=1, y=1.02, ha="right", va="bottom", fontsize=10, transform=axs[0].transAxes
+    )
+    axs[1].text(
+        s="← Better", x=0, y=1.02, ha="left", va="bottom", fontsize=10, transform=axs[1].transAxes
+    )
+    axs[0].text(
+        s="Better →",
+        x=1.075,
+        y=1,
+        ha="center",
+        va="top",
+        fontsize=10,
+        transform=axs[0].transAxes,
+        rotation=90,
+    )
 
     plt.suptitle(f"Pareto Frontiers for Layer {layer_df.layer.iloc[0]}")
 
