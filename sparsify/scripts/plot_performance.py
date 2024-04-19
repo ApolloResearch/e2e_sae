@@ -1,4 +1,3 @@
-# %%
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
@@ -160,10 +159,9 @@ def plot_scatter_or_line(
             )
         ax.legend(handles=legend_handles, title="Run Type", loc="best")
 
-    # plt.tight_layout()
     if out_file is not None:
         plt.savefig(out_file)
-    # plt.close(fig)
+    plt.close(fig)
 
 
 def plot_per_layer_metric(
@@ -473,18 +471,114 @@ def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[s
             f.write(",".join(ids))
 
 
-def gpt2_plots():
-    # Plot gpt2 performance
-    # run_types = ("e2e", "local")
-    run_types = ("e2e", "local", "e2e-recon")
-    out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
-    out_dir.mkdir(exist_ok=True)
+def plot_two_axes_line(
+    df: pd.DataFrame,
+    x1: str,
+    x2: str,
+    y: str,
+    title: str,
+    xlabel1: str,
+    xlabel2: str,
+    ylabel: str,
+    out_file: str | Path | None = None,
+    run_types: Sequence[str] = ("e2e", "local", "e2e-recon"),
+    xlim1: tuple[float | None, float | None] = (None, None),
+    xlim2: tuple[float | None, float | None] = (None, None),
+    xticks1: tuple[list[float], list[str]] | None = None,
+    xticks2: tuple[list[float], list[str]] | None = None,
+    ylim: tuple[float | None, float | None] = (None, None),
+) -> None:
+    """Line plot with two x-axes and one y-axis between them.
 
+    Args:
+        df: DataFrame containing the data.
+        x1: The variable to plot on the first x-axis.
+        x2: The variable to plot on the second x-axis.
+        y: The variable to plot on the y-axis.
+        title: The title of the plot.
+        xlabel1: The label for the first x-axis.
+        xlabel2: The label for the second x-axis.
+        ylabel: The label for the y-axis.
+        out_file: The filename which the plot will be saved as.
+        run_types: The run types to include in the plot.
+        xlim1: The x-axis limits for the first x-axis.
+        xlim2: The x-axis limits for the second x-axis.
+        xticks1: The x-ticks for the first x-axis.
+        xticks2: The x-ticks for the second x-axis.
+        ylim: The y-axis limits.
+    """
+    fig, axs = plt.subplots(1, 2, figsize=(8, 4), gridspec_kw={"wspace": 0.15, "top": 0.84})
+
+    for run_type in run_types:
+        if run_type not in RUN_TYPE_MAP:
+            raise ValueError(f"Invalid run type: {run_type}")
+        label, marker = RUN_TYPE_MAP[run_type]
+        data = df.loc[df["run_type"] == run_type]
+        if not data.empty:
+            # draw the lines between points based on the y value
+            data = data.sort_values(y)
+            for i, (ax, x) in enumerate(zip(axs, [x1, x2], strict=True)):
+                ax.plot(
+                    data[x],
+                    data[y],
+                    marker=marker,
+                    linewidth=1.1,
+                    alpha=0.8,
+                    label=label if i == 0 else None,
+                )
+
+    axs[0].legend(loc="best")
+
+    axs[0].set_xlim(xmin=xlim1[0], xmax=xlim1[1])
+    axs[1].set_xlim(xmin=xlim2[0], xmax=xlim2[1])
+    axs[0].set_ylim(ymin=ylim[0], ymax=ylim[1])
+    axs[1].set_ylim(ymin=ylim[0], ymax=ylim[1])
+
+    axs[0].set_xlabel(xlabel1)
+    axs[1].set_xlabel(xlabel2)
+    axs[0].set_ylabel(ylabel)
+    axs[1].set_ylabel(ylabel)
+
+    # move y-axis to right of second subplot
+    axs[1].yaxis.set_label_position("right")
+    axs[1].yaxis.set_ticks_position("right")
+    axs[1].yaxis.set_tick_params(color="white")
+
+    if xticks1 is not None:
+        axs[0].set_xticks(xticks1[0], xticks1[1])
+    if xticks2 is not None:
+        axs[1].set_xticks(xticks2[0], xticks2[1])
+
+    # add "Better" text annotations
+    axs[0].text(
+        s="Better →", x=1, y=1.02, ha="right", va="bottom", fontsize=10, transform=axs[0].transAxes
+    )
+    axs[1].text(
+        s="← Better", x=0, y=1.02, ha="left", va="bottom", fontsize=10, transform=axs[1].transAxes
+    )
+    axs[0].text(
+        s="Better →",
+        x=1.075,
+        y=1,
+        ha="center",
+        va="top",
+        fontsize=10,
+        transform=axs[0].transAxes,
+        rotation=90,
+    )
+
+    fig.suptitle(title)
+
+    if out_file is not None:
+        plt.savefig(out_file)
+    plt.close(fig)
+
+
+def get_df_gpt2() -> pd.DataFrame:
     api = wandb.Api()
     project = "sparsify/gpt2"
     runs = api.runs(project)
 
-    n_layers = 12
     d_resid = 768
 
     df = create_run_df(runs)
@@ -496,6 +590,17 @@ def gpt2_plots():
     df = df.loc[df["L0"] <= d_resid]
     # Only use the e2e+recon run in layer 10 that has kl_coeff=0.75
     df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.75))]
+    return df
+
+
+def gpt2_plots():
+    run_types = ("e2e", "local", "e2e-recon")
+    n_layers = 12
+
+    out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
+    out_dir.mkdir(exist_ok=True)
+
+    df = get_df_gpt2()
 
     # Plots comparing n_samples should all have ratio=60
     n_samples_df = df.loc[(df["ratio"] == 60) & (df["seed"] == 0)]
@@ -503,82 +608,53 @@ def gpt2_plots():
         n_samples_df, out_dir=Path(__file__).resolve().parent / "out", run_types=run_types
     )
 
-    # Only use n_samples=400k for remaining plots
-    df = df.loc[df["n_samples"] == 400_000]
+    seed_df = df.loc[df["n_samples"] == 400_000]
+    plot_seed_comparison(
+        seed_df, out_dir=Path(__file__).resolve().parent / "out", run_types=run_types
+    )
 
-    plot_seed_comparison(df, out_dir=Path(__file__).resolve().parent / "out", run_types=run_types)
+    ratio_df = df.loc[(df["seed"] == 0) & (df["n_samples"] == 400_000)]
+    plot_ratio_comparison(
+        ratio_df, out_dir=Path(__file__).resolve().parent / "out", run_types=run_types
+    )
 
-    # Only use seed=0 for remaining plots
-    df = df.loc[df["seed"] == 0]
-
-    plot_ratio_comparison(df, out_dir=Path(__file__).resolve().parent / "out", run_types=run_types)
-
-    # Use ratio=60 for remaining plots
-    df = df.loc[df["ratio"] == 60]
-    # print(df)
+    performance_df = df.loc[(df["ratio"] == 60) & (df["seed"] == 0) & (df["n_samples"] == 400_000)]
 
     # ylims for plots with ce_diff on the y axis
-    ce_diff_ylims = {
-        2: (-0.2, 0),
-        6: (-0.4, 0),
-        10: (-0.4, 0),
-    }
-    l0_diff_xlims = {
-        2: (0, 200),
-        6: (0, 600),
-        10: (0, 600),
-    }
-    unique_layers = list(df["layer"].unique())
+    loss_increase_lims = {2: (0.2, 0), 6: (0.4, 0), 10: (0.4, 0)}
+    # xlims for plots with L0 on the x axis
+    l0_diff_xlims = {2: (200, 0), 6: (600, 0), 10: (600, 0)}
+    unique_layers = list(performance_df["layer"].unique())
     for layer in unique_layers:
-        layer_df = df.loc[df["layer"] == layer]
+        layer_df = performance_df.loc[performance_df["layer"] == layer]
 
-        plot_scatter_or_line(
-            layer_df,
-            x="L0",
-            y="CE_diff",
-            xlim=l0_diff_xlims[layer],
-            ylim=ce_diff_ylims[layer],
-            title=f"Layer {layer}: L0 vs CE Loss Difference",
-            xlabel="L0",
-            ylabel="CE loss difference\n(original model - model with sae)",
-            out_file=out_dir / f"l0_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=False,
+        # For layer 2 we filter out the runs with L0 > 200. Otherwise we end up with points
+        # in one subplot but not the other
+        two_axes_df = layer_df.loc[layer_df["L0"] <= 200] if layer == 2 else layer_df
+        # Plot two axes line plots with L0 and alive_dict_elements on the x-axis
+        plot_two_axes_line(
+            two_axes_df,
+            x1="L0",
+            x2="alive_dict_elements",
+            y="CELossIncrease",
+            title=f"Layer {layer}: L0 and alive_dict_elements vs CE Loss Increase",
+            xlabel1="L0",
+            xlabel2="Alive Dictionary Elements",
+            ylabel="CE Loss Increase",
+            out_file=out_dir / f"l0_alive_dict_elements_vs_ce_loss_layer_{layer}.png",
             run_types=run_types,
-        )
-        plot_scatter_or_line(
-            layer_df,
-            x="alive_dict_elements",
-            y="CE_diff",
-            z="L0",
-            ylim=ce_diff_ylims[layer],
-            title=f"Layer {layer}: Alive Dictionary Elements vs CE Loss Difference",
-            xlabel="Alive Dictionary Elements",
-            ylabel="CE loss difference\n(original model - model with sae)",
-            out_file=out_dir / f"alive_elements_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=False,
-            run_types=run_types,
-        )
-        plot_scatter_or_line(
-            layer_df,
-            x="L0",
-            y="alive_dict_elements",
-            title=f"Layer {layer}: L0 vs Alive Dictionary Elements",
-            xlabel="L0",
-            ylabel="Alive Dictionary Elements",
-            out_file=out_dir / f"l0_vs_alive_dict_elements_layer_{layer}.png",
-            xlim=l0_diff_xlims[layer],
-            sparsity_label=False,
-            run_types=run_types,
-            plot_type="scatter",
+            xlim1=l0_diff_xlims[layer],
+            xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+            ylim=loss_increase_lims[layer],
         )
         plot_scatter_or_line(
             layer_df,
             x="out_to_in",
-            y="CE_diff",
-            ylim=ce_diff_ylims[layer],
-            title=f"Layer {layer}: Out-to-In Loss vs CE Loss Difference",
+            y="CELossIncrease",
+            ylim=loss_increase_lims[layer],
+            title=f"Layer {layer}: Out-to-In Loss vs CE Loss Increase",
             xlabel="Out-to-In Loss",
-            ylabel="CE loss difference\n(original model - model with sae)",
+            ylabel="CE loss increase\n(original model - model with sae)",
             out_file=out_dir / f"out_to_in_vs_ce_loss_layer_{layer}.png",
             sparsity_label=False,
             run_types=run_types,
@@ -587,11 +663,11 @@ def gpt2_plots():
         plot_scatter_or_line(
             layer_df,
             x="sum_recon_loss",
-            y="CE_diff",
-            ylim=ce_diff_ylims[layer],
-            title=f"Layer {layer}: Future Reconstruction Loss vs CE Loss Difference",
+            y="CELossIncrease",
+            ylim=loss_increase_lims[layer],
+            title=f"Layer {layer}: Future Reconstruction Loss vs CE Loss Increase",
             xlabel="Summed Future Reconstruction Loss",
-            ylabel="CE loss difference\n(original model - model with sae)",
+            ylabel="CE loss increase\n(original model - model with sae)",
             out_file=out_dir / f"future_recon_vs_ce_loss_layer_{layer}.png",
             sparsity_label=False,
             run_types=run_types,
@@ -600,12 +676,12 @@ def gpt2_plots():
         plot_scatter_or_line(
             layer_df,
             x="explained_var_ln",
-            y="CE_diff",
+            y="CELossIncrease",
             z="L0",
-            ylim=ce_diff_ylims[layer],
-            title=f"Layer {layer}: Explained Variance LN vs CE Loss Difference",
+            ylim=loss_increase_lims[layer],
+            title=f"Layer {layer}: Explained Variance LN vs CE Loss Increase",
             xlabel="Explained Variance LN",
-            ylabel="CE loss difference\n(original model - model with sae)",
+            ylabel="CE loss increase\n(original model - model with sae)",
             out_file=out_dir / f"explained_var_ln_vs_ce_loss_layer_{layer}.png",
             sparsity_label=False,
             run_types=run_types,
@@ -647,12 +723,7 @@ def gpt2_plots():
         )
 
 
-def tinystories_1m_plots():
-    # Plot tinystories_1m performance
-    run_types = ("e2e", "local", "e2e-recon")
-    out_dir = Path(__file__).resolve().parent / "out" / "tinystories-1m" / "_".join(run_types)
-    out_dir.mkdir(exist_ok=True, parents=True)
-
+def get_tinystories_1m_df() -> pd.DataFrame:
     api = wandb.Api()
     project = "sparsify/tinystories-1m-2"
     runs = api.runs(project)
@@ -689,156 +760,42 @@ def tinystories_1m_plots():
     # Ignore runs that have an L0 bigger than d_resid
     df = df.loc[df["L0"] <= d_resid]
 
-    # print(df)
+    return df
+
+
+def tinystories_1m_plots():
+    # Plot tinystories_1m performance
+    run_types = ("e2e", "local", "e2e-recon")
+    out_dir = Path(__file__).resolve().parent / "out" / "tinystories-1m" / "_".join(run_types)
+    out_dir.mkdir(exist_ok=True, parents=True)
+
+    df = get_tinystories_1m_df()
 
     # ylims for plots with ce_diff on the y axis
-    ce_diff_ylims = {
-        0: (-0.4, 0),
-        3: (-0.6, 0),
-        6: (-0.6, 0),
-    }
-    l0_diff_xlims = {
-        0: (0, 40),
-        3: (0, 64),
-        6: (0, 64),
-    }
+    loss_increase_lims = {0: (0.4, 0), 3: (0.6, 0), 6: (0.6, 0)}
+    # xlims for plots with L0 on the x axis
+    l0_diff_xlims = {0: (40, 0), 3: (64, 0), 6: (64, 0)}
 
     unique_layers = list(df["layer"].unique())
     for layer in unique_layers:
         layer_df = df.loc[df["layer"] == layer]
 
-        plot_scatter_or_line(
+        plot_two_axes_line(
             layer_df,
-            x="L0",
-            y="CE_diff",
-            xlim=l0_diff_xlims[layer],
-            ylim=ce_diff_ylims[layer],
-            title=f"Layer {layer}: L0 vs CE Loss Difference",
-            xlabel="L0",
-            ylabel="CE loss difference\n(original model - model with sae)",
-            out_file=out_dir / f"l0_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=False,
+            x1="L0",
+            x2="alive_dict_elements",
+            y="CELossIncrease",
+            title=f"Layer {layer}: L0 and alive_dict_elements vs CE Loss Increase",
+            xlabel1="L0",
+            xlabel2="Alive Dictionary Elements",
+            ylabel="CE Loss Increase",
+            out_file=out_dir / f"l0_alive_dict_elements_vs_ce_loss_layer_{layer}.png",
             run_types=run_types,
+            xlim1=l0_diff_xlims[layer],
+            ylim=loss_increase_lims[layer],
         )
-        plot_scatter_or_line(
-            layer_df,
-            x="alive_dict_elements",
-            y="CE_diff",
-            z="L0",
-            ylim=ce_diff_ylims[layer],
-            title=f"Layer {layer}: Alive Dictionary Elements vs CE Loss Difference",
-            xlabel="Alive Dictionary Elements",
-            ylabel="CE loss difference\n(original model - model with sae)",
-            out_file=out_dir / f"alive_elements_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=False,
-            run_types=run_types,
-        )
-
-
-# %%
-
-
-def get_df_gpt2() -> pd.DataFrame:
-    # Plot gpt2 performance
-    # run_types = ("e2e", "local")
-    run_types = ("e2e", "local", "e2e-recon")
-    out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
-    out_dir.mkdir(exist_ok=True)
-
-    api = wandb.Api()
-    project = "sparsify/gpt2"
-    runs = api.runs(project)
-
-    n_layers = 12
-    d_resid = 768
-
-    df = create_run_df(runs)
-
-    assert df["lr"].nunique() == 1 and df["lr"].unique()[0] == 5e-4
-    assert df["model_name"].nunique() == 1
-
-    # Ignore runs that have an L0 bigger than d_resid
-    df = df.loc[df["L0"] <= d_resid]
-    # Only use the e2e+recon run in layer 10 that has kl_coeff=0.75
-    df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.75))]
-
-    # Only use n_samples=400k for remaining plots
-    df = df.loc[df["n_samples"] == 400_000]
-    # Only use seed=0 for remaining plots
-    df = df.loc[df["seed"] == 0]
-    # Use ratio=60 for remaining plots
-    df = df.loc[df["ratio"] == 60]
-    return df
-
-
-def subplots_frontier(layer_df: pd.DataFrame):
-    fig, axs = plt.subplots(1, 2, figsize=(8, 4), gridspec_kw={"wspace": 0.15, "top": 0.84})
-
-    plot_scatter_or_line(
-        layer_df,
-        x="L0",
-        y="CE_diff",
-        ylim=(-0.4, 0),
-        xlim=(550, 0),
-        title="",
-        xlabel="L0",
-        ylabel="CE Loss Difference",
-        run_types=("e2e", "local", "e2e-recon"),
-        ax=axs[0],
-    )
-
-    plot_scatter_or_line(
-        layer_df,
-        x="alive_dict_elements",
-        y="CE_diff",
-        xlim=(0, 40_000),
-        ylim=(-0.4, 0),
-        title="",
-        ylabel="CE Loss Difference",
-        xlabel="Alive Directions",
-        # sparsity_label=False,
-        run_types=("e2e", "local", "e2e-recon"),
-        ax=axs[1],
-    )
-
-    # legend only in bot right
-    axs[1].get_legend().remove()
-    axs[0].get_legend().set_loc("lower left")
-
-    # move axis to right of subplot
-    axs[1].yaxis.set_label_position("right")
-    axs[1].yaxis.set_ticks_position("right")
-    axs[1].yaxis.set_tick_params(color="white")
-
-    axs[1].set_xticks([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"])
-    # being fussy and removing negative signs as it's a bit cleaner
-    axs[0].set_yticks(np.arange(-0.4, 0.01, 0.1), ["0.4", "0.3", "0.2", "0.1", "0"])
-    axs[1].set_yticks(np.arange(-0.4, 0.01, 0.1), ["0.4", "0.3", "0.2", "0.1", "0"])
-
-    axs[0].text(
-        s="Better →", x=1, y=1.02, ha="right", va="bottom", fontsize=10, transform=axs[0].transAxes
-    )
-    axs[1].text(
-        s="← Better", x=0, y=1.02, ha="left", va="bottom", fontsize=10, transform=axs[1].transAxes
-    )
-    axs[0].text(
-        s="Better →",
-        x=1.075,
-        y=1,
-        ha="center",
-        va="top",
-        fontsize=10,
-        transform=axs[0].transAxes,
-        rotation=90,
-    )
-
-    plt.suptitle(f"Pareto Frontiers for Layer {layer_df.layer.iloc[0]}")
 
 
 if __name__ == "__main__":
     gpt2_plots()
     tinystories_1m_plots()
-
-    gpt2_df = get_df_gpt2()
-    for layer in gpt2_df.layer.unique():
-        subplots_frontier(gpt2_df.loc[gpt2_df["layer"] == layer])

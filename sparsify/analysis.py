@@ -143,6 +143,7 @@ def create_run_df(
                 "explained_var": explained_var,
                 "explained_var_ln": explained_var_ln,
                 "CE_diff": run.summary_metrics["performance/eval/difference_ce_loss"],
+                "CELossIncrease": -run.summary_metrics["performance/eval/difference_ce_loss"],
                 "alive_dict_elements": run.summary_metrics[
                     f"sparsity/alive_dict_elements/{sae_pos}"
                 ],
