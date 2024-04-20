@@ -56,8 +56,8 @@
             "name": "train mnist sae",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/sparsify/scripts/mlp_saes/train_mnist_saes.py",
-            "args": "${workspaceFolder}/sparsify/scripts/mlp_saes/train_mnist_mod.yaml",
+            "program": "${workspaceFolder}/sparsify/scripts/train_mlp_saes/train_mnist_saes.py",
+            "args": "${workspaceFolder}/sparsify/scripts/train_mlp_saes/mnist_saes.yaml",
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {
