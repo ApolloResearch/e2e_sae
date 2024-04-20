@@ -20,11 +20,12 @@ RUN_TYPE_MAP = {
     "local": ("Local", "^"),
 }
 
-# These runs (keyed by layer number, value is the sparsity coeff), have similar CE loss diff
+# Runs with constant CE loss increase for each layer. Values represent wandb run IDs.
 CONSTANT_CE_RUNS = {
-    2: {"e2e": 0.5, "local": 0.8, "e2e-recon": 10},
-    6: {"e2e": 3, "local": 4, "e2e-recon": 50},
-    10: {"e2e": 1.5, "local": 6, "e2e-recon": 25},
+    2: {"e2e": "ovhfts9n", "local": "ue3lz0n7", "e2e-recon": "visi12en"},
+    6: {"e2e": "zgdpkafo", "local": "1jy3m5j0", "e2e-recon": "2lzle2f0"},
+    # 10: {"e2e": "8crnit9h", "local": "m2hntlav", "e2e-recon": "1ei8azro"},
+    10: {"e2e": "8crnit9h", "local": "m2hntlav", "e2e-recon": "untjpz6k"},
 }
 
 
@@ -242,234 +243,91 @@ def plot_per_layer_metric(
     plt.close()
 
 
-def plot_seed_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
-    """Plot the CE loss difference vs L0 for each layer, comparing different seeds.
+def plot_two_axes_line_single_run_type(
+    df: pd.DataFrame,
+    run_type: str,
+    out_dir: Path,
+    title: str,
+    iter_var: str,
+    iter_vals: list[float],
+) -> None:
+    """Plot the CE loss difference vs L0 and alive_dict_elements for different values of iter_var.
+
+    Note that these plots are only for a single run type.
 
     Args:
         df: DataFrame containing the data.
+        run_type: The run type to include in the plot.
         out_dir: The directory to save the plots to.
-        run_types: The run types to include in the plot.
+        title: The title of the plot.
+        iter_var: The variable in the DataFrame to iterate over.
+        iter_vals: The values to iterate over.
     """
-    model_name = df["model_name"].unique()[0]
-    seed_dir = out_dir / f"seed_comparison_{model_name}"
-    seed_dir.mkdir(exist_ok=True, parents=True)
-
-    seeds = df["seed"].unique()
-    colors = sns.color_palette("tab10", n_colors=len(seeds))
-
-    for run_type in run_types:
-        layer_df = df.loc[(df["run_type"] == run_type)]
-
-        # Get only the layer-sparsity pairs that have more than one seed
-        layer_df = layer_df.groupby(["layer", "sparsity_coeff"]).filter(
-            lambda x: x["seed"].nunique() > 1
-        )
-        if layer_df.empty:
-            continue
-        plt.figure(figsize=(8, 6))
-        for i, seed in enumerate(seeds):
-            seed_df = layer_df.loc[layer_df["seed"] == seed]
-            plt.scatter(
-                seed_df["L0"],
-                seed_df["CE_diff"],
-                label=f"Seed {seed}",
+    colors = sns.color_palette("tab10", n_colors=len(iter_vals))
+    sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
+    fig, axs = plt.subplots(1, 2, figsize=(8, 6), gridspec_kw={"wspace": 0.15, "top": 0.84})
+    for i, vals in enumerate(iter_vals):
+        vals_df = df.loc[df[iter_var] == vals]
+        for j, (ax, x) in enumerate(zip(axs, ["L0", "alive_dict_elements"], strict=True)):
+            # Sort the data by CE_diff to ensure consistent line plotting
+            iter_var_df_sorted = vals_df.sort_values("CELossIncrease")
+            ax.scatter(
+                iter_var_df_sorted[x],
+                iter_var_df_sorted["CELossIncrease"],
+                label=f"{vals}",
                 color=colors[i],
                 alpha=0.8,
             )
-        layers = ",".join([str(l) for l in layer_df["layer"].unique()])
-        plt.title(f"Layers {layers}: L0 vs CE Loss Difference (run_type={run_type})")
-        plt.xlabel("L0")
-        plt.ylabel("CE loss difference\n(original model - model with sae)")
-        plt.legend(title="Seed", loc="best")
-        plt.tight_layout()
-        plt.savefig(seed_dir / f"l0_vs_ce_loss_layers_{layers}_{run_type}.png")
-        plt.close()
-
-        # Also write all the "id"s to file
-        ids = layer_df["id"].unique().tolist()
-        with open(seed_dir / f"ids_layers_{layers}_{run_type}.txt", "w") as f:
-            f.write(",".join(ids))
-
-
-def plot_n_samples_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
-    """Plots CE loss diff vs L0 and alive_dict_elements for different n_samples.
-
-    Args:
-        df: DataFrame containing the data.
-        out_dir: The directory to save the plots to.
-        run_types: The run types to include in the plot.
-    """
-
-    n_samples_dir = out_dir / "n_samples_comparison"
-    n_samples_dir.mkdir(exist_ok=True, parents=True)
-
-    n_samples_runs = df.loc[df["n_samples"] != 400_000]
-    for run_type in run_types:
-        run_type_df = n_samples_runs.loc[n_samples_runs["run_type"] == run_type]
-        if run_type_df.empty:
-            continue
-
-        # Should have the same kl_coeff, ratio, sae_pos, and layer
-        for col in ["kl_coeff", "ratio", "sae_pos", "layer"]:
-            # Note that there may be a NaN value in the kl_coeff column
-            assert run_type_df[col].nunique() <= 1, f"Multiple {col} values found"
-        sparsity_coeffs = run_type_df["sparsity_coeff"].unique()
-        kl_coeff = run_type_df["kl_coeff"].unique()[0]
-        ratio = run_type_df["ratio"].unique()[0]
-        sae_pos = run_type_df["sae_pos"].unique()[0]
-        layer = run_type_df["layer"].unique()[0]
-        # Also get the run with 400k samples that has the same sparsity_coeff, out_to_in, kl_coeff,
-        # and ratio
-        kl_mask = (
-            (df["kl_coeff"] == kl_coeff) if not np.isnan(kl_coeff) else df["kl_coeff"].isnull()
-        )
-        runs_samples_400k = df.loc[
-            (df["n_samples"] == 400_000)
-            & kl_mask
-            & (df["ratio"] == ratio)
-            & (df["sae_pos"] == sae_pos)
-            & (df["layer"] == layer)
-            & (df["sparsity_coeff"].isin(sparsity_coeffs))
-        ]
-        combined_df = pd.concat([run_type_df, runs_samples_400k])
-
-        samples = sorted(combined_df["n_samples"].unique())
-
-        colors = sns.color_palette("tab10", n_colors=len(samples))
-        ## Plot the CE loss difference vs L0 for each n_samples
-        plt.figure(figsize=(8, 6))
-        for i, n_samples in enumerate(samples):
-            sample_df = combined_df.loc[combined_df["n_samples"] == n_samples]
-            plt.scatter(
-                sample_df["L0"],
-                sample_df["CE_diff"],
-                label=f"{n_samples}",
+            # Plot a line between the points
+            ax.plot(
+                iter_var_df_sorted[x],
+                iter_var_df_sorted["CELossIncrease"],
                 color=colors[i],
-                alpha=0.8,
+                alpha=0.5,
+                linewidth=1,
             )
+    axs[0].legend(loc="best", title=iter_var)
 
-        plt.title(f"run_type={run_type}: L0 vs CE Loss Diff in {sae_pos}")
-        plt.xlabel("L0")
-        plt.ylabel("CE loss difference\n(original model - model with sae)")
-        plt.legend(title="n_samples", loc="best")
-        plt.tight_layout()
-        plt.savefig(n_samples_dir / f"n_samples_comparison_{run_type}.png")
-        plt.close()
+    # the L0 axis (left) should always be decreasing, reverse it if it is not
+    if axs[0].get_xlim()[0] < axs[0].get_xlim()[1]:
+        axs[0].invert_xaxis()
+    # The alive_dict_elements axis (right) should always be increasing, reverse it if it is not
+    if axs[1].get_xlim()[0] > axs[1].get_xlim()[1]:
+        axs[1].invert_xaxis()
 
-        ## Plot the CE loss vs alive_dict_elements for each n_samples
-        plt.figure(figsize=(8, 6))
-        for i, n_samples in enumerate(samples):
-            sample_df = combined_df.loc[combined_df["n_samples"] == n_samples]
-            plt.scatter(
-                sample_df["alive_dict_elements"],
-                sample_df["CE_diff"],
-                label=f"{n_samples}",
-                color=colors[i],
-                alpha=0.8,
-            )
+    # CE loss increase should always be decreasing, reverse it if it is not
+    if axs[0].get_ylim()[0] < axs[0].get_ylim()[1]:
+        axs[0].invert_yaxis()
+        axs[1].invert_yaxis()
 
-        plt.title(f"run_type={run_type}: Alive Dict Elements vs CE Loss Diff in {sae_pos}")
-        plt.xlabel("Alive Dictionary Elements")
-        plt.ylabel("CE loss difference\n(original model - model with sae)")
-        plt.legend(title="n_samples", loc="best")
-        plt.tight_layout()
-        plt.savefig(n_samples_dir / f"alive_elements_vs_ce_loss_{run_type}.png")
-        plt.close()
-
-        # Also write all the "id"s to file
-        ids = combined_df["id"].unique().tolist()
-        with open(n_samples_dir / f"ids_n_samples_comparison_{run_type}.txt", "w") as f:
-            f.write(",".join(ids))
-
-
-def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
-    """Plot CE loss diff vs L0 and alive_dict_elements for different dictionary ratios.
-
-    Args:
-        df: DataFrame containing the data.
-        out_dir: The directory to save the plots to.
-        run_types: The run types to include in the plot.
-    """
-
-    ratios_dir = out_dir / "ratio_comparison"
-    ratios_dir.mkdir(exist_ok=True, parents=True)
-
-    ratios_runs = df.loc[df["ratio"] != 60]
-    for run_type in run_types:
-        run_type_df = ratios_runs.loc[ratios_runs["run_type"] == run_type]
-        if run_type_df.empty:
-            continue
-
-        # Should have the same kl_coeff, n_samples, sae_pos, and layer
-        for col in ["kl_coeff", "n_samples", "sae_pos", "layer"]:
-            assert run_type_df[col].nunique() <= 1, f"Multiple {col} values found"
-        sparsity_coeffs = run_type_df["sparsity_coeff"].unique()
-        kl_coeff = run_type_df["kl_coeff"].unique()[0]
-        n_samples = run_type_df["n_samples"].unique()[0]
-        sae_pos = run_type_df["sae_pos"].unique()[0]
-        layer = run_type_df["layer"].unique()[0]
-        # Also get the run with ratio=60 that has the same sparsity_coeff, out_to_in, kl_coeff,
-        # and n_samples
-        kl_mask = (
-            (df["kl_coeff"] == kl_coeff) if not np.isnan(kl_coeff) else df["kl_coeff"].isnull()
-        )
-        runs_ratio_60 = df.loc[
-            (df["ratio"] == 60)
-            & kl_mask
-            & (df["n_samples"] == n_samples)
-            & (df["sae_pos"] == sae_pos)
-            & (df["layer"] == layer)
-            & (df["sparsity_coeff"].isin(sparsity_coeffs))
-        ]
-        combined_df = pd.concat([run_type_df, runs_ratio_60])
-
-        ratios = sorted(combined_df["ratio"].unique())
-
-        colors = sns.color_palette("tab10", n_colors=len(ratios))
-        ## Plot the CE loss difference vs L0 for each ratio
-        plt.figure(figsize=(8, 6))
-        for i, ratio in enumerate(ratios):
-            ratio_df = combined_df.loc[combined_df["ratio"] == ratio]
-            plt.scatter(
-                ratio_df["L0"],
-                ratio_df["CE_diff"],
-                label=f"{ratio}",
-                color=colors[i],
-                alpha=0.8,
-            )
-
-        plt.title(f"run_type={run_type}: L0 vs CE Loss Diff in {sae_pos}")
-        plt.xlabel("L0")
-        plt.ylabel("CE loss difference\n(original model - model with sae)")
-        plt.legend(title="ratio", loc="best")
-        plt.tight_layout()
-        plt.savefig(ratios_dir / f"ratio_comparison_{run_type}.png")
-        plt.close()
-
-        ## Plot the CE loss vs alive_dict_elements for each ratio
-        plt.figure(figsize=(8, 6))
-        for i, ratio in enumerate(ratios):
-            ratio_df = combined_df.loc[combined_df["ratio"] == ratio]
-            plt.scatter(
-                ratio_df["alive_dict_elements"],
-                ratio_df["CE_diff"],
-                label=f"{ratio}",
-                color=colors[i],
-                alpha=0.8,
-            )
-
-        plt.title(f"run_type={run_type}: Alive Dict Elements vs CE Loss Diff in {sae_pos}")
-        plt.xlabel("Alive Dictionary Elements")
-        plt.ylabel("CE loss difference\n(original model - model with sae)")
-        plt.legend(title="dict size ratio", loc="best")
-        plt.tight_layout()
-        plt.savefig(ratios_dir / f"alive_elements_vs_ce_loss_{run_type}.png")
-        plt.close()
-
-        # Also write all the "id"s to file
-        ids = combined_df["id"].unique().tolist()
-        with open(ratios_dir / f"ids_ratio_comparison_{run_type}.txt", "w") as f:
-            f.write(",".join(ids))
+    axs[0].set_xlabel("L0")
+    axs[1].set_xlabel("Alive Dictionary Elements")
+    axs[0].set_ylabel("CE Loss Increase")
+    axs[1].set_ylabel("CE Loss Increase")
+    # move y-axis to right of second subplot
+    axs[1].yaxis.set_label_position("right")
+    axs[1].yaxis.set_ticks_position("right")
+    axs[1].yaxis.set_tick_params(color="white")
+    # add "Better" text annotations
+    axs[0].text(
+        s="Better →", x=1, y=1.02, ha="right", va="bottom", fontsize=10, transform=axs[0].transAxes
+    )
+    axs[1].text(
+        s="← Better", x=0, y=1.02, ha="left", va="bottom", fontsize=10, transform=axs[1].transAxes
+    )
+    axs[0].text(
+        s="Better →",
+        x=1.075,
+        y=1,
+        ha="center",
+        va="top",
+        fontsize=10,
+        transform=axs[0].transAxes,
+        rotation=90,
+    )
+    fig.suptitle(title)
+    plt.savefig(out_dir / f"l0_alive_elements_vs_ce_loss_{run_type}.png")
+    plt.close(fig)
 
 
 def plot_two_axes_line(
@@ -489,7 +347,7 @@ def plot_two_axes_line(
     xticks2: tuple[list[float], list[str]] | None = None,
     ylim: tuple[float | None, float | None] = (None, None),
 ) -> None:
-    """Line plot with two x-axes and one y-axis between them.
+    """Line plot with two x-axes and one y-axis between them. One line for each run type.
 
     Args:
         df: DataFrame containing the data.
@@ -576,6 +434,169 @@ def plot_two_axes_line(
     plt.close(fig)
 
 
+def plot_seed_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
+    """Plot the CE loss difference vs L0 for each layer, comparing different seeds.
+
+    Args:
+        df: DataFrame containing the data.
+        out_dir: The directory to save the plots to.
+        run_types: The run types to include in the plot.
+    """
+    model_name = df["model_name"].unique()[0]
+    seed_dir = out_dir / f"seed_comparison_{model_name}"
+    seed_dir.mkdir(exist_ok=True, parents=True)
+
+    seeds = df["seed"].unique()
+    colors = sns.color_palette("tab10", n_colors=len(seeds))
+
+    for run_type in run_types:
+        layer_df = df.loc[(df["run_type"] == run_type)]
+
+        # Get only the layer-sparsity pairs that have more than one seed
+        layer_df = layer_df.groupby(["layer", "sparsity_coeff"]).filter(
+            lambda x: x["seed"].nunique() > 1
+        )
+        if layer_df.empty:
+            continue
+        plt.figure(figsize=(8, 6))
+        for i, seed in enumerate(seeds):
+            seed_df = layer_df.loc[layer_df["seed"] == seed]
+            plt.scatter(
+                seed_df["L0"],
+                seed_df["CE_diff"],
+                label=f"Seed {seed}",
+                color=colors[i],
+                alpha=0.8,
+            )
+        layers = ",".join([str(l) for l in layer_df["layer"].unique()])
+        plt.title(f"Layers {layers}: L0 vs CE Loss Difference (run_type={run_type})")
+        plt.xlabel("L0")
+        plt.ylabel("CE loss difference\n(original model - model with sae)")
+        plt.legend(title="Seed", loc="best")
+        plt.tight_layout()
+        plt.savefig(seed_dir / f"l0_vs_ce_loss_layers_{layers}_{run_type}.png")
+        plt.close()
+
+        # Also write all the "id"s to file
+        ids = layer_df["id"].unique().tolist()
+        with open(seed_dir / f"ids_layers_{layers}_{run_type}.txt", "w") as f:
+            f.write(",".join(ids))
+
+
+def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
+    """Plots alive_dict_elements and L0 vs CE loss increase for different dictionary ratios.
+
+    Args:
+        df: DataFrame containing the data.
+        out_dir: The directory to save the plots to.
+        run_types: The run types to include in the plot.
+    """
+    ratios_dir = out_dir / "ratio_comparison"
+    ratios_dir.mkdir(exist_ok=True, parents=True)
+    ratios_runs = df.loc[df["ratio"] != 60]
+    for run_type in run_types:
+        run_type_df = ratios_runs.loc[ratios_runs["run_type"] == run_type]
+        if run_type_df.empty:
+            continue
+        # Should have the same kl_coeff, n_samples, sae_pos, and layer
+        for col in ["kl_coeff", "n_samples", "sae_pos", "layer"]:
+            assert run_type_df[col].nunique() <= 1, f"Multiple {col} values found"
+        sparsity_coeffs = run_type_df["sparsity_coeff"].unique()
+        kl_coeff = run_type_df["kl_coeff"].unique()[0]
+        n_samples = run_type_df["n_samples"].unique()[0]
+        sae_pos = run_type_df["sae_pos"].unique()[0]
+        layer = run_type_df["layer"].unique()[0]
+        # Also get the run with ratio=60 that has the same sparsity_coeff, out_to_in, kl_coeff,
+        # and n_samples
+        kl_mask = (
+            (df["kl_coeff"] == kl_coeff) if not np.isnan(kl_coeff) else df["kl_coeff"].isnull()
+        )
+        runs_ratio_60 = df.loc[
+            (df["ratio"] == 60)
+            & kl_mask
+            & (df["n_samples"] == n_samples)
+            & (df["sae_pos"] == sae_pos)
+            & (df["layer"] == layer)
+            & (df["sparsity_coeff"].isin(sparsity_coeffs))
+        ]
+        combined_df = pd.concat([run_type_df, runs_ratio_60])
+        ratios = sorted(combined_df["ratio"].unique())
+
+        plot_two_axes_line_single_run_type(
+            df=combined_df,
+            run_type=run_type,
+            out_dir=ratios_dir,
+            title=f"run_type={run_type}: L0 and Alive Dict Elements vs CE Loss Diff in {sae_pos}",
+            iter_var="ratio",
+            iter_vals=ratios,
+        )
+
+        # Also write all the "id"s to file
+        ids = combined_df["id"].unique().tolist()
+        with open(ratios_dir / f"ids_ratio_comparison_{run_type}.txt", "w") as f:
+            f.write(",".join(ids))
+
+
+def plot_n_samples_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
+    """Plots alive_dict_elements and L0 vs CE loss increase for different n_samples.
+
+    Args:
+        df: DataFrame containing the data.
+        out_dir: The directory to save the plots to.
+        run_types: The run types to include in the plot.
+    """
+
+    n_samples_dir = out_dir / "n_samples_comparison"
+    n_samples_dir.mkdir(exist_ok=True, parents=True)
+
+    n_samples_runs = df.loc[df["n_samples"] != 400_000]
+    for run_type in run_types:
+        run_type_df = n_samples_runs.loc[n_samples_runs["run_type"] == run_type]
+        if run_type_df.empty:
+            continue
+
+        # Should have the same kl_coeff, ratio, sae_pos, and layer
+        for col in ["kl_coeff", "ratio", "sae_pos", "layer"]:
+            # Note that there may be a NaN value in the kl_coeff column
+            assert run_type_df[col].nunique() <= 1, f"Multiple {col} values found"
+        sparsity_coeffs = run_type_df["sparsity_coeff"].unique()
+        kl_coeff = run_type_df["kl_coeff"].unique()[0]
+        ratio = run_type_df["ratio"].unique()[0]
+        sae_pos = run_type_df["sae_pos"].unique()[0]
+        layer = run_type_df["layer"].unique()[0]
+        # Also get the run with 400k samples that has the same sparsity_coeff, out_to_in, kl_coeff,
+        # and ratio
+        kl_mask = (
+            (df["kl_coeff"] == kl_coeff) if not np.isnan(kl_coeff) else df["kl_coeff"].isnull()
+        )
+        runs_samples_400k = df.loc[
+            (df["n_samples"] == 400_000)
+            & kl_mask
+            & (df["ratio"] == ratio)
+            & (df["sae_pos"] == sae_pos)
+            & (df["layer"] == layer)
+            & (df["sparsity_coeff"].isin(sparsity_coeffs))
+        ]
+        combined_df = pd.concat([run_type_df, runs_samples_400k])
+
+        samples = sorted(combined_df["n_samples"].unique())
+
+        title = f"run_type={run_type}: L0 and Alive Dict Elements vs CE Loss Diff in {sae_pos}"
+        plot_two_axes_line_single_run_type(
+            df=combined_df,
+            run_type=run_type,
+            out_dir=n_samples_dir,
+            title=title,
+            iter_var="n_samples",
+            iter_vals=samples,
+        )
+
+        # Also write all the "id"s to file
+        ids = combined_df["id"].unique().tolist()
+        with open(n_samples_dir / f"ids_n_samples_comparison_{run_type}.txt", "w") as f:
+            f.write(",".join(ids))
+
+
 def get_df_gpt2() -> pd.DataFrame:
     api = wandb.Api()
     project = "sparsify/gpt2"
@@ -591,7 +612,10 @@ def get_df_gpt2() -> pd.DataFrame:
     # Ignore runs that have an L0 bigger than d_resid
     df = df.loc[df["L0"] <= d_resid]
     # Only use the e2e+recon run in layer 10 that has kl_coeff=0.75
-    df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.75))]
+    # df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.75))]
+    df = df.loc[
+        ~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.875))
+    ]
     return df
 
 
@@ -605,20 +629,22 @@ def gpt2_plots():
 
     df = get_df_gpt2()
 
-    # Plots comparing n_samples should all have ratio=60
-    n_samples_df = df.loc[(df["ratio"] == 60) & (df["seed"] == 0)]
     plot_n_samples_comparison(
-        n_samples_df, out_dir=Path(__file__).resolve().parent / "out", run_types=run_types
+        df=df.loc[(df["ratio"] == 60) & (df["seed"] == 0)],
+        out_dir=Path(__file__).resolve().parent / "out",
+        run_types=run_types,
     )
 
-    seed_df = df.loc[df["n_samples"] == 400_000]
     plot_seed_comparison(
-        seed_df, out_dir=Path(__file__).resolve().parent / "out", run_types=run_types
+        df=df.loc[df["n_samples"] == 400_000],
+        out_dir=Path(__file__).resolve().parent / "out",
+        run_types=run_types,
     )
 
-    ratio_df = df.loc[(df["seed"] == 0) & (df["n_samples"] == 400_000)]
     plot_ratio_comparison(
-        ratio_df, out_dir=Path(__file__).resolve().parent / "out", run_types=run_types
+        df=df.loc[(df["seed"] == 0) & (df["n_samples"] == 400_000)],
+        out_dir=Path(__file__).resolve().parent / "out",
+        run_types=run_types,
     )
 
     performance_df = df.loc[(df["ratio"] == 60) & (df["seed"] == 0) & (df["n_samples"] == 400_000)]
@@ -690,21 +716,8 @@ def gpt2_plots():
             run_types=run_types,
         )
 
-        # Per layer plots. Note that per-layer metrics are all taken at hook_resid_post
-        layer_constant_ce_df = layer_df[
-            (
-                (layer_df["sparsity_coeff"] == CONSTANT_CE_RUNS[layer]["e2e"])
-                & (layer_df["run_type"] == "e2e")
-            )
-            | (
-                (layer_df["sparsity_coeff"] == CONSTANT_CE_RUNS[layer]["local"])
-                & (layer_df["run_type"] == "local")
-            )
-            | (
-                (layer_df["sparsity_coeff"] == CONSTANT_CE_RUNS[layer]["e2e-recon"])
-                & (layer_df["run_type"] == "e2e-recon")
-            )
-        ]
+        valid_ids = CONSTANT_CE_RUNS[layer].values()
+        layer_constant_ce_df = layer_df.loc[layer_df["id"].isin(valid_ids)]
         # We didn't track metrics for hook_resid_post in final layer in e2e+recon, though perhaps
         # we should have (including using the final layer's hook_resid_post in the loss)
         final_layer = n_layers - 1
