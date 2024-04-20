@@ -1,4 +1,5 @@
 from functools import partial
+from pathlib import Path
 from typing import Any, Literal, cast
 
 import torch
@@ -358,13 +359,8 @@ class SAETransformer(nn.Module):
                 return tokens
 
     @classmethod
-    def from_wandb_run(cls, wandb_project_run_id: str) -> "SAETransformer":
+    def from_wandb(cls, wandb_project_run_id: str) -> "SAETransformer":
         """Instantiate an SAETransformer using the latest checkpoint from a wandb run.
-
-        Our current implementation restricts us from using the
-        sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py.Config class for type
-        validation due to circular imports. Would need to move the Config class to a separate file
-        to use it here.
 
         Args:
             wandb_project_run_id: The wandb project name and run ID separated by a forward slash.
@@ -376,38 +372,86 @@ class SAETransformer(nn.Module):
         api = wandb.Api()
         run: Run = api.run(wandb_project_run_id)
 
-        train_config_file = [
+        train_config_file_remote = [
             file for file in run.files() if file.name.endswith("final_config.yaml")
         ][0]
 
-        train_config = yaml.safe_load(
-            train_config_file.download(exist_ok=True, replace=True, root="/tmp/")
+        train_config_file = train_config_file_remote.download(
+            exist_ok=True, replace=True, root="/tmp/"
+        ).name
+
+        checkpoints = [file for file in run.files() if file.name.endswith(".pt")]
+        latest_checkpoint_remote = sorted(
+            checkpoints, key=lambda x: int(x.name.split(".pt")[0].split("_")[-1])
+        )[-1]
+        latest_checkpoint_file = latest_checkpoint_remote.download(
+            exist_ok=True, replace=True, root="/tmp/"
+        ).name
+        assert latest_checkpoint_file is not None, "Failed to download the latest checkpoint."
+
+        return cls.from_checkpoint(
+            checkpoint_file=latest_checkpoint_file, config_file=train_config_file
         )
 
+    @classmethod
+    def from_checkpoint(
+        cls,
+        checkpoint_dir: str | Path | None = None,
+        checkpoint_file: str | Path | None = None,
+        config_file: str | Path | None = None,
+    ) -> "SAETransformer":
+        """Instantiate an SAETransformer using a checkpoint from a specified directory.
+
+        Our current implementation restricts us from using the
+        sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py.Config class for type
+        validation due to circular imports. Would need to move the Config class to a separate file
+        to use it here.
+
+        Args:
+            checkpoint_dir: The directory containing one or more checkpoint files and
+                `final_config.yaml`. If multiple checkpoints are present, load the one with the
+                highest n_samples number (i.e. the latest checkpoint).
+            checkpoint_file: The specific checkpoint file to load. If specified, `checkpoint_dir`
+                is ignored and config_file must also be specified.
+            config_file: The config file to load. If specified, `checkpoint_dir` is ignored and
+                checkpoint_file must also be specified.
+
+        Returns:
+            An instance of the SAETransformer class loaded from the specified checkpoint.
+        """
+        if checkpoint_file is not None:
+            checkpoint_file = Path(checkpoint_file)
+            assert config_file is not None
+            config_file = Path(config_file)
+        else:
+            assert checkpoint_dir is not None
+            checkpoint_dir = Path(checkpoint_dir)
+            assert config_file is None
+            config_file = checkpoint_dir / "final_config.yaml"
+
+            checkpoint_files = list(checkpoint_dir.glob("*.pt"))
+            checkpoint_file = sorted(
+                checkpoint_files, key=lambda x: int(x.name.split(".pt")[0].split("_")[-1])
+            )[-1]
+
+        with open(config_file) as f:
+            config = yaml.safe_load(f)
+
         tlens_model = load_tlens_model(
-            tlens_model_name=train_config["tlens_model_name"],
-            tlens_model_path=train_config["tlens_model_path"],
+            tlens_model_name=config["tlens_model_name"],
+            tlens_model_path=config["tlens_model_path"],
         )
 
         raw_sae_positions = filter_names(
-            list(tlens_model.hook_dict.keys()), train_config["saes"]["sae_positions"]
+            list(tlens_model.hook_dict.keys()), config["saes"]["sae_positions"]
         )
 
         model = cls(
             tlens_model=tlens_model,
             raw_sae_positions=raw_sae_positions,
-            dict_size_to_input_ratio=train_config["saes"]["dict_size_to_input_ratio"],
+            dict_size_to_input_ratio=config["saes"]["dict_size_to_input_ratio"],
             init_decoder_orthogonal=False,
         )
 
-        weight_files = [file for file in run.files() if file.name.endswith(".pt")]
-        weight_file = sorted(
-            weight_files, key=lambda x: int(x.name.split(".pt")[0].split("_")[-1])
-        )[-1]
-        latest_checkpoint = wandb.restore(
-            weight_file.name, run_path=wandb_project_run_id, root="/tmp/", replace=True
-        )
-        assert latest_checkpoint is not None
-
-        model.saes.load_state_dict(torch.load(latest_checkpoint.name, map_location="cpu"))
+        model.saes.load_state_dict(torch.load(checkpoint_file, map_location="cpu"))
         return model

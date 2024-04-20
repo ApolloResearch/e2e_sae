@@ -32,14 +32,24 @@ Note that the library also contains scripts for training mlps and SAEs on mlps, 
 custom transformerlens models and SAEs on these models (see [here](sparsify/scripts/)).
 
 ### Load a Pre-trained SAE
-[TODO: add example]
+You can load any pre-trained SAE (and accompanying TransformerLens model) trained using this library
+from Weights and Biases by running
+```python
+from sparsify import SAETransformer
+model = SAETransformer.from_wandb("<entity/project/run_id>")
+# or, if training was done locally:
+model = SAETransformer.from_checkpoint("/path/to/checkpoint/dir") 
+```
+Note that all runs in the [TODO: Add e2e paper]() can be loaded this way (e.g.
+[sparsify/gpt2/tvj2owza](https://wandb.ai/sparsify/gpt2/runs/tvj2owza)).
+
 
 This will instantiate a `SAETransformer` class, which contains a TransformerLens model with SAEs
 attached. To do a forward pass without SAEs, use the `forward_raw` method, to do a forward pass with
 SAEs, use the `forward` method (or simply call the SAETansformer instance).
 
 ## Contributing
-Devloper dependencies are installed with `make install-dev`, which will also install pre-commit
+Developer dependencies are installed with `make install-dev`, which will also install pre-commit
 hooks.
 
 Suggested extensions and settings for VSCode are provided in `.vscode/`. To use the suggested
@@ -55,4 +65,7 @@ make test  # Run tests that aren't marked `slow`
 make test-all  # Run all tests
 ```
 
-Reach out
+This library is maintained by [Dan Braun](https://danbraunai.github.io/).
+
+Join the [Open Source Mechanistic Interpretability Slack](https://join.slack.com/t/opensourcemechanistic/shared_invite/zt-2hk7rcm8g-IIuaxpte_1GHp5joc~1kww)
+to chat about this library and other projects in the space!
