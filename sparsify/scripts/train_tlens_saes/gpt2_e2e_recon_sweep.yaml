@@ -16,13 +16,13 @@ parameters:
       sparsity:
         parameters:
           coeff:
-            values: [0.05, 0.2, 0.5, 1.5, 3.0, 10.0]
+            values: [0.8, 2.5, 5]
       in_to_orig:
         parameters:
           hook_positions:
-            values: [[blocks.7.hook_resid_pre, blocks.8.hook_resid_pre, blocks.9.hook_resid_pre, blocks.10.hook_resid_pre, blocks.11.hook_resid_pre]]
+            values: [[blocks.11.hook_resid_pre]]
           total_coeff:
-            values: [1000]
+            values: [0.05, 0.1]
       out_to_orig:
         values: [null]
       out_to_in:
@@ -37,7 +37,7 @@ parameters:
     parameters:
       sae_positions:
         values:
-          - blocks.6.hook_resid_pre
+          - blocks.10.hook_resid_pre
       dict_size_to_input_ratio:
         values: [60.0]
 

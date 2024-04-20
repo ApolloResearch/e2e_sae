@@ -26,4 +26,4 @@ command:
 - ${env}
 - ${interpreter}
 - ${program}
-- sparsify/scripts/train_tlens_saes/tinystories_1M.yaml
+- sparsify/scripts/train_tlens_saes/tinystories_1M_e2e.yaml
