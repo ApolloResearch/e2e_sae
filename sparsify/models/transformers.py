@@ -3,14 +3,18 @@ from typing import Any, Literal, cast
 
 import torch
 import tqdm
+import wandb
+import yaml
 from jaxtyping import Float, Int
 from torch import Tensor, nn
 from transformer_lens import HookedTransformer
 from transformer_lens.utils import LocallyOverridenDefaults, sample_logits
+from wandb.apis.public import Run
 
 from sparsify.hooks import CacheActs, SAEActs, cache_hook, sae_hook
+from sparsify.loader import load_tlens_model
 from sparsify.models.sparsifiers import SAE
-from sparsify.utils import get_hook_shapes
+from sparsify.utils import filter_names, get_hook_shapes
 
 
 class SAETransformer(nn.Module):
@@ -352,3 +356,58 @@ class SAETransformer(nn.Module):
 
             else:
                 return tokens
+
+    @classmethod
+    def from_wandb_run(cls, wandb_project_run_id: str) -> "SAETransformer":
+        """Instantiate an SAETransformer using the latest checkpoint from a wandb run.
+
+        Our current implementation restricts us from using the
+        sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py.Config class for type
+        validation due to circular imports. Would need to move the Config class to a separate file
+        to use it here.
+
+        Args:
+            wandb_project_run_id: The wandb project name and run ID separated by a forward slash.
+                E.g. "gpt2/2lzle2f0"
+
+        Returns:
+            An instance of the SAETransformer class loaded from the specified wandb run.
+        """
+        api = wandb.Api()
+        run: Run = api.run(wandb_project_run_id)
+
+        train_config_file = [
+            file for file in run.files() if file.name.endswith("final_config.yaml")
+        ][0]
+
+        train_config = yaml.safe_load(
+            train_config_file.download(exist_ok=True, replace=True, root="/tmp/")
+        )
+
+        tlens_model = load_tlens_model(
+            tlens_model_name=train_config["tlens_model_name"],
+            tlens_model_path=train_config["tlens_model_path"],
+        )
+
+        raw_sae_positions = filter_names(
+            list(tlens_model.hook_dict.keys()), train_config["saes"]["sae_positions"]
+        )
+
+        model = cls(
+            tlens_model=tlens_model,
+            raw_sae_positions=raw_sae_positions,
+            dict_size_to_input_ratio=train_config["saes"]["dict_size_to_input_ratio"],
+            init_decoder_orthogonal=False,
+        )
+
+        weight_files = [file for file in run.files() if file.name.endswith(".pt")]
+        weight_file = sorted(
+            weight_files, key=lambda x: int(x.name.split(".pt")[0].split("_")[-1])
+        )[-1]
+        latest_checkpoint = wandb.restore(
+            weight_file.name, run_path=wandb_project_run_id, root="/tmp/", replace=True
+        )
+        assert latest_checkpoint is not None
+
+        model.saes.load_state_dict(torch.load(latest_checkpoint.name, map_location="cpu"))
+        return model
