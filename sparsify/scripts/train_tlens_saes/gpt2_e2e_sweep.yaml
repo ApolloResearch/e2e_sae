@@ -69,4 +69,4 @@ command:
 - ${env}
 - ${interpreter}
 - ${program}
-- sparsify/scripts/train_tlens_saes/gpt2.yaml
+- sparsify/scripts/train_tlens_saes/gpt2_e2e.yaml

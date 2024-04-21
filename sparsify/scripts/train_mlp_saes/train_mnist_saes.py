@@ -1,5 +1,8 @@
 """Train SAEs on an MNIST model.
 
+NOTE: To run this, you must first train an MLP model on MNIST. You can do this with the
+`sparsify/scripts/train_mnist/run_train_mnist.py` script.
+
 Usage:
     python train_mnist_saes.py <path/to/config.yaml>
 """
@@ -85,7 +88,7 @@ def get_models(
     config: Config, device: str | torch.device
 ) -> tuple[MLP, MLPMod, OrderedDict[str, torch.Tensor]]:
     # Load the hidden_sizes form the trained model
-    with open(config.saved_model_dir / "config.yaml") as f:
+    with open(config.saved_model_dir / "final_config.yaml") as f:
         hidden_sizes = yaml.safe_load(f)["model"]["hidden_sizes"]
 
     latest_model_path = max(
@@ -304,7 +307,7 @@ def train(config: Config) -> None:
 
 
 def main(config_path_str: str) -> None:
-    config_path = Path(config_path_str)  # TODO make separate config for model_mod
+    config_path = Path(config_path_str)
     config = load_config(config_path, config_model=Config)
     set_seed(config.seed)
     train(config)

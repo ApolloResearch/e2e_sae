@@ -1,9 +1,9 @@
 seed: 0
-saved_model_dir: sparsify/scripts/train_mnist/out/orig-train-lr-0.001_bs-1024_hidden-100-100_2024-02-02_20-22-46
+saved_model_dir: /path/to/saved_model_dir
 train:
   learning_rate: 0.001
   batch_size: 1024
-  n_epochs: 2
+  n_epochs: 8
   type_of_sparsifier: sae
   sparsity_lambda: 0.005
   dict_eles_to_input_ratio: 10.0

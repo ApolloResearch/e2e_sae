@@ -23,6 +23,7 @@ def tinystories_model() -> SAETransformer:
     return model
 
 
+@pytest.mark.cpuslow
 def test_generate(tinystories_model: SAETransformer, prompt: str = "One", max_new_tokens: int = 12):
     completion = tinystories_model.generate(
         input=prompt, sae_positions=None, max_new_tokens=max_new_tokens, temperature=0
