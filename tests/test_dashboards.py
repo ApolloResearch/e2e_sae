@@ -38,7 +38,7 @@ def tinystories_model() -> SAETransformer:
 
 def test_compute_feature_acts(tinystories_model: SAETransformer):
     set_seed(0)
-    prompt = "Once upon a time,"
+    prompt = "Once upon"
     tokenizer = tinystories_model.tlens_model.tokenizer
     assert tokenizer is not None
     tokens = tokenizer(prompt, return_tensors="pt")["input_ids"]
