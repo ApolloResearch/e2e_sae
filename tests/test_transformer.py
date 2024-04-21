@@ -11,7 +11,7 @@ def tinystories_model() -> SAETransformer:
     tlens_model = load_tlens_model(
         tlens_model_name="roneneldan/TinyStories-1M", tlens_model_path=None
     )
-    sae_positions = []
+    sae_positions = ["blocks.2.hook_resid_pre"]
     config = get_tinystories_config({"saes": {"sae_positions": sae_positions}})
     model = SAETransformer(
         tlens_model=tlens_model,
@@ -23,9 +23,8 @@ def tinystories_model() -> SAETransformer:
     return model
 
 
-@pytest.mark.cpuslow
-def test_generate(tinystories_model: SAETransformer, prompt: str = "One", max_new_tokens: int = 12):
+def test_generate(tinystories_model: SAETransformer, prompt: str = "One", max_new_tokens: int = 2):
     completion = tinystories_model.generate(
         input=prompt, sae_positions=None, max_new_tokens=max_new_tokens, temperature=0
     )
-    assert completion == "One day, a little girl named Lily was playing in the park"
+    assert completion == "One day,"

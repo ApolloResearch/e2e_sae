@@ -91,7 +91,11 @@ class Config(BaseModel):
         "if they are not set explicitly.",
     )
     tlens_model_name: str | None = None
-    tlens_model_path: RootPath | None = None
+    tlens_model_path: RootPath | None = Field(
+        None,
+        description="Path to '.pt' checkpoint. The directory housing this file should also contain "
+        "'final_config.yaml' which is output by sparsify/scripts/train_tlens/run_train_tlens.py.",
+    )
     save_dir: RootPath | None = Path(__file__).parent / "out"
     n_samples: PositiveInt | None = None
     save_every_n_samples: PositiveInt | None

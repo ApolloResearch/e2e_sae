@@ -17,16 +17,16 @@ def load_tlens_model(
     else:
         assert tlens_model_path is not None, "tlens_model_path is None."
         # Load the tlens_config
-        with open(tlens_model_path / "config.yaml") as f:
+        assert (
+            tlens_model_path.parent / "final_config.yaml"
+        ).exists(), "final_config.yaml does not exist."
+        with open(tlens_model_path.parent / "final_config.yaml") as f:
             tlens_config = HookedTransformerPreConfig(**yaml.safe_load(f)["tlens_config"])
         hooked_transformer_config = HookedTransformerConfig(**tlens_config.model_dump())
 
         # Load the model
         tlens_model = HookedTransformer(hooked_transformer_config)
-        latest_model_path = max(
-            tlens_model_path.glob("*.pt"), key=lambda x: int(x.stem.split("_")[-1])
-        )
-        tlens_model.load_state_dict(torch.load(latest_model_path))
+        tlens_model.load_state_dict(torch.load(tlens_model_path, map_location="cpu"))
 
     assert tlens_model.tokenizer is not None
     return tlens_model

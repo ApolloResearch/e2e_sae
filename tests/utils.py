@@ -12,7 +12,7 @@ TINYSTORIES_CONFIG = f"{REPO_ROOT}/sparsify/scripts/train_tlens_saes/tinystories
 def get_tinystories_config(*updates: dict[str, Any]) -> Config:
     """Load the tinystories config and update it with the given updates."""
     # Set the wandb_project to null since we never want to log tests to wandb
-    updates = updates + ({"wandb_project": None},)
+    updates = updates + ({"wandb_project": None, "save_dir": None},)
     with open(TINYSTORIES_CONFIG) as f:
         config = Config(**yaml.safe_load(f))
     return replace_pydantic_model(config, *updates)
