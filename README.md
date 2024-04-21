@@ -40,13 +40,16 @@ model = SAETransformer.from_wandb("<entity/project/run_id>")
 # or, if training was done locally:
 model = SAETransformer.from_checkpoint("/path/to/checkpoint/dir") 
 ```
-Note that all runs in the [TODO: Add e2e paper]() can be loaded this way (e.g.
+All runs in the [TODO: Add e2e paper]() can be loaded this way (e.g.
 [sparsify/gpt2/tvj2owza](https://wandb.ai/sparsify/gpt2/runs/tvj2owza)).
 
 
 This will instantiate a `SAETransformer` class, which contains a TransformerLens model with SAEs
 attached. To do a forward pass without SAEs, use the `forward_raw` method, to do a forward pass with
 SAEs, use the `forward` method (or simply call the SAETansformer instance).
+
+The dictionary elements of an SAE can be accessed via `SAE.dict_elements`. This is will normalize
+the decoder elements to have norm 1.
 
 ## Contributing
 Developer dependencies are installed with `make install-dev`, which will also install pre-commit
