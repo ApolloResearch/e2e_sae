@@ -24,8 +24,7 @@ RUN_TYPE_MAP = {
 CONSTANT_CE_RUNS = {
     2: {"e2e": "ovhfts9n", "local": "ue3lz0n7", "e2e-recon": "visi12en"},
     6: {"e2e": "zgdpkafo", "local": "1jy3m5j0", "e2e-recon": "2lzle2f0"},
-    # 10: {"e2e": "8crnit9h", "local": "m2hntlav", "e2e-recon": "1ei8azro"},
-    10: {"e2e": "8crnit9h", "local": "m2hntlav", "e2e-recon": "untjpz6k"},
+    10: {"e2e": "8crnit9h", "local": "m2hntlav", "e2e-recon": "cvj5um2h"},
 }
 
 
@@ -614,7 +613,11 @@ def get_df_gpt2() -> pd.DataFrame:
     # Only use the e2e+recon run in layer 10 that has kl_coeff=0.75
     # df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.75))]
     df = df.loc[
-        ~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.875))
+        ~(
+            (df["layer"] == 10)
+            & (df["run_type"] == "e2e-recon")
+            & ((df["kl_coeff"] != 0.5) | (df["in_to_orig_coeff"] != 0.05))
+        )
     ]
     return df
 
