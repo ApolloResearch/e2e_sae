@@ -26,7 +26,7 @@ Then run
 python sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py <path_to_config>
 ```
 
-If using a Colab notebook, see this example ([TODO: add link]).
+If using a Colab notebook, see [this example](demos/train_saes.ipynb).
 
 Note that the library also contains scripts for training mlps and SAEs on mlps, as well as training
 custom transformerlens models and SAEs on these models (see [here](sparsify/scripts/)).
