@@ -1,5 +1,5 @@
-wandb_project: gpt2-e2e
-wandb_run_name: null # If not set, will use a name based on important config values
+wandb_project: gpt2-layerwise_play
+wandb_run_name: null
 wandb_run_name_prefix: ""
 
 seed: 0
@@ -25,24 +25,12 @@ loss:
   # Note that "original acts" below refers to the activations in a model without SAEs
   sparsity:
     p_norm: 1.0  # p value in Lp norm
-    coeff: 1.5  # Multiplies the Lp norm in the loss (sparsity coefficient)
-  in_to_orig:
-    # Used for e2e+recon. Positions in which to calculate the MSE between the activations of the
-    # model with SAEs and the original model
-    hook_positions:
-      - blocks.7.hook_resid_pre
-      - blocks.8.hook_resid_pre
-      - blocks.9.hook_resid_pre
-      - blocks.10.hook_resid_pre
-      - blocks.11.hook_resid_pre
-    total_coeff: 2.5  # Coefficient for the above MSE loss. Is split evenly between all hook_positions
+    coeff: 6.0  # Multiplies the Lp norm in the loss (sparsity coefficient)
+  in_to_orig: null  # Used for e2e+future recon. MSE between the input to the SAE and original acts
   out_to_orig: null  # Not commonly used. MSE between the output of the SAE and original acts
   out_to_in:
-    # Multiplies the MSE between the output and input of the SAE. Setting to 0 lets us track this
-    # loss during training without optimizing it
-    coeff: 0.0
-  logits_kl:
-    coeff: 0.5  # Multiplies the KL divergence between the logits of the SAE model and original model
+    coeff: 1.0  # Multiplies the MSE between the output and input of the SAE
+  logits_kl: null  # Multiplies the KL divergence between the logits of the SAE model and original model
 train_data:
   # See https://huggingface.co/apollo-research for other pre-tokenized datasets
   dataset_name: apollo-research/Skylion007-openwebtext-tokenizer-gpt2

@@ -20,8 +20,8 @@ class DatasetConfig(BaseModel):
     seed: int | None = None
     column_name: str = "input_ids"
     """The name of the column in the dataset that contains the tokenized samples. Typically
-    'input_ids' for datasets stored with sparsify/upload_hf_dataset.py, or "tokens" for datasets
-    created in TransformerLens (e.g. NeelNanda/pile-10k)."""
+    'input_ids' for datasets stored with sparsify/scripts/upload_hf_dataset.py, or "tokens" for
+    datasets created in TransformerLens (e.g. NeelNanda/pile-10k)."""
 
 
 def create_data_loader(
@@ -68,8 +68,8 @@ def create_data_loader(
             add_bos_token=True,
         )
 
-    # Note that a pre-tokenized dataset was shuffled when generated:
-    # https://github.com/ai-safety-foundation/sparse_autoencoder/blob/main/sparse_autoencoder/source_data/abstract_dataset.py#L209
+    # Note that a pre-tokenized dataset was shuffled when generated
+    # see sparsify.scripts.upload_hf_dataset.TextDataset.__init__
     loader = DataLoader[Samples](
         torch_dataset,
         batch_size=batch_size,

@@ -310,7 +310,7 @@ def train(
 ) -> None:
     model.saes.train()
 
-    is_layerwise = config.loss.logits_kl is None and cache_positions is None
+    is_local = config.loss.logits_kl is None and cache_positions is None
 
     for name, param in model.named_parameters():
         if name.startswith("saes.") and name.split("saes.")[1] in trainable_param_names:
@@ -350,8 +350,8 @@ def train(
         n_batches = math.ceil(config.n_samples / config.batch_size)
 
     final_layer = None
-    if all(name.startswith("blocks.") for name in model.raw_sae_positions) and is_layerwise:
-        # We don't need to run through the whole model for layerwise runs
+    if all(name.startswith("blocks.") for name in model.raw_sae_positions) and is_local:
+        # We don't need to run through the whole model for local runs
         final_layer = max([int(name.split(".")[1]) for name in model.raw_sae_positions]) + 1
 
     run_name = get_run_name(config)
@@ -380,7 +380,7 @@ def train(
         samples_since_act_frequency_collection += tokens.shape[0]
         samples_since_output_metric_collection += tokens.shape[0]
 
-        run_entire_model: bool = not is_layerwise
+        run_entire_model: bool = not is_local
         # Note that is_last_batch will always be False for iterable datasets with n_samples=None. In
         # that case, we will never know when the final batch is reached.
         is_last_batch: bool = n_batches is not None and batch_idx == n_batches - 1
@@ -410,7 +410,7 @@ def train(
         is_log_step: bool = (
             batch_idx == 0
             or (is_grad_step and (grad_updates + 1) % config.log_every_n_grad_steps == 0)
-            or (is_layerwise and is_collect_output_metrics_step)
+            or (is_local and is_collect_output_metrics_step)
             or is_eval_step
             or is_last_batch
         )
@@ -454,12 +454,12 @@ def train(
 
         loss = loss / n_gradient_accumulation_steps
         loss.backward()
-        if config.max_grad_norm is not None:
-            grad_norm = torch.nn.utils.clip_grad_norm_(
-                model.parameters(), config.max_grad_norm
-            ).item()
 
         if is_grad_step:
+            if config.max_grad_norm is not None:
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    model.saes.parameters(), config.max_grad_norm
+                ).item()
             optimizer.step()
             optimizer.zero_grad()
             grad_updates += 1
