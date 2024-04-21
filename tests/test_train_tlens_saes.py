@@ -38,7 +38,6 @@ def test_train_tiny_gpt():
         log_every_n_grad_steps=20,
         collect_act_frequency_every_n_samples=2,
         act_frequency_n_tokens=2000,
-        collect_output_metrics_every_n_samples=0,  # Don't collect output metrics
         batch_size=2,
         effective_batch_size=2,
         lr=5e-4,

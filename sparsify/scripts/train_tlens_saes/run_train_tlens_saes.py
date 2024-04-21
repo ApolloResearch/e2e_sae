@@ -124,12 +124,6 @@ class Config(BaseModel):
     act_frequency_n_tokens: PositiveInt = Field(
         100_000, description="The number of tokens to caclulate activation frequency metrics over."
     )
-    collect_output_metrics_every_n_samples: NonNegativeInt = Field(
-        0,
-        description="How many samples between calculating metrics like the cross-entropy loss and "
-        "kl divergence between the original and SAE-augmented logits. If training with logits_kl, "
-        "these will be calculated every batch regardless of this parameter.",
-    )
     loss: LossConfigs
     train_data: DatasetConfig
     eval_data: DatasetConfig | None = None
@@ -374,7 +368,6 @@ def train(
     grad_norm: float | None = None
     samples_since_act_frequency_collection: int = 0
     act_frequency_metrics: ActFrequencyMetrics | None = None
-    samples_since_output_metric_collection: int = 0
 
     for batch_idx, batch in tqdm(enumerate(train_loader), total=n_batches, desc="Steps"):
         tokens: Int[Tensor, "batch pos"] = batch[config.train_data.column_name].to(device=device)
@@ -382,9 +375,7 @@ def train(
         total_samples += tokens.shape[0]
         total_tokens += tokens.shape[0] * tokens.shape[1]
         samples_since_act_frequency_collection += tokens.shape[0]
-        samples_since_output_metric_collection += tokens.shape[0]
 
-        run_entire_model: bool = not is_local
         # Note that is_last_batch will always be False for iterable datasets with n_samples=None. In
         # that case, we will never know when the final batch is reached.
         is_last_batch: bool = n_batches is not None and batch_idx == n_batches - 1
@@ -401,20 +392,9 @@ def train(
                 >= config.collect_act_frequency_every_n_samples
             )
         )
-        is_collect_output_metrics_step: bool = (
-            config.collect_output_metrics_every_n_samples > 0
-            and (
-                batch_idx == 0
-                or (
-                    samples_since_output_metric_collection
-                    >= config.collect_output_metrics_every_n_samples
-                )
-            )
-        )
         is_log_step: bool = (
             batch_idx == 0
             or (is_grad_step and (grad_updates + 1) % config.log_every_n_grad_steps == 0)
-            or (is_local and is_collect_output_metrics_step)
             or is_eval_step
             or is_last_batch
         )
@@ -426,16 +406,10 @@ def train(
             or is_last_batch
         )
 
-        if is_collect_output_metrics_step:
-            # Running the entire model will output non-None new_logits which output metrics are
-            # calculated from
-            run_entire_model = True
-            samples_since_output_metric_collection = 0
-
         # Run through the raw transformer without SAEs
         orig_logits, orig_acts = model.forward_raw(
             tokens=tokens,
-            run_entire_model=run_entire_model,
+            run_entire_model=not is_local,
             final_layer=final_layer,
             cache_positions=cache_positions,
         )
@@ -444,7 +418,7 @@ def train(
             tokens=tokens,
             sae_positions=model.raw_sae_positions,
             cache_positions=cache_positions,
-            orig_acts=None if run_entire_model else orig_acts,
+            orig_acts=None if not is_local else orig_acts,
         )
 
         loss, loss_dict = calc_loss(
