@@ -28,9 +28,10 @@ python sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py <path_to_config
 
 If using a Colab notebook, see [this example](demos/train_saes.ipynb).
 
-Note that the library also contains scripts for training mlps and SAEs on mlps, as well as training
-custom transformerlens models and SAEs on these models (see [here](sparsify/scripts/)).
+Sample wandb sweep configs are provided in [sparsify/scripts/train_tlens_saes/](sparsify/scripts/train_tlens_saes/).
 
+The library also contains scripts for training mlps and SAEs on mlps, as well as training
+custom transformerlens models and SAEs on these models (see [here](sparsify/scripts/)).
 ### Load a Pre-trained SAE
 You can load any pre-trained SAE (and accompanying TransformerLens model) trained using this library
 from Weights and Biases by running
