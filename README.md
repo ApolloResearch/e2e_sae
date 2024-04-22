@@ -42,7 +42,7 @@ model = SAETransformer.from_wandb("<entity/project/run_id>")
 model = SAETransformer.from_checkpoint("/path/to/checkpoint/dir") 
 ```
 Note that all runs in the [TODO: Add e2e paper]() can be loaded this way (e.g.
-[e2e_sae/gpt2/tvj2owza](https://wandb.ai/e2e_sae/gpt2/runs/tvj2owza)).
+[sparsify/gpt2/tvj2owza](https://wandb.ai/sparsify/gpt2/runs/tvj2owza)).
 
 
 This will instantiate a `SAETransformer` class, which contains a TransformerLens model with SAEs
