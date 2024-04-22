@@ -1,0 +1,19 @@
+seed: 0
+name: tiny-gpt2
+tlens_config:
+  d_model: 4
+  n_layers: 2
+  n_ctx: 1024
+  d_head: 4
+  d_vocab: 50257
+  act_fn: gelu
+  dtype: float32
+  tokenizer_name: gpt2
+train:
+  n_epochs: 3
+  batch_size: 16
+  effective_batch_size: null
+  lr: 1e-3
+  warmup_samples: 0
+  save_every_n_epochs: 1
+wandb_project: e2e_sae-custom

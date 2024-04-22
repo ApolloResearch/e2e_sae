@@ -1,8 +1,8 @@
 import pytest
 import torch
 
-from sparsify.loader import load_tlens_model
-from sparsify.models.transformers import SAETransformer
+from e2e_sae.loader import load_tlens_model
+from e2e_sae.models.transformers import SAETransformer
 from tests.utils import get_tinystories_config
 
 

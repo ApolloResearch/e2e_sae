@@ -2,15 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from sparsify.data import DatasetConfig
-from sparsify.losses import (
+from e2e_sae.data import DatasetConfig
+from e2e_sae.losses import (
     LogitsKLLoss,
     LossConfigs,
     OutToInLoss,
     SparsityLoss,
 )
-from sparsify.scripts.train_tlens_saes.run_train_tlens_saes import Config, SparsifiersConfig
-from sparsify.scripts.train_tlens_saes.run_train_tlens_saes import main as run_training
+from e2e_sae.scripts.train_tlens_saes.run_train_tlens_saes import Config, SparsifiersConfig
+from e2e_sae.scripts.train_tlens_saes.run_train_tlens_saes import main as run_training
 
 
 @pytest.mark.cpuslow
@@ -21,7 +21,7 @@ def test_train_tiny_gpt():
     this.
     """
     model_path = Path(
-        "sparsify/scripts/train_tlens/sample_models/tiny-gpt2_lr-0.001_bs-16_2024-04-21_14-01-14/epoch_1.pt"
+        "e2e_sae/scripts/train_tlens/sample_models/tiny-gpt2_lr-0.001_bs-16_2024-04-21_14-01-14/epoch_1.pt"
     )
     config = Config(
         wandb_project=None,

@@ -1,4 +1,4 @@
-# Sparsify
+# e2e_sae
 
 This library is used to train and evaluate Sparse Autoencoders (SAEs). It handles the following
 training types:
@@ -20,29 +20,34 @@ pip install .
 If you would like to track your run with Weights and Biases, place your api key and entity name in
 a new file called `.env`. An example is provided in [.env.example](.env.example).
 
-Create a config file (see gpt2 configs [here](sparsify/scripts/train_tlens_saes/) for examples).
+Create a config file (see gpt2 configs [here](e2e_sae/scripts/train_tlens_saes/) for examples).
 Then run
 ```bash
-python sparsify/scripts/train_tlens_saes/run_train_tlens_saes.py <path_to_config>
+python e2e_sae/scripts/train_tlens_saes/run_train_tlens_saes.py <path_to_config>
 ```
 
 If using a Colab notebook, see [this example](demos/train_saes.ipynb).
 
-Sample wandb sweep configs are provided in [sparsify/scripts/train_tlens_saes/](sparsify/scripts/train_tlens_saes/).
+Sample wandb sweep configs are provided in [e2e_sae/scripts/train_tlens_saes/](e2e_sae/scripts/train_tlens_saes/).
 
 The library also contains scripts for training mlps and SAEs on mlps, as well as training
-custom transformerlens models and SAEs on these models (see [here](sparsify/scripts/)).
+custom transformerlens models and SAEs on these models (see [here](e2e_sae/scripts/)).
 ### Load a Pre-trained SAE
 You can load any pre-trained SAE (and accompanying TransformerLens model) trained using this library
 from Weights and Biases by running
 ```python
-from sparsify import SAETransformer
+from e2e_sae import SAETransformer
 model = SAETransformer.from_wandb("<entity/project/run_id>")
 # or, if training was done locally:
 model = SAETransformer.from_checkpoint("/path/to/checkpoint/dir") 
 ```
+<<<<<<< HEAD
 All runs in the [TODO: Add e2e paper]() can be loaded this way (e.g.
 [sparsify/gpt2/tvj2owza](https://wandb.ai/sparsify/gpt2/runs/tvj2owza)).
+=======
+Note that all runs in the [TODO: Add e2e paper]() can be loaded this way (e.g.
+[e2e_sae/gpt2/tvj2owza](https://wandb.ai/e2e_sae/gpt2/runs/tvj2owza)).
+>>>>>>> main
 
 
 This will instantiate a `SAETransformer` class, which contains a TransformerLens model with SAEs
