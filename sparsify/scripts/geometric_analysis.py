@@ -26,12 +26,12 @@ from sparsify.utils import filter_names
 CONSTANT_CE_RUNS = {
     2: {"e2e": "ovhfts9n", "local": "ue3lz0n7", "e2e-recon": "visi12en"},
     6: {"e2e": "zgdpkafo", "local": "1jy3m5j0", "e2e-recon": "2lzle2f0"},
-    10: {"e2e": "8crnit9h", "local": "m2hntlav", "e2e-recon": "1ei8azro"},
+    10: {"e2e": "8crnit9h", "local": "m2hntlav", "e2e-recon": "cvj5um2h"},
 }
 CONSTANT_L0_RUNS = {
     2: {"e2e": "bst0prdd", "local": "6vtk4k51", "e2e-recon": "e26jflpq"},
     6: {"e2e": "tvj2owza", "local": "jup3glm9", "e2e-recon": "2lzle2f0"},
-    10: {"e2e": "8crnit9h", "local": "5vmpdgaz", "e2e-recon": "c3nr4wce"},
+    10: {"e2e": "8crnit9h", "local": "5vmpdgaz", "e2e-recon": "cvj5um2h"},
 }
 
 
