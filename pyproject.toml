@@ -1,5 +1,5 @@
 [project]
-name = "e2e-sae"
+name = "e2e_sae"
 version = "0.0.1"
 description = "Repo for training sparse autoencoders end-to-end"
 requires-python = ">=3.11"
@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.urls]
-repository = "https://github.com/ApolloResearch/e2e-sae"
+repository = "https://github.com/ApolloResearch/e2e_sae"
 
 [project.optional-dependencies]
 dev = [
