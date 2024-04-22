@@ -4,16 +4,16 @@ import pytest
 import torch
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
-from sparsify.data import DatasetConfig
-from sparsify.loader import load_tlens_model
-from sparsify.models.transformers import SAETransformer
-from sparsify.scripts.generate_dashboards import (
+from e2e_sae.data import DatasetConfig
+from e2e_sae.loader import load_tlens_model
+from e2e_sae.models.transformers import SAETransformer
+from e2e_sae.scripts.generate_dashboards import (
     DashboardsConfig,
     compute_feature_acts,
     create_vocab_dict,
     generate_dashboards,
 )
-from sparsify.utils import set_seed
+from e2e_sae.utils import set_seed
 from tests.utils import get_tinystories_config
 
 Tokenizer = PreTrainedTokenizer | PreTrainedTokenizerFast
