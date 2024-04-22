@@ -1,7 +1,7 @@
 [project]
-name = "sparsify"
+name = "e2e_sae"
 version = "0.0.1"
-description = "Repo for sparsifying networks end-to-end"
+description = "Repo for training sparse autoencoders end-to-end"
 requires-python = ">=3.11"
 readme = "README.md"
 dependencies = [
@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.urls]
-repository = "https://github.com/ApolloResearch/sparsify"
+repository = "https://github.com/ApolloResearch/e2e_sae"
 
 [project.optional-dependencies]
 dev = [
@@ -38,7 +38,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["sparsify", "sparsify.models", "sparsify.scripts"]
+packages = ["e2e_sae", "e2e_sae.models", "e2e_sae.scripts"]
 
 [tool.ruff]
 line-length = 100
@@ -71,7 +71,7 @@ docstring-code-format = true
 known-third-party = ["wandb"]
 
 [tool.pyright]
-include = ["sparsify", "tests"]
+include = ["e2e_sae", "tests"]
 
 strictListInference = true
 strictDictionaryInference = true
