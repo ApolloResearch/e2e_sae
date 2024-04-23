@@ -131,6 +131,13 @@ class Config(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
+    def remove_deprecated_fields(cls, values: dict[str, Any]) -> dict[str, Any]:
+        """Remove fields that are no longer used."""
+        values.pop("collect_output_metrics_every_n_samples", None)
+        return values
+
+    @model_validator(mode="before")
+    @classmethod
     def check_only_one_model_definition(cls, values: dict[str, Any]) -> dict[str, Any]:
         assert (values.get("tlens_model_name") is not None) + (
             values.get("tlens_model_path") is not None
