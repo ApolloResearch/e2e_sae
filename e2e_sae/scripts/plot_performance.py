@@ -190,6 +190,7 @@ def plot_per_layer_metric(
     ylim: tuple[float | None, float | None] = (None, None),
     legend_label_cols_and_precision: list[tuple[str, int]] | None = None,
     run_types: Sequence[str] = ("e2e", "local", "e2e-recon"),
+    horz_layout: bool = False,
 ) -> None:
     """
     Plot the per-layer metric (explained variance or reconstruction loss) for different run types.
@@ -205,6 +206,8 @@ def plot_per_layer_metric(
         legend_label_cols_and_precision: Columns in df that should be used for the legend, along
             with their precision. Added in addition to the run type.
         run_types: The run types to include in the plot.
+        horz_layout: Whether to use a horizontal layout for the subplots. Requires sae_layers to be
+            exactly [2, 6, 10]. Ignores legend_label_cols_and_precision if True.
     """
     metric_names = {
         "explained_var": "Explained Variance",
@@ -219,8 +222,15 @@ def plot_per_layer_metric(
     color_e2e, color_lws, color_e2e_recon = sns.color_palette()[:3]
     color_map = {"e2e": color_e2e, "local": color_lws, "e2e-recon": color_e2e_recon}
 
-    fig, axs = plt.subplots(n_sae_layers, 1, figsize=(8, 4 * n_sae_layers))
-    axs = np.atleast_1d(axs)
+    if horz_layout:
+        assert sae_layers == [2, 6, 10]
+        fig, axs = plt.subplots(
+            1, n_sae_layers, figsize=(10, 4), gridspec_kw={"width_ratios": [3, 2, 1.2]}
+        )
+        legend_label_cols_and_precision = None
+    else:
+        fig, axs = plt.subplots(n_sae_layers, 1, figsize=(8, 4 * n_sae_layers))
+        axs = np.atleast_1d(axs)
 
     def plot_metric(
         ax: plt.Axes,
@@ -253,8 +263,8 @@ def plot_per_layer_metric(
             )
 
     for i, sae_layer in enumerate(sae_layers):
-        valid_ids = [int(v) for v in run_ids[sae_layer].values()]
-        layer_df = df.loc[df["id"].isin(valid_ids)]
+        # valid_ids = [int(v) for v in run_ids[sae_layer].values()]
+        layer_df = df.loc[df["id"].isin(run_ids[sae_layer].values())]
 
         ax = axs[i]
 
@@ -265,13 +275,14 @@ def plot_per_layer_metric(
             label, marker = RUN_TYPE_MAP[run_type]
             plot_metric(ax, layer_df.loc[layer_df["run_type"] == run_type], marker, sae_layer, xs)
 
-            ax.set_title(f"SAE Layer {sae_layer}", fontweight="bold")
-            ax.set_xlabel("Model Layer")
-            ax.set_ylabel(metric_name)
+        ax.set_title(f"SAE Layer {sae_layer}", fontweight="bold")
+        ax.set_xlabel("Model Layer")
+        if (not horz_layout) or i == 0:
             ax.legend(title="Run Type", loc="best")
-            ax.set_xticks(xs)
-            ax.set_xticklabels([str(x) for x in xs])
-            ax.set_ylim(ylim)
+            ax.set_ylabel(metric_name)
+        ax.set_xticks(xs)
+        ax.set_xticklabels([str(x) for x in xs])
+        ax.set_ylim(ylim)
 
     plt.tight_layout()
     if out_file is not None:
@@ -302,7 +313,6 @@ def plot_two_axes_line_single_run_type(
         iter_vals: The values to iterate over.
     """
     colors = sns.color_palette("tab10", n_colors=len(iter_vals))
-    sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
     fig, axs = plt.subplots(1, 2, figsize=(8, 6), gridspec_kw={"wspace": 0.15, "top": 0.84})
     for i, vals in enumerate(iter_vals):
         vals_df = df.loc[df[iter_var] == vals]
@@ -803,6 +813,7 @@ def gpt2_plots():
         ylim=(None, 1),
         legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
         run_types=run_types,
+        horz_layout=True,
     )
     plot_per_layer_metric(
         performance_df,
@@ -813,6 +824,7 @@ def gpt2_plots():
         ylim=(0, None),
         legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
         run_types=run_types,
+        horz_layout=True,
     )
 
 
@@ -889,5 +901,6 @@ def tinystories_1m_plots():
 
 
 if __name__ == "__main__":
+    sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
     gpt2_plots()
     tinystories_1m_plots()
