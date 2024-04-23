@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict
 from torch import Tensor
 from wandb.apis.public import Run
 
+from e2e_sae.log import logger
 from e2e_sae.settings import REPO_ROOT
 
 CONSTANT_CE_RUNS = {
@@ -661,18 +662,20 @@ def create_max_pairwise_similarity_plots(api: wandb.Api, project: str):
         run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS
         out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}"
         out_dir.mkdir(parents=True, exist_ok=True)
+        out_file = out_dir / f"max_pairwise_similarities_constant_{constant_val}.pt"
         pairwise_similarities = get_max_pairwise_similarities(
             api=api,
             project=project,
             run_dict=run_dict,
-            out_file=out_dir / f"max_pairwise_similarities_constant_{constant_val}.pt",
+            out_file=out_file,
             from_file=False,
         )
         plot_max_pairwise_similarities(
             pairwise_similarities,
             constant_val=constant_val,
-            out_file=out_dir / f"max_pairwise_similarities_constant_{constant_val}.png",
+            out_file=out_file.with_suffix(".png"),
         )
+        logger.info(f"Saved max pairwise similarity to {out_file.with_suffix('.png')}")
 
 
 if __name__ == "__main__":
