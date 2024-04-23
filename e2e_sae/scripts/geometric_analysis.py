@@ -712,12 +712,21 @@ CrossMaxSimilarity = dict[int, Float[Tensor, "n_dict_1"]]  # noqa: F821
 def plot_cross_max_similarity(
     cross_max_similarity: CrossMaxSimilarity,
     out_file: Path,
+    plot_type: Literal["kde", "hist"] = "kde",
+    cut_kde: bool = False,
 ):
     """Make a single plot with the layers side by side showing max cross similarities."""
     fig, axs = plt.subplots(1, len(cross_max_similarity), figsize=(15, 5))
+    axs = np.atleast_1d(axs)
     for i, (layer_num, max_cosine_sim) in enumerate(cross_max_similarity.items()):
         ax = axs[i]
-        sns.kdeplot(max_cosine_sim.flatten().detach().numpy(), ax=ax)
+        if plot_type == "hist":
+            ax.hist(max_cosine_sim.flatten().detach().numpy(), bins=50)
+        elif plot_type == "kde":
+            if cut_kde:
+                sns.kdeplot(max_cosine_sim.flatten().detach().numpy(), ax=ax, cut=0)
+            else:
+                sns.kdeplot(max_cosine_sim.flatten().detach().numpy(), ax=ax)
         ax.set_title(f"Layer {layer_num}", fontweight="bold")
         ax.set_xlabel("Max Cosine Similarity")
         ax.set_ylabel("Density")
@@ -750,16 +759,42 @@ def create_cross_max_similarity_plots(
     )
 
 
+def create_seed_max_similarity_comparison_plots(
+    api: wandb.Api, project: str, run_ids: tuple[str, str], layer: int, run_type: str
+):
+    """Create plots comparing the max similarities between different seeds."""
+    out_dir = Path(__file__).parent / "out" / "seed_comparison"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get pairwise similarities between the two seeds for each layer
+    layer_cross_max_similarity = get_cross_max_similarities(
+        api=api,
+        project_name=project,
+        run_ids=run_ids,
+    )
+
+    plot_cross_max_similarity(
+        {layer: layer_cross_max_similarity},
+        out_file=out_dir / f"cross_max_similarities_{run_type}_{run_ids[0]}_{run_ids[1]}_kde.png",
+        plot_type="kde",
+        cut_kde=True,
+    )
+
+
 if __name__ == "__main__":
     project = "gpt2"
     api = wandb.Api()
 
-    create_max_pairwise_similarity_plots(api, project)
+    # create_max_pairwise_similarity_plots(api, project)
 
-    create_cross_max_similarity_plots(api, project, run_types=("e2e", "local"), constant_val="CE")
+    # create_cross_max_similarity_plots(api, project, run_types=("e2e", "local"), constant_val="CE")
 
-    create_umap_plots(api, project, compute_umaps=False)
+    # create_umap_plots(api, project, compute_umaps=False)
 
+    create_seed_max_similarity_comparison_plots(
+        api, project, run_ids=("1jy3m5j0", "uqfp43ti"), layer=6, run_type="local"
+    )
+    exit()
     constant_val: Literal["CE", "l0"] = "l0"
     # Must chose two run types from ("e2e", "local", "e2e-recon") to compare
     run_types = ("e2e", "local")
