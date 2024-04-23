@@ -1,6 +1,6 @@
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import matplotlib.lines as mlines
 import matplotlib.pyplot as plt
@@ -10,6 +10,7 @@ import seaborn as sns
 import wandb
 from matplotlib import colors as mcolors
 from matplotlib.cm import ScalarMappable
+from numpy.typing import NDArray
 
 from e2e_sae.analysis import create_run_df
 from e2e_sae.log import logger
@@ -32,17 +33,17 @@ def plot_scatter_or_line(
     df: pd.DataFrame,
     x: str,
     y: str,
-    title: str,
     xlabel: str,
     ylabel: str,
+    title: str | None = None,
     out_file: str | Path | None = None,
     z: str | None = None,
-    xlim: tuple[float | None, float | None] = (None, None),
-    ylim: tuple[float | None, float | None] = (None, None),
+    xlim: Mapping[int, tuple[float | None, float | None]] | None = None,
+    ylim: Mapping[int, tuple[float | None, float | None]] | None = None,
     run_types: tuple[str, ...] = ("e2e", "local", "e2e-recon"),
     sparsity_label: bool = False,
     plot_type: Literal["scatter", "line"] | None = None,
-    ax: plt.Axes | None = None,
+    layers: Sequence[int] | None = None,
 ) -> None:
     """Plot a scatter or line plot with the specified x and y variables, colored by run type or z.
 
@@ -56,120 +57,135 @@ def plot_scatter_or_line(
         out_file: The filename which the plot will be saved as.
         z: The variable to use for coloring the points. If not provided, points will be
             colored by run type.
-        xlim: The x-axis limits.
-        ylim: The y-axis limits.
+        xlim: The x-axis limits for each layer.
+        ylim: The y-axis limits for each layer.
         run_types: The run types to include in the plot.
         sparsity_label: Whether to label the points with the sparsity coefficient.
         plot_type: The type of plot to create. Either 'scatter' or 'line'.
+        layers: The layers to include in the plot. If None, all layers in the df will be included.
     """
+
+    if layers is None:
+        layers = sorted(df["layer"].unique())
+    n_layers = len(layers)
+
+    if xlim is None:
+        xlim = {layer: (None, None) for layer in layers}
+    if ylim is None:
+        ylim = {layer: (None, None) for layer in layers}
+
     plot_type = plot_type if plot_type is not None else ("line" if z is None else "scatter")
     sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 6))
-    else:
-        fig = ax.get_figure()
+    cmap = "plasma_r"
 
-    assert ax is not None
+    fig, axs = plt.subplots(n_layers, 1, figsize=(8, 4 * n_layers))
+    axs = np.atleast_1d(axs)
 
     marker_size = 95 if len(run_types) < 3 else 60
 
-    cmap = "plasma_r"
-    norm, vmin, vmax = None, None, None
-    if z is not None:
-        vmin = int(10 ** np.floor(np.log10(df[z].min())))
-        vmax = int(10 ** np.ceil(np.log10(df[z].max())))
-        norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
+    for i, layer in enumerate(layers):
+        layer_df = df.loc[df["layer"] == layer]
+        ax = axs[i]
+        norm, vmin, vmax = None, None, None
+        if z is not None:
+            vmin = int(10 ** np.floor(np.log10(layer_df[z].min())))
+            vmax = int(10 ** np.ceil(np.log10(layer_df[z].max())))
+            norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
 
-    for run_type in run_types:
-        if run_type not in RUN_TYPE_MAP:
-            raise ValueError(f"Invalid run type: {run_type}")
-        label, marker = RUN_TYPE_MAP[run_type]
-        data = df.loc[df["run_type"] == run_type]
-        if not data.empty:
-            plot_kwargs = {
-                "data": data,
-                "x": x,
-                "y": y,
-                "marker": marker,
-                "linewidth": 1.1,
-                "ax": ax,
-                "alpha": 0.8,
-            }
-            if plot_type == "scatter":
-                plot_kwargs["s"] = marker_size
-            elif plot_type == "line":
-                plot_kwargs["orient"] = "y"
-            if z is None:
-                plot_kwargs["label"] = label
-            else:
-                plot_kwargs = {**plot_kwargs, "c": data[z], "cmap": cmap, "norm": norm}
-            if plot_type == "scatter":
-                sns.scatterplot(**plot_kwargs)  # type: ignore
-            elif plot_type == "line":
-                sns.lineplot(**plot_kwargs)  # type: ignore
-            else:
-                raise ValueError(f"Invalid plot type: {plot_type}")
-
-    if sparsity_label:
-        for _, row in df.iterrows():
-            if row["run_type"] in run_types:
-                ax.text(
-                    row[x] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.01,
-                    float(row[y]),
-                    f"{row['sparsity_coeff']}",
-                    fontsize=8,
-                    ha="left",
-                    va="center",
-                    color="black",
-                    alpha=0.8,
-                )
-    ax.set_xlim(xmin=xlim[0], xmax=xlim[1])
-    ax.set_ylim(ymin=ylim[0], ymax=ylim[1])
-    ax.set_title(title)
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-
-    if z is None:
-        ax.legend(title="Run Type", loc="best")
-    else:
-        mappable = ScalarMappable(cmap=cmap, norm=norm)
-        mappable.set_array([])
-        assert fig is not None
-        cbar = fig.colorbar(mappable, ax=ax, label=z)
-        assert vmin is not None
-        assert vmax is not None
-        num_ticklabels = int(np.log10(vmax) - np.log10(vmin)) + 1
-        cbar.set_ticks(np.logspace(np.log10(vmin), np.log10(vmax), num=num_ticklabels))
-        cbar.set_ticklabels([f"$10^{{{int(np.log10(t))}}}$" for t in cbar.get_ticks()])
-
-        # Create legend handles manually so we can color the markers black
-        legend_handles = []
         for run_type in run_types:
-            if df.loc[df["run_type"] == run_type].empty:
-                continue
-            legend_handles.append(
-                mlines.Line2D(
-                    [],
-                    [],
-                    marker=RUN_TYPE_MAP[run_type][1],
-                    color="black",
-                    linestyle="None",
-                    markersize=8,
-                    label=RUN_TYPE_MAP[run_type][0],
-                )
-            )
-        ax.legend(handles=legend_handles, title="Run Type", loc="best")
+            if run_type not in RUN_TYPE_MAP:
+                raise ValueError(f"Invalid run type: {run_type}")
+            label, marker = RUN_TYPE_MAP[run_type]
+            data = layer_df.loc[layer_df["run_type"] == run_type]
+            if not data.empty:
+                plot_kwargs = {
+                    "data": data,
+                    "x": x,
+                    "y": y,
+                    "marker": marker,
+                    "linewidth": 1.1,
+                    "ax": ax,
+                    "alpha": 0.8,
+                }
+                if plot_type == "scatter":
+                    plot_kwargs["s"] = marker_size
+                elif plot_type == "line":
+                    plot_kwargs["orient"] = "y"
+                if z is None:
+                    plot_kwargs["label"] = label
+                else:
+                    plot_kwargs = {**plot_kwargs, "c": data[z], "cmap": cmap, "norm": norm}
+                if plot_type == "scatter":
+                    sns.scatterplot(**plot_kwargs)  # type: ignore
+                elif plot_type == "line":
+                    sns.lineplot(**plot_kwargs)  # type: ignore
+                else:
+                    raise ValueError(f"Invalid plot type: {plot_type}")
 
+        if sparsity_label:
+            for _, row in layer_df.iterrows():
+                if row["run_type"] in run_types:
+                    ax.text(
+                        row[x] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.01,
+                        float(row[y]),
+                        f"{row['sparsity_coeff']}",
+                        fontsize=8,
+                        ha="left",
+                        va="center",
+                        color="black",
+                        alpha=0.8,
+                    )
+        ax.set_xlim(xmin=xlim[layer][0], xmax=xlim[layer][1])
+        ax.set_ylim(ymin=ylim[layer][0], ymax=ylim[layer][1])
+        ax.set_title(f"SAE Layer {layer}", fontweight="bold")
+        ax.set_ylabel(ylabel)
+        ax.set_xlabel(xlabel)
+
+        if z is None:
+            ax.legend(title="Run Type", loc="best")
+        else:
+            mappable = ScalarMappable(cmap=cmap, norm=norm)
+            mappable.set_array([])
+            cbar = fig.colorbar(mappable, ax=ax, label=z)
+            assert vmin is not None
+            assert vmax is not None
+            num_ticklabels = int(np.log10(vmax) - np.log10(vmin)) + 1
+            cbar.set_ticks(np.logspace(np.log10(vmin), np.log10(vmax), num=num_ticklabels))
+            cbar.set_ticklabels([f"$10^{{{int(np.log10(t))}}}$" for t in cbar.get_ticks()])
+
+            # Create legend handles manually so we can color the markers black
+            legend_handles = []
+            for run_type in run_types:
+                if layer_df.loc[layer_df["run_type"] == run_type].empty:
+                    continue
+                legend_handles.append(
+                    mlines.Line2D(
+                        [],
+                        [],
+                        marker=RUN_TYPE_MAP[run_type][1],
+                        color="black",
+                        linestyle="None",
+                        markersize=8,
+                        label=RUN_TYPE_MAP[run_type][0],
+                    )
+                )
+            ax.legend(handles=legend_handles, title="Run Type", loc="best")
+
+    if title is not None:
+        fig.suptitle(title)
+
+    plt.tight_layout()
     if out_file is not None:
         plt.savefig(out_file)
+        plt.savefig(Path(out_file).with_suffix(".svg"))
     plt.close(fig)
 
 
 def plot_per_layer_metric(
     df: pd.DataFrame,
-    sae_layer: int,
+    run_ids: Mapping[int, Mapping[str, str]],
     metric: str,
-    n_layers: int = 8,
+    final_layer: int = 8,
     out_file: str | Path | None = None,
     ylim: tuple[float | None, float | None] = (None, None),
     legend_label_cols_and_precision: list[tuple[str, int]] | None = None,
@@ -180,9 +196,10 @@ def plot_per_layer_metric(
 
     Args:
         df: DataFrame containing the filtered data for the specific layer.
+        run_ids: The run IDs to use. Format: {layer: {run_type: run_id}}.
         sae_layer: The layer where the SAE is applied.
         metric: The metric to plot ('explained_var' or 'recon_loss').
-        n_layers: The number of layers in the transformer model.
+        n_model_layers: The number of layers in the transformer model.
         out_file: The filename which the plot will be saved as.
         ylim: The y-axis limits.
         legend_label_cols_and_precision: Columns in df that should be used for the legend, along
@@ -194,16 +211,25 @@ def plot_per_layer_metric(
         "explained_var_ln": "Layernormed Explained Variance",
         "recon_loss": "Reconstruction MSE",
     }
-    metric_name = metric_names[metric] if metric in metric_names else metric
+    metric_name = metric_names.get(metric, metric)
+
+    sae_layers = list(CONSTANT_CE_RUNS.keys())
+    n_sae_layers = len(sae_layers)
 
     color_e2e, color_lws, color_e2e_recon = sns.color_palette()[:3]
     color_map = {"e2e": color_e2e, "local": color_lws, "e2e-recon": color_e2e_recon}
 
-    plt.figure(figsize=(10, 6))
-    xs = np.arange(sae_layer, n_layers + 1)
+    fig, axs = plt.subplots(n_sae_layers, 1, figsize=(8, 4 * n_sae_layers))
+    axs = np.atleast_1d(axs)
 
-    def plot_metric(runs: pd.DataFrame, marker: str):
-        for _, row in runs.iterrows():
+    def plot_metric(
+        ax: plt.Axes,
+        plot_df: pd.DataFrame,
+        marker: str,
+        sae_layer: int,
+        xs: NDArray[np.signedinteger[Any]],
+    ) -> None:
+        for _, row in plot_df.iterrows():
             run_type = row["run_type"]
             assert isinstance(run_type, str)
             legend_label = run_type
@@ -216,8 +242,8 @@ def plot_per_layer_metric(
                     for col, prec in legend_label_cols_and_precision
                 ]
                 legend_label += f" ({', '.join(metric_strings)})"
-            ys = [row[f"{metric}_layer-{i}"] for i in range(sae_layer, n_layers + 1)]
-            plt.plot(
+            ys = [row[f"{metric}_layer-{i}"] for i in range(sae_layer, final_layer + 1)]
+            ax.plot(
                 xs,
                 ys,
                 label=legend_label,
@@ -226,19 +252,32 @@ def plot_per_layer_metric(
                 marker=marker,
             )
 
-    for run_type in run_types:
-        plot_metric(df.loc[df["run_type"] == run_type], RUN_TYPE_MAP[run_type][1])
+    for i, sae_layer in enumerate(sae_layers):
+        valid_ids = [int(v) for v in run_ids[sae_layer].values()]
+        layer_df = df.loc[df["id"].isin(valid_ids)]
 
-    # Ensure that the x-axis are only whole numbers
-    plt.xticks(xs, [str(x) for x in xs])
-    plt.ylim(ylim)
-    plt.legend(title="Run Type")
-    plt.title(f"{metric_name} per Layer (SAE layer={sae_layer})")
-    plt.xlabel("Layer")
-    plt.ylabel(metric_name)
+        ax = axs[i]
+
+        xs = np.arange(sae_layer, final_layer + 1)
+        for run_type in run_types:
+            if run_type not in RUN_TYPE_MAP:
+                raise ValueError(f"Invalid run type: {run_type}")
+            label, marker = RUN_TYPE_MAP[run_type]
+            plot_metric(ax, layer_df.loc[layer_df["run_type"] == run_type], marker, sae_layer, xs)
+
+            ax.set_title(f"SAE Layer {sae_layer}", fontweight="bold")
+            ax.set_xlabel("Model Layer")
+            ax.set_ylabel(metric_name)
+            ax.legend(title="Run Type", loc="best")
+            ax.set_xticks(xs)
+            ax.set_xticklabels([str(x) for x in xs])
+            ax.set_ylim(ylim)
+
     plt.tight_layout()
     if out_file is not None:
         plt.savefig(out_file)
+        # Save as svg also
+        plt.savefig(Path(out_file).with_suffix(".svg"))
     plt.close()
 
 
@@ -334,17 +373,18 @@ def plot_two_axes_line(
     x1: str,
     x2: str,
     y: str,
-    title: str,
     xlabel1: str,
     xlabel2: str,
     ylabel: str,
+    title: str | None = None,
     out_file: str | Path | None = None,
     run_types: Sequence[str] = ("e2e", "local", "e2e-recon"),
-    xlim1: tuple[float | None, float | None] = (None, None),
-    xlim2: tuple[float | None, float | None] = (None, None),
+    xlim1: Mapping[int, tuple[float | None, float | None]] | None = None,
+    xlim2: Mapping[int, tuple[float | None, float | None]] | None = None,
     xticks1: tuple[list[float], list[str]] | None = None,
     xticks2: tuple[list[float], list[str]] | None = None,
-    ylim: tuple[float | None, float | None] = (None, None),
+    ylim: Mapping[int, tuple[float | None, float | None]] | None = None,
+    layers: Sequence[int] | None = None,
 ) -> None:
     """Line plot with two x-axes and one y-axis between them. One line for each run type.
 
@@ -359,77 +399,111 @@ def plot_two_axes_line(
         ylabel: The label for the y-axis.
         out_file: The filename which the plot will be saved as.
         run_types: The run types to include in the plot.
-        xlim1: The x-axis limits for the first x-axis.
-        xlim2: The x-axis limits for the second x-axis.
+        xlim1: The x-axis limits for the first x-axis for each layer.
+        xlim2: The x-axis limits for the second x-axis for each layer.
         xticks1: The x-ticks for the first x-axis.
         xticks2: The x-ticks for the second x-axis.
-        ylim: The y-axis limits.
+        ylim: The y-axis limits for each layer.
+        layers: The layers to include in the plot. If None, all layers in the df will be included.
     """
+
+    if layers is None:
+        layers = sorted(df["layer"].unique())
+    n_layers = len(layers)
+
+    if xlim1 is None:
+        xlim1 = {layer: (None, None) for layer in layers}
+    if xlim2 is None:
+        xlim2 = {layer: (None, None) for layer in layers}
+    if ylim is None:
+        ylim = {layer: (None, None) for layer in layers}
+
     sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
-    fig, axs = plt.subplots(1, 2, figsize=(8, 6), gridspec_kw={"wspace": 0.15, "top": 0.84})
+    fig = plt.figure(figsize=(8, 4 * n_layers), constrained_layout=True)
+    subfigs = fig.subfigures(n_layers)
+    subfigs = np.atleast_1d(subfigs)
+    for subfig, layer in zip(subfigs, layers, strict=False):
+        layer_df = df.loc[df["layer"] == layer]
+        axs = subfig.subplots(1, 2)
+        for run_type in run_types:
+            if run_type not in RUN_TYPE_MAP:
+                raise ValueError(f"Invalid run type: {run_type}")
+            label, marker = RUN_TYPE_MAP[run_type]
+            data = layer_df.loc[layer_df["run_type"] == run_type]
+            if not data.empty:
+                # draw the lines between points based on the y value
+                data = data.sort_values(y)
+                for i, (ax, x) in enumerate(zip(axs, [x1, x2], strict=False)):
+                    ax.plot(
+                        data[x],
+                        data[y],
+                        marker=marker,
+                        linewidth=1.1,
+                        alpha=0.8,
+                        label=label if i == 0 else None,
+                    )
 
-    for run_type in run_types:
-        if run_type not in RUN_TYPE_MAP:
-            raise ValueError(f"Invalid run type: {run_type}")
-        label, marker = RUN_TYPE_MAP[run_type]
-        data = df.loc[df["run_type"] == run_type]
-        if not data.empty:
-            # draw the lines between points based on the y value
-            data = data.sort_values(y)
-            for i, (ax, x) in enumerate(zip(axs, [x1, x2], strict=True)):
-                ax.plot(
-                    data[x],
-                    data[y],
-                    marker=marker,
-                    linewidth=1.1,
-                    alpha=0.8,
-                    label=label if i == 0 else None,
-                )
+        axs[0].legend(loc="best")
 
-    axs[0].legend(loc="best")
+        axs[0].set_xlim(xmin=xlim1[layer][0], xmax=xlim1[layer][1])
+        axs[1].set_xlim(xmin=xlim2[layer][0], xmax=xlim2[layer][1])
+        axs[0].set_ylim(ymin=ylim[layer][0], ymax=ylim[layer][1])
+        axs[1].set_ylim(ymin=ylim[layer][0], ymax=ylim[layer][1])
 
-    axs[0].set_xlim(xmin=xlim1[0], xmax=xlim1[1])
-    axs[1].set_xlim(xmin=xlim2[0], xmax=xlim2[1])
-    axs[0].set_ylim(ymin=ylim[0], ymax=ylim[1])
-    axs[1].set_ylim(ymin=ylim[0], ymax=ylim[1])
+        # Set a title above axs[0] and axs[1] to show the layer number
+        subfig.suptitle(f"SAE Layer {layer}", fontweight="bold")
+        axs[0].set_xlabel(xlabel1)
+        axs[1].set_xlabel(xlabel2)
+        axs[0].set_ylabel(ylabel)
+        axs[1].set_ylabel(ylabel)
 
-    axs[0].set_xlabel(xlabel1)
-    axs[1].set_xlabel(xlabel2)
-    axs[0].set_ylabel(ylabel)
-    axs[1].set_ylabel(ylabel)
+        # move y-axis to right of second subplot
+        axs[1].yaxis.set_label_position("right")
+        axs[1].yaxis.set_ticks_position("right")
+        axs[1].yaxis.set_tick_params(color="white")
 
-    # move y-axis to right of second subplot
-    axs[1].yaxis.set_label_position("right")
-    axs[1].yaxis.set_ticks_position("right")
-    axs[1].yaxis.set_tick_params(color="white")
+        if xticks1 is not None:
+            axs[0].set_xticks(xticks1[0], xticks1[1])
+        if xticks2 is not None:
+            axs[1].set_xticks(xticks2[0], xticks2[1])
 
-    if xticks1 is not None:
-        axs[0].set_xticks(xticks1[0], xticks1[1])
-    if xticks2 is not None:
-        axs[1].set_xticks(xticks2[0], xticks2[1])
+        # add "Better" text annotations
+        axs[0].text(
+            s="Better →",
+            x=1,
+            y=1.02,
+            ha="right",
+            va="bottom",
+            fontsize=10,
+            transform=axs[0].transAxes,
+        )
+        axs[1].text(
+            s="← Better",
+            x=0,
+            y=1.02,
+            ha="left",
+            va="bottom",
+            fontsize=10,
+            transform=axs[1].transAxes,
+        )
+        axs[0].text(
+            s="Better →",
+            x=1.075,
+            y=1,
+            ha="center",
+            va="top",
+            fontsize=10,
+            transform=axs[0].transAxes,
+            rotation=90,
+        )
 
-    # add "Better" text annotations
-    axs[0].text(
-        s="Better →", x=1, y=1.02, ha="right", va="bottom", fontsize=10, transform=axs[0].transAxes
-    )
-    axs[1].text(
-        s="← Better", x=0, y=1.02, ha="left", va="bottom", fontsize=10, transform=axs[1].transAxes
-    )
-    axs[0].text(
-        s="Better →",
-        x=1.075,
-        y=1,
-        ha="center",
-        va="top",
-        fontsize=10,
-        transform=axs[0].transAxes,
-        rotation=90,
-    )
-
-    fig.suptitle(title)
+    if title is not None:
+        fig.suptitle(title)
 
     if out_file is not None:
         plt.savefig(out_file)
+        # Save as svg also
+        plt.savefig(Path(out_file).with_suffix(".svg"))
     plt.close(fig)
 
 
@@ -651,98 +725,95 @@ def gpt2_plots():
     )
 
     performance_df = df.loc[(df["ratio"] == 60) & (df["seed"] == 0) & (df["n_samples"] == 400_000)]
+    # For layer 2 we filter out the runs with L0 > 200. Otherwise we end up with point in one
+    # subplot but not the other
+    performance_df = performance_df.loc[
+        ~((performance_df["L0"] > 200) & (performance_df["layer"] == 2))
+    ]
 
     # ylims for plots with ce_diff on the y axis
-    loss_increase_lims = {2: (0.2, 0), 6: (0.4, 0), 10: (0.4, 0)}
+    loss_increase_lims = {2: (0.2, 0.0), 6: (0.4, 0.0), 10: (0.4, 0.0)}
     # xlims for plots with L0 on the x axis
-    l0_diff_xlims = {2: (200, 0), 6: (600, 0), 10: (600, 0)}
-    unique_layers = list(performance_df["layer"].unique())
-    for layer in unique_layers:
-        layer_df = performance_df.loc[performance_df["layer"] == layer]
+    l0_diff_xlims = {2: (200.0, 0.0), 6: (600.0, 0.0), 10: (600.0, 0.0)}
 
-        # For layer 2 we filter out the runs with L0 > 200. Otherwise we end up with points
-        # in one subplot but not the other
-        two_axes_df = layer_df.loc[layer_df["L0"] <= 200] if layer == 2 else layer_df
-        # Plot two axes line plots with L0 and alive_dict_elements on the x-axis
-        plot_two_axes_line(
-            two_axes_df,
-            x1="L0",
-            x2="alive_dict_elements",
-            y="CELossIncrease",
-            title=f"Layer {layer}: L0 and alive_dict_elements vs CE Loss Increase",
-            xlabel1="L0",
-            xlabel2="Alive Dictionary Elements",
-            ylabel="CE Loss Increase",
-            out_file=out_dir / f"l0_alive_dict_elements_vs_ce_loss_layer_{layer}.png",
-            run_types=run_types,
-            xlim1=l0_diff_xlims[layer],
-            xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
-            ylim=loss_increase_lims[layer],
-        )
-        plot_scatter_or_line(
-            layer_df,
-            x="out_to_in",
-            y="CELossIncrease",
-            ylim=loss_increase_lims[layer],
-            title=f"Layer {layer}: Out-to-In Loss vs CE Loss Increase",
-            xlabel="Out-to-In Loss",
-            ylabel="CE loss increase\n(original model - model with sae)",
-            out_file=out_dir / f"out_to_in_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=False,
-            run_types=run_types,
-            plot_type="scatter",
-        )
-        plot_scatter_or_line(
-            layer_df,
-            x="sum_recon_loss",
-            y="CELossIncrease",
-            ylim=loss_increase_lims[layer],
-            title=f"Layer {layer}: Future Reconstruction Loss vs CE Loss Increase",
-            xlabel="Summed Future Reconstruction Loss",
-            ylabel="CE loss increase\n(original model - model with sae)",
-            out_file=out_dir / f"future_recon_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=False,
-            run_types=run_types,
-            plot_type="scatter",
-        )
-        plot_scatter_or_line(
-            layer_df,
-            x="explained_var_ln",
-            y="CELossIncrease",
-            z="L0",
-            ylim=loss_increase_lims[layer],
-            title=f"Layer {layer}: Explained Variance LN vs CE Loss Increase",
-            xlabel="Explained Variance LN",
-            ylabel="CE loss increase\n(original model - model with sae)",
-            out_file=out_dir / f"explained_var_ln_vs_ce_loss_layer_{layer}.png",
-            sparsity_label=False,
-            run_types=run_types,
-        )
+    # Plot two axes line plots with L0 and alive_dict_elements on the x-axis
+    plot_two_axes_line(
+        performance_df,
+        x1="L0",
+        x2="alive_dict_elements",
+        y="CELossIncrease",
+        xlabel1="L0",
+        xlabel2="Alive Dictionary Elements",
+        ylabel="CE Loss Increase",
+        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss.png",
+        run_types=run_types,
+        xlim1=l0_diff_xlims,
+        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+        ylim=loss_increase_lims,
+    )
+    plot_scatter_or_line(
+        performance_df,
+        x="out_to_in",
+        y="CELossIncrease",
+        ylim=loss_increase_lims,
+        title="Out-to-In Loss vs CE Loss Increase",
+        xlabel="Out-to-In Loss",
+        ylabel="CE loss increase\n(original model - model with sae)",
+        out_file=out_dir / "out_to_in_vs_ce_loss.png",
+        sparsity_label=False,
+        run_types=run_types,
+        plot_type="scatter",
+    )
+    plot_scatter_or_line(
+        performance_df,
+        x="sum_recon_loss",
+        y="CELossIncrease",
+        ylim=loss_increase_lims,
+        title="Future Reconstruction Loss vs CE Loss Increase",
+        xlabel="Summed Future Reconstruction Loss",
+        ylabel="CE loss increase\n(original model - model with sae)",
+        out_file=out_dir / "future_recon_vs_ce_loss.png",
+        sparsity_label=False,
+        run_types=run_types,
+        plot_type="scatter",
+    )
+    plot_scatter_or_line(
+        performance_df,
+        x="explained_var_ln",
+        y="CELossIncrease",
+        z="L0",
+        ylim=loss_increase_lims,
+        title="Explained Variance LN vs CE Loss Increase",
+        xlabel="Explained Variance LN",
+        ylabel="CE loss increase\n(original model - model with sae)",
+        out_file=out_dir / "explained_var_ln_vs_ce_loss.png",
+        sparsity_label=False,
+        run_types=run_types,
+    )
 
-        valid_ids = CONSTANT_CE_RUNS[layer].values()
-        layer_constant_ce_df = layer_df.loc[layer_df["id"].isin(valid_ids)]
-        # We didn't track metrics for hook_resid_post in final layer in e2e+recon, though perhaps
-        # we should have (including using the final layer's hook_resid_post in the loss)
-        final_layer = n_layers - 1
-        plot_per_layer_metric(
-            layer_constant_ce_df,
-            sae_layer=layer,
-            metric="explained_var_ln",
-            n_layers=final_layer,
-            out_file=out_dir / f"explained_var_ln_per_layer_sae_layer_{layer}.png",
-            ylim=(None, 1),
-            legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
-            run_types=run_types,
-        )
-        plot_per_layer_metric(
-            layer_constant_ce_df,
-            sae_layer=layer,
-            metric="recon_loss",
-            n_layers=final_layer,
-            out_file=out_dir / f"recon_loss_per_layer_sae_layer_{layer}.png",
-            legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
-            run_types=run_types,
-        )
+    # We didn't track metrics for hook_resid_post in the final model layer in e2e+recon, though
+    # perhaps we should have (including using the final layer's hook_resid_post in the loss)
+    final_layer = n_layers - 1
+    plot_per_layer_metric(
+        performance_df,
+        run_ids=CONSTANT_CE_RUNS,
+        metric="explained_var_ln",
+        final_layer=final_layer,
+        out_file=out_dir / "explained_var_ln_per_layer.png",
+        ylim=(None, 1),
+        legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
+        run_types=run_types,
+    )
+    plot_per_layer_metric(
+        performance_df,
+        run_ids=CONSTANT_CE_RUNS,
+        metric="recon_loss",
+        final_layer=final_layer,
+        out_file=out_dir / "recon_loss_per_layer.png",
+        ylim=(0, None),
+        legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
+        run_types=run_types,
+    )
 
 
 def get_tinystories_1m_df() -> pd.DataFrame:
@@ -801,25 +872,20 @@ def tinystories_1m_plots():
     # xlims for plots with alive_dict_elements on the x axis
     alive_dict_elements_xlims = {0: (None, None), 3: (1250, None), 6: (1000, None)}
 
-    unique_layers = list(df["layer"].unique())
-    for layer in unique_layers:
-        layer_df = df.loc[df["layer"] == layer]
-
-        plot_two_axes_line(
-            layer_df,
-            x1="L0",
-            x2="alive_dict_elements",
-            y="CELossIncrease",
-            title=f"Layer {layer}: L0 and alive_dict_elements vs CE Loss Increase",
-            xlabel1="L0",
-            xlabel2="Alive Dictionary Elements",
-            ylabel="CE Loss Increase",
-            out_file=out_dir / f"l0_alive_dict_elements_vs_ce_loss_layer_{layer}.png",
-            run_types=run_types,
-            xlim1=l0_diff_xlims[layer],
-            xlim2=alive_dict_elements_xlims[layer],
-            ylim=loss_increase_lims[layer],
-        )
+    plot_two_axes_line(
+        df,
+        x1="L0",
+        x2="alive_dict_elements",
+        y="CELossIncrease",
+        xlabel1="L0",
+        xlabel2="Alive Dictionary Elements",
+        ylabel="CE Loss Increase",
+        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss.png",
+        run_types=run_types,
+        xlim1=l0_diff_xlims,
+        xlim2=alive_dict_elements_xlims,
+        ylim=loss_increase_lims,
+    )
 
 
 if __name__ == "__main__":

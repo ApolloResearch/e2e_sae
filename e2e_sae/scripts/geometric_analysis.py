@@ -420,7 +420,7 @@ def plot_umap(
             rect = patches.Rectangle(
                 (xmin, ymin), width, height, linewidth=1, edgecolor="r", facecolor="none"
             )
-            plt.gca().add_patch(rect)
+            plt.gca().add_patch(rect)  # type: ignore
 
     plt.savefig(out_file)
 

@@ -18,7 +18,8 @@ dependencies = [
     "jaxtyping~=0.2.25",
     "python-dotenv~=1.0.1",
     "zstandard~=0.22.0",
-    "matplotlib>=3.5.3",
+    "matplotlib~=3.5.3",
+    "seaborn~=0.13.2",
     "umap-learn~=0.5.6",
     "eindex-callum@git+https://github.com/callummcdougall/eindex",
     "sae_vis@git+https://github.com/callummcdougall/sae_vis.git@b28a0f7c7e936f4bea05528d952dfcd438533cce"
