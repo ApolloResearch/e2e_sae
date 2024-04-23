@@ -436,6 +436,7 @@ def plot_umap(
             plt.gca().add_patch(rect)  # type: ignore
 
     plt.savefig(out_file)
+    logger.info(f"Saved UMAP plot to {out_file}")
 
 
 def get_alive_dict_elements(
@@ -489,15 +490,15 @@ def get_alive_dict_elements(
     )
 
 
-def create_umap_plots(
-    api: wandb.Api,
-    project: str,
-    run_types: tuple[str, str],
-    run_dict: Mapping[int, Mapping[str, str]],
-    out_dir: Path,
-    constant_val: Literal["CE", "l0"],
-    compute_umaps: bool = True,
-):
+def create_umap_plots(api: wandb.Api, project: str, compute_umaps: bool = True):
+    constant_val: Literal["CE", "l0"] = "CE"
+    # Must chose two run types from ("e2e", "local", "e2e-recon") to compare
+    run_types = ("e2e", "local")
+
+    run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS  # type: ignore
+    out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}_{'_'.join(run_types)}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     # Post-hoc ignore the identified outliers
     lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
         2: {"x": (-2.0, None), "y": (None, None)},
@@ -562,7 +563,6 @@ def create_umap_plots(
             regions=REGIONS[layer_num].regions,
         )
         for i, region in enumerate(REGIONS[layer_num].regions):
-            print(f"Region: {region.description} ({region.coords})")
             e2e_indices, local_indices = get_dict_indices_for_embedding_range(
                 embed_info, **region.coords.model_dump()
             )
@@ -592,6 +592,7 @@ def get_max_pairwise_similarities(
     api: wandb.Api,
     project: str,
     run_dict: Mapping[int, Mapping[str, str]],
+    run_types: tuple[str, str],
     out_file: Path,
     from_file: bool = False,
 ) -> MaxPairwiseSimilarities:
@@ -613,7 +614,6 @@ def get_max_pairwise_similarities(
     if from_file:
         return torch.load(out_file, map_location="cpu")
 
-    run_types = ("e2e", "local")
     max_pairwise_similarities: MaxPairwiseSimilarities = {}
     for layer_num in run_dict:
         max_pairwise_similarities[layer_num] = {}
@@ -653,8 +653,8 @@ def plot_max_pairwise_similarities(
         ax.legend()
     plt.tight_layout()
     plt.savefig(out_file)
-    # Also plot to svg
     plt.savefig(out_file.with_suffix(".svg"))
+    logger.info(f"Saved max pairwise similarity to {out_file}")
 
 
 def create_max_pairwise_similarity_plots(api: wandb.Api, project: str):
@@ -667,6 +667,7 @@ def create_max_pairwise_similarity_plots(api: wandb.Api, project: str):
             api=api,
             project=project,
             run_dict=run_dict,
+            run_types=("e2e", "local"),
             out_file=out_file,
             from_file=False,
         )
@@ -678,30 +679,95 @@ def create_max_pairwise_similarity_plots(api: wandb.Api, project: str):
         logger.info(f"Saved max pairwise similarity to {out_file.with_suffix('.png')}")
 
 
+def get_cross_max_similarities(api: wandb.Api, project_name: str, run_ids: tuple[str, str]):
+    """Get the max pairwise cosine similarity between the alive dictionary elements of two runs.
+
+    Args:
+        api: The wandb API.
+        project_name: The name of the wandb project.
+        run_ids: The IDs of the two runs to compare.
+
+    Returns:
+        The max pairwise cosine similarity between the alive dictionary elements of the two runs.
+    """
+    alive_elements: list[AliveElements] = []
+    for run_id in run_ids:
+        alive_elements.append(
+            get_alive_dict_elements(api=api, project_name=project_name, run_id=run_id)
+        )
+    assert len(alive_elements) == 2, "Only two runs can be compared at a time"
+
+    cross_similarities = get_cosine_similarity(
+        alive_elements[0].alive_dict_elements, alive_elements[1].alive_dict_elements
+    )
+    # Get the max pairwise cosine similarity for each dictionary element
+    max_cosine_sim, _ = torch.max(cross_similarities, dim=1)
+
+    return max_cosine_sim
+
+
+CrossMaxSimilarity = dict[int, Float[Tensor, "n_dict_1"]]  # noqa: F821
+
+
+def plot_cross_max_similarity(
+    cross_max_similarity: CrossMaxSimilarity,
+    out_file: Path,
+):
+    """Make a single plot with the layers side by side showing max cross similarities."""
+    fig, axs = plt.subplots(1, len(cross_max_similarity), figsize=(15, 5))
+    for i, (layer_num, max_cosine_sim) in enumerate(cross_max_similarity.items()):
+        ax = axs[i]
+        sns.kdeplot(max_cosine_sim.flatten().detach().numpy(), ax=ax)
+        ax.set_title(f"Layer {layer_num}", fontweight="bold")
+        ax.set_xlabel("Max Cosine Similarity")
+        ax.set_ylabel("Density")
+    plt.tight_layout()
+    plt.savefig(out_file)
+    plt.savefig(out_file.with_suffix(".svg"))
+    logger.info(f"Saved cross max similarity to {out_file}")
+
+
+def create_cross_max_similarity_plots(
+    api: wandb.Api, project: str, run_types: tuple[str, str], constant_val: str = "CE"
+):
+    """Create plots comparing the max similarities between different run types."""
+    run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS
+    out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get pairwise similarities between the two runtypes for each layer
+    cross_max_similarity: CrossMaxSimilarity = {}
+    for layer_num in run_dict:
+        cross_max_similarity[layer_num] = get_cross_max_similarities(
+            api=api,
+            project_name=project,
+            run_ids=(run_dict[layer_num][run_types[0]], run_dict[layer_num][run_types[1]]),
+        )
+
+    plot_cross_max_similarity(
+        cross_max_similarity,
+        out_file=out_dir / f"cross_max_similarities_{run_types[0]}_{run_types[1]}.png",
+    )
+
+
 if __name__ == "__main__":
     project = "gpt2"
     api = wandb.Api()
 
     create_max_pairwise_similarity_plots(api, project)
+
+    create_cross_max_similarity_plots(api, project, run_types=("e2e", "local"), constant_val="CE")
+
+    create_umap_plots(api, project, compute_umaps=False)
+
     constant_val: Literal["CE", "l0"] = "l0"
     # Must chose two run types from ("e2e", "local", "e2e-recon") to compare
     run_types = ("e2e", "local")
-    # run_types = ("local", "e2e")
 
     api = wandb.Api()
     run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS  # type: ignore
     out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}_{'_'.join(run_types)}"
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    # create_umap_plots(
-    #     api=api,
-    #     project=project,
-    #     run_types=run_types,
-    #     run_dict=run_dict,
-    #     out_dir=out_dir,
-    #     constant_val=constant_val,
-    #     compute_umaps=False,
-    # )
 
     for layer_num in [2, 6, 10]:
         run_ids = run_dict[layer_num]

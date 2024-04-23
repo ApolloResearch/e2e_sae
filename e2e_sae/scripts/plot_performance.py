@@ -263,8 +263,7 @@ def plot_per_layer_metric(
             )
 
     for i, sae_layer in enumerate(sae_layers):
-        # valid_ids = [int(v) for v in run_ids[sae_layer].values()]
-        layer_df = df.loc[df["id"].isin(run_ids[sae_layer].values())]
+        layer_df = df.loc[df["id"].isin(list(run_ids[sae_layer].values()))]
 
         ax = axs[i]
 
