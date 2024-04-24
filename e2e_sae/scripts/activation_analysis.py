@@ -2,7 +2,6 @@ import warnings
 from pathlib import Path
 from typing import cast
 
-import seaborn as sns
 import torch
 import torch.nn.functional as F
 import tqdm
@@ -161,7 +160,7 @@ def cosine_sim_plot(acts_dict: ActsDict, out_file: Path | None = None):
         if acts is None:
             return
         sims = get_sims(acts)
-        sns.kdeplot(sims.numpy(), ax=ax, label=label)
+        ax.hist(sims.numpy(), label=label, range=(0, 1), bins=100, alpha=0.5, histtype="stepfilled")
 
     for i, layer in enumerate([2, 6, 10]):
         ax = axs[i]
@@ -174,8 +173,8 @@ def cosine_sim_plot(acts_dict: ActsDict, out_file: Path | None = None):
         ax.set_ylabel(None)
         ax.set_yticks([])
 
-    axs[0].set_ylabel("Density")
-    axs[-1].legend()
+    # axs[0].set_ylabel("Density")
+    axs[0].legend(loc="upper left")
     plt.tight_layout()
     if out_file is not None:
         plt.savefig(out_file)
