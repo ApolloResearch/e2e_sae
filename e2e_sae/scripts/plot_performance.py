@@ -524,9 +524,7 @@ def plot_seed_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[st
         out_dir: The directory to save the plots to.
         run_types: The run types to include in the plot.
     """
-    model_name = df["model_name"].unique()[0]
-    seed_dir = out_dir / f"seed_comparison_{model_name}"
-    seed_dir.mkdir(exist_ok=True, parents=True)
+    out_dir.mkdir(exist_ok=True, parents=True)
 
     seeds = df["seed"].unique()
     colors = sns.color_palette("tab10", n_colors=len(seeds))
@@ -535,7 +533,7 @@ def plot_seed_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[st
         layer_df = df.loc[(df["run_type"] == run_type)]
 
         # Get only the layer-sparsity pairs that have more than one seed
-        layer_df = layer_df.groupby(["layer", "sparsity_coeff"]).filter(
+        layer_df = layer_df.groupby(["layer", "sparsity_coeff", "n_samples", "ratio"]).filter(
             lambda x: x["seed"].nunique() > 1
         )
         if layer_df.empty:
@@ -550,19 +548,23 @@ def plot_seed_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[st
                 color=colors[i],
                 alpha=0.8,
             )
-        layers = ",".join([str(l) for l in layer_df["layer"].unique()])
+        layers = "-".join([str(l) for l in sorted(layer_df["layer"].unique())])
         plt.title(f"Layers {layers}: L0 vs CE Loss Difference (run_type={run_type})")
         plt.xlabel("L0")
         plt.ylabel("CE loss difference\n(original model - model with sae)")
         plt.legend(title="Seed", loc="best")
         plt.tight_layout()
-        plt.savefig(seed_dir / f"l0_vs_ce_loss_layers_{layers}_{run_type}.png")
+        plt.savefig(out_dir / f"l0_vs_ce_loss_layers_{layers}_{run_type}.png")
+        # Also save to svg
+        plt.savefig(out_dir / f"l0_vs_ce_loss_layers_{layers}_{run_type}.svg")
         plt.close()
 
         # Also write all the "id"s to file
         ids = layer_df["id"].unique().tolist()
-        with open(seed_dir / f"ids_layers_{layers}_{run_type}.txt", "w") as f:
+        with open(out_dir / f"ids_layers_{layers}_{run_type}.txt", "w") as f:
             f.write(",".join(ids))
+
+        logger.info(f"Saved to {out_dir / f'ids_layers_{layers}_{run_type}.png'}")
 
 
 def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
@@ -723,7 +725,7 @@ def gpt2_plots():
 
     plot_seed_comparison(
         df=df.loc[df["n_samples"] == 400_000],
-        out_dir=Path(__file__).resolve().parent / "out",
+        out_dir=Path(__file__).resolve().parent / "out" / "seed_comparison",
         run_types=run_types,
     )
 
