@@ -49,80 +49,96 @@ class LayerRegions(BaseModel):
     regions: list[Region]
 
 
-# Regions of interest keyed by layer number
-REGIONS: dict[int, LayerRegions] = {
-    2: LayerRegions(
-        filename="umap_embeds_blocks.2.hook_resid_pre.pt",
-        regions=[
-            Region(
-                coords=RegionCoords(xmin=-2.7, xmax=-2.3, ymin=1.3, ymax=1.6),
-                description="Local outlier region on left",
-            ),
-            Region(
-                coords=RegionCoords(xmin=9.0, xmax=9.5, ymin=5.5, ymax=6.7),
-                description="Mostly-local line at top",
-            ),
-            Region(
-                coords=RegionCoords(xmin=10.5, xmax=11, ymin=3.6, ymax=3.9),
-                description="E2e cluster near top",
-            ),
-            Region(
-                coords=RegionCoords(xmin=7.5, xmax=8, ymin=0.3, ymax=0.6),
-                description="Local cluster on middle left",
-            ),
-            Region(
-                coords=RegionCoords(xmin=11, xmax=11.2, ymin=-1, ymax=-0.8),
-                description="Random cluster",
-            ),
-        ],
-    ),
-    6: LayerRegions(
-        filename="umap_embeds_blocks.6.hook_resid_pre.pt",
-        regions=[
-            # Region(coords=RegionCoords(xmax=3), description="E2e outlier area in bottom left"),
-            Region(
-                coords=RegionCoords(xmin=1.7, xmax=2.2, ymin=5, ymax=5.3),
-                description="E2e outlier area in bottom left",
-            ),
-            Region(
-                coords=RegionCoords(xmin=3.5, xmax=3.8, ymin=9, ymax=9.4),
-                description="Mostly-local outlier cluster on left",
-            ),
-            Region(
-                coords=RegionCoords(xmin=9.5, xmax=11, ymin=2.5, ymax=4),
-                description="Local line structure at bottom",
-            ),
-            Region(
-                coords=RegionCoords(xmin=10.7, xmax=11, ymin=5.5, ymax=6),
-                description="E2e region above Local line",
-            ),
-            Region(
-                coords=RegionCoords(xmin=10.5, xmax=11, ymin=8.5, ymax=9),
-                description="Random cluster in middle",
-            ),
-        ],
-    ),
-    10: LayerRegions(
-        filename="umap_embeds_blocks.10.hook_resid_pre.pt",
-        regions=[
-            Region(
-                coords=RegionCoords(xmin=2, xmax=2.2, ymin=2.3, ymax=2.5),
-                description="E2e cluster in middle",
-            ),
-            Region(
-                coords=RegionCoords(xmin=6.5, xmax=6.7, ymin=3.5, ymax=3.7),
-                description="Local cluster on right",
-            ),
-            Region(
-                coords=RegionCoords(xmin=0, xmax=0.5, ymin=8, ymax=8.3),
-                description="Mixed cluster in top left",
-            ),
-            Region(
-                coords=RegionCoords(xmin=1, xmax=1.2, ymin=5, ymax=5.2),
-                description="Random cluster in middle",
-            ),
-        ],
-    ),
+# Regions of interest keyed by run types and layer number
+REGIONS: dict[str, dict[int, LayerRegions]] = {
+    "e2e_local": {
+        2: LayerRegions(
+            filename="umap_embeds_blocks.2.hook_resid_pre.pt",
+            regions=[
+                Region(
+                    coords=RegionCoords(xmin=-2.7, xmax=-2.3, ymin=1.3, ymax=1.6),
+                    description="Local outlier region on left",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=9.0, xmax=9.5, ymin=5.5, ymax=6.7),
+                    description="Mostly-local line at top",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=10.5, xmax=11, ymin=3.6, ymax=3.9),
+                    description="E2e cluster near top",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=7.5, xmax=8, ymin=0.3, ymax=0.6),
+                    description="Local cluster on middle left",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=11, xmax=11.2, ymin=-1, ymax=-0.8),
+                    description="Random cluster",
+                ),
+            ],
+        ),
+        6: LayerRegions(
+            filename="umap_embeds_blocks.6.hook_resid_pre.pt",
+            regions=[
+                # Region(coords=RegionCoords(xmax=3), description="E2e outlier area in bottom left"),
+                Region(
+                    coords=RegionCoords(xmin=1.7, xmax=2.2, ymin=5, ymax=5.3),
+                    description="E2e outlier area in bottom left",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=3.5, xmax=3.8, ymin=9, ymax=9.4),
+                    description="Mostly-local outlier cluster on left",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=9.5, xmax=11, ymin=2.5, ymax=4),
+                    description="Local line structure at bottom",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=10.7, xmax=11, ymin=5.5, ymax=6),
+                    description="E2e region above Local line",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=10.5, xmax=11, ymin=8.5, ymax=9),
+                    description="Random cluster in middle",
+                ),
+            ],
+        ),
+        10: LayerRegions(
+            filename="umap_embeds_blocks.10.hook_resid_pre.pt",
+            regions=[
+                Region(
+                    coords=RegionCoords(xmin=2, xmax=2.2, ymin=2.3, ymax=2.5),
+                    description="E2e cluster in middle",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=6.5, xmax=6.7, ymin=3.5, ymax=3.7),
+                    description="Local cluster on right",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=0, xmax=0.5, ymin=8, ymax=8.3),
+                    description="Mixed cluster in top left",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=1, xmax=1.2, ymin=5, ymax=5.2),
+                    description="Random cluster in middle",
+                ),
+            ],
+        ),
+    },
+    "e2e-recon_local": {
+        2: LayerRegions(
+            filename="umap_embeds_blocks.2.hook_resid_pre.pt",
+            regions=[],
+        ),
+        6: LayerRegions(
+            filename="umap_embeds_blocks.6.hook_resid_pre.pt",
+            regions=[],
+        ),
+        10: LayerRegions(
+            filename="umap_embeds_blocks.10.hook_resid_pre.pt",
+            regions=[],
+        ),
+    },
 }
 
 
@@ -429,6 +445,7 @@ def plot_umap(
             plt.gca().add_patch(rect)  # type: ignore
 
     plt.savefig(out_file)
+    plt.savefig(out_file.with_suffix(".svg"))
     logger.info(f"Saved UMAP plot to {out_file}")
 
 
@@ -484,24 +501,29 @@ def get_alive_dict_elements(
 
 
 def create_umap_plots(
-    api: wandb.Api, project: str, run_types: Sequence[str], compute_umaps: bool = True
+    api: wandb.Api,
+    project: str,
+    run_types: Sequence[str],
+    compute_umaps: bool = True,
+    lims: dict[int, dict[str, tuple[float | None, float | None]]] | None = None,
 ):
+    run_types_str = "_".join(run_types)
     constant_val: Literal["CE", "l0"] = "CE"
     # Must chose two run types from ("e2e", "local", "e2e-recon") to compare
     run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS  # type: ignore
     out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}_{'_'.join(run_types)}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Post-hoc ignore the identified outliers
-    lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
-        2: {"x": (-2.0, None), "y": (None, None)},
-        6: {"x": (4.0, None), "y": (None, None)},
-        10: {"x": (None, None), "y": (None, None)},
-    }
+    if lims is None:
+        lims = {
+            2: {"x": (None, None), "y": (None, None)},
+            6: {"x": (None, None), "y": (None, None)},
+            10: {"x": (None, None), "y": (None, None)},
+        }
     for layer_num in [2, 6, 10]:
         run_ids = run_dict[layer_num]
 
-        embed_file = out_dir / REGIONS[layer_num].filename
+        embed_file = out_dir / REGIONS[run_types_str][layer_num].filename
 
         if compute_umaps:
             all_alive_elements = []
@@ -526,7 +548,6 @@ def create_umap_plots(
 
         # Create a csv file with columns: RunType, EmbeddingIndex, X, Y.
         # Useful for neuronpedia to upload to their website
-        run_types_str = "-".join(run_types)
         with open(
             out_dir / f"layer-{layer_num}_constant_{constant_val}_{run_types_str}_embeds.csv", "w"
         ) as f:
@@ -551,14 +572,14 @@ def create_umap_plots(
             out_file=umap_file,
             lims=lims[layer_num],
             grid=False,
-            regions=REGIONS[layer_num].regions,
+            regions=REGIONS[run_types_str][layer_num].regions,
         )
-        for i, region in enumerate(REGIONS[layer_num].regions):
+        for i, region in enumerate(REGIONS[run_types_str][layer_num].regions):
             e2e_indices, local_indices = get_dict_indices_for_embedding_range(
                 embed_info, **region.coords.model_dump()
             )
 
-            region_filename = REGIONS[layer_num].filename
+            region_filename = REGIONS[run_types_str][layer_num].filename
             path_from_repo_root = (out_dir / region_filename).relative_to(REPO_ROOT)
             with open(out_dir / f"layer-{layer_num}_region-{i}.json", "w") as f:
                 json.dump(
@@ -835,4 +856,13 @@ if __name__ == "__main__":
         api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
     )
 
-    create_umap_plots(api, project, run_types=("local", "e2e-recon"), compute_umaps=True)
+    # # Post-hoc ignore the identified outliers in e2e-local umap
+    # e2e_local_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
+    #     2: {"x": (-2.0, None), "y": (None, None)},
+    #     6: {"x": (4.0, None), "y": (None, None)},
+    #     10: {"x": (None, None), "y": (None, None)},
+    # }
+    # create_umap_plots(
+    #     api, project, run_types=("e2e", "local"), compute_umaps=True, lims=e2e_local_lims
+    # )
+    create_umap_plots(api, project, run_types=("e2e-recon", "local"), compute_umaps=True, lims=None)
