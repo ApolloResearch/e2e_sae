@@ -592,7 +592,7 @@ def get_max_pairwise_similarities(
     api: wandb.Api,
     project: str,
     run_dict: Mapping[int, Mapping[str, str]],
-    run_types: tuple[str, str],
+    run_types: tuple[str, ...],
     out_file: Path,
     from_file: bool = False,
 ) -> MaxPairwiseSimilarities:
@@ -667,7 +667,7 @@ def create_max_pairwise_similarity_plots(api: wandb.Api, project: str):
             api=api,
             project=project,
             run_dict=run_dict,
-            run_types=("e2e", "local"),
+            run_types=("e2e", "local", "e2e-recon"),
             out_file=out_file,
             from_file=False,
         )
@@ -676,7 +676,6 @@ def create_max_pairwise_similarity_plots(api: wandb.Api, project: str):
             constant_val=constant_val,
             out_file=out_file.with_suffix(".png"),
         )
-        logger.info(f"Saved max pairwise similarity to {out_file.with_suffix('.png')}")
 
 
 def get_cross_max_similarities(api: wandb.Api, project_name: str, run_ids: tuple[str, str]):
@@ -730,6 +729,7 @@ def plot_cross_max_similarity(
         ax.set_title(f"Layer {layer_num}", fontweight="bold")
         ax.set_xlabel("Max Cosine Similarity")
         ax.set_ylabel("Density")
+    plt.suptitle(out_file.stem, fontweight="bold")
     plt.tight_layout()
     plt.savefig(out_file)
     plt.savefig(out_file.with_suffix(".svg"))
@@ -775,7 +775,37 @@ def create_seed_max_similarity_comparison_plots(
 
     plot_cross_max_similarity(
         {layer: layer_cross_max_similarity},
-        out_file=out_dir / f"cross_max_similarities_{run_type}_{run_ids[0]}_{run_ids[1]}_kde.png",
+        out_file=out_dir / f"cross_max_similarities_{run_type}_{run_ids[0]}_{run_ids[1]}.png",
+        plot_type="kde",
+        cut_kde=True,
+    )
+
+
+def create_random_cross_max_similarity_plots(
+    api: wandb.Api, project: str, run_id: str, layer: int, run_type: str
+):
+    """Compare the max similarities between a run and random vectors."""
+    out_dir = Path(__file__).parent / "out" / "random_comparison"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Get the alive dictionary elements for the run
+    alive_elements = get_alive_dict_elements(api=api, project_name=project, run_id=run_id)
+
+    # Create a random set of the same size as the alive dictionary elements
+    rand_dict = torch.randn_like(alive_elements.alive_dict_elements)
+    rand_dict = F.normalize(rand_dict, dim=0)
+
+    # Get the max pairwise cosine similarity between the alive dictionary elements and the random
+    # set
+
+    cross_similarities = get_cosine_similarity(alive_elements.alive_dict_elements, rand_dict)
+
+    # Get the max pairwise cosine similarity for each dictionary element
+    max_cosine_sim, _ = torch.max(cross_similarities, dim=1)
+
+    plot_cross_max_similarity(
+        {layer: max_cosine_sim},
+        out_file=out_dir / f"cross_max_similarities_{run_type}_{run_id}_random.png",
         plot_type="kde",
         cut_kde=True,
     )
@@ -785,70 +815,32 @@ if __name__ == "__main__":
     project = "gpt2"
     api = wandb.Api()
 
-    # create_max_pairwise_similarity_plots(api, project)
+    create_random_cross_max_similarity_plots(
+        api, project, run_id="zgdpkafo", layer=6, run_type="e2e"
+    )
+    create_max_pairwise_similarity_plots(api, project)
 
-    # create_cross_max_similarity_plots(api, project, run_types=("e2e", "local"), constant_val="CE")
+    for r in [
+        ("e2e", "local"),
+        ("e2e", "e2e-recon"),
+        ("local", "e2e-recon"),
+        ("local", "e2e"),
+        ("e2e-recon", "e2e"),
+        ("e2e-recon", "local"),
+    ]:
+        create_cross_max_similarity_plots(api, project, run_types=r, constant_val="CE")
+    create_cross_max_similarity_plots(
+        api, project, run_types=("e2e", "e2e-recon"), constant_val="CE"
+    )
 
-    # create_umap_plots(api, project, compute_umaps=False)
+    create_umap_plots(api, project, compute_umaps=False)
 
     create_seed_max_similarity_comparison_plots(
         api, project, run_ids=("1jy3m5j0", "uqfp43ti"), layer=6, run_type="local"
     )
-    exit()
-    constant_val: Literal["CE", "l0"] = "l0"
-    # Must chose two run types from ("e2e", "local", "e2e-recon") to compare
-    run_types = ("e2e", "local")
-
-    api = wandb.Api()
-    run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS  # type: ignore
-    out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}_{'_'.join(run_types)}"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    for layer_num in [2, 6, 10]:
-        run_ids = run_dict[layer_num]
-        run_info = (
-            f"({run_types[0]}-{run_ids[run_types[0]]}, {run_types[1]}-{run_ids[run_types[1]]})"
-        )
-        ### Compare seed 0 with seed 1 for e2e run on block 6. Note that we can't do
-        ### this for e2e easily because we don't have final_config.yaml for those.
-        # seed0_block6_local_id = "1jy3m5j0"
-        # seed1_block6_local_id = "uqfp43ti"
-        # if layer_num != 6:
-        #     continue
-        # # run_types = ("e2e-seed0", "e2e-seed1")
-        # # run_ids = {"e2e-seed0": "atfccmo3", "e2e-seed1": "tvj2owza"}
-        # # run_info = f"(seed0-{seed0_block6_e2e_id}, seed1-{seed1_block6_e2e_id})"
-        # run_types = ("local-seed0", "local-seed1")
-        # run_ids = {"local-seed0": seed0_block6_local_id, "local-seed1": seed1_block6_local_id}
-        # run_info = f"(seed0-{seed0_block6_local_id}, seed1-{seed1_block6_local_id})"
-        # out_dir = Path(__file__).parent / "out" / "local_seed0_seed1"
-        # ###
-
-        # alive_elements = get_alive_dict_elements(
-        #     api=api,
-        #     project_name=project,
-        #     runs=[(run_type, run_ids[run_type]) for run_type in run_types],
-        # )
-
-        ###  Make dict_elements2 a random set of the same size as alive_elements.dict_1
-        # run_info = f"({run_types[0]}-{run_ids[run_types[0]]}, (random vectors))"
-        # rand_dict = torch.randn_like(alive_elements.dict_1)
-        # alive_elements._replace(dict_2=F.normalize(rand_dict, dim=0))
-
-        # out_dir = Path(__file__).parent / "out" / "e2e_random"
-        ###
-
-        # cosine_sim = get_cosine_similarity(dict_elements_1, dict_elements_2)
-        # ###
-        # plot_max_cosine_similarity(
-        #     cosine_sim,
-        #     title=f"{sae_pos} constant {constant_val} {run_info}",
-        #     outfile=out_dir / f"max_cosine_sim_{sae_pos}.png",
-        # )
-
-        # analyze_cosine_similarity(cosine_sim, threshold_high=0.8, threshold_low=0.2)
-        # plot_cosine_similarity_heatmap(
-        #     cosine_sim,
-        #     labels=[f"e2e-{e2e_id}", f"local-{local_id}"],
-        #     sae_pos=sae_pos,
-        # )
+    create_seed_max_similarity_comparison_plots(
+        api, project, run_ids=("atfccmo3", "tvj2owza"), layer=6, run_type="e2e"
+    )
+    create_seed_max_similarity_comparison_plots(
+        api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
+    )
