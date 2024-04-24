@@ -651,6 +651,7 @@ def plot_max_pairwise_similarities(
         ax.set_xlabel("Max Cosine Similarity")
         ax.set_ylabel("Density")
         ax.legend()
+    plt.suptitle(out_file.stem, fontweight="bold")
     plt.tight_layout()
     plt.savefig(out_file)
     plt.savefig(out_file.with_suffix(".svg"))
