@@ -1,5 +1,5 @@
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -135,13 +135,6 @@ class EmbedInfo(BaseModel):
     all_alive_indices: tuple[list[int], list[int]]
 
 
-# class AliveElements(BaseModel):
-#     model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
-#     dict_1: Float[Tensor, "n_dense n_dict_elements1"]
-#     dict_2: Float[Tensor, "n_dense n_dict_elements2"]
-#     sae_pos: str
-#     raw_dict_sizes: tuple[int, int]
-#     all_alive_indices: tuple[list[int], list[int]]
 class AliveElements(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, arbitrary_types_allowed=True)
     alive_dict_elements: Float[Tensor, "n_dense n_dict_elements"]
@@ -351,8 +344,8 @@ def compute_umap_embedding(
 
 def plot_umap(
     embed_info: EmbedInfo,
-    labels: tuple[str, str],
-    run_types: tuple[str, str],
+    labels: Sequence[str],
+    run_types: Sequence[str],
     out_file: Path,
     lims: dict[str, tuple[float | None, float | None]] | None = None,
     grid: bool = False,
@@ -490,11 +483,11 @@ def get_alive_dict_elements(
     )
 
 
-def create_umap_plots(api: wandb.Api, project: str, compute_umaps: bool = True):
+def create_umap_plots(
+    api: wandb.Api, project: str, run_types: Sequence[str], compute_umaps: bool = True
+):
     constant_val: Literal["CE", "l0"] = "CE"
     # Must chose two run types from ("e2e", "local", "e2e-recon") to compare
-    run_types = ("e2e", "local")
-
     run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS  # type: ignore
     out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}_{'_'.join(run_types)}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -549,10 +542,8 @@ def create_umap_plots(api: wandb.Api, project: str, compute_umaps: bool = True):
                         f"{run_types[1]},{all_local_indices[idx]},{local_embeds[idx][0]},{local_embeds[idx][1]}\n"
                     )
 
-        labels = (
-            f"{run_types[0]}-{run_ids[run_types[0]]}",
-            f"{run_types[1]}-{run_ids[run_types[1]]}",
-        )
+        # The above but handle arbitrary number of run types
+        labels = [f"{run_type}-{run_ids[run_type]}" for run_type in run_types]
         plot_umap(
             embed_info,
             labels=labels,
@@ -592,7 +583,7 @@ def get_max_pairwise_similarities(
     api: wandb.Api,
     project: str,
     run_dict: Mapping[int, Mapping[str, str]],
-    run_types: tuple[str, ...],
+    run_types: Sequence[str],
     out_file: Path,
     from_file: bool = False,
 ) -> MaxPairwiseSimilarities:
@@ -817,7 +808,7 @@ if __name__ == "__main__":
     api = wandb.Api()
 
     create_random_cross_max_similarity_plots(
-        api, project, run_id="zgdpkafo", layer=6, run_type="e2e"
+        api, project, run_id="zgdpkafo", layer=6, run_type="e2e-recon"
     )
     create_max_pairwise_similarity_plots(api, project)
 
@@ -834,8 +825,6 @@ if __name__ == "__main__":
         api, project, run_types=("e2e", "e2e-recon"), constant_val="CE"
     )
 
-    create_umap_plots(api, project, compute_umaps=False)
-
     create_seed_max_similarity_comparison_plots(
         api, project, run_ids=("1jy3m5j0", "uqfp43ti"), layer=6, run_type="local"
     )
@@ -845,3 +834,5 @@ if __name__ == "__main__":
     create_seed_max_similarity_comparison_plots(
         api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
     )
+
+    create_umap_plots(api, project, run_types=("local", "e2e-recon"), compute_umaps=True)
