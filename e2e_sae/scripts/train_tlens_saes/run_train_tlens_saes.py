@@ -525,7 +525,9 @@ def train(
                 config_filename="final_config.yaml",
             )
             if config.wandb_project:
-                wandb.save(str(save_dir / f"samples_{total_samples}.pt"), policy="now")
+                wandb.save(
+                    str(save_dir / f"samples_{total_samples}.pt"), policy="now", base_path=save_dir
+                )
 
         if is_last_batch:
             break
@@ -541,7 +543,9 @@ def train(
             config_filename="final_config.yaml",
         )
         if config.wandb_project:
-            wandb.save(str(save_dir / f"samples_{total_samples}.pt"), policy="now")
+            wandb.save(
+                str(save_dir / f"samples_{total_samples}.pt"), policy="now", base_path=save_dir
+            )
 
     if config.wandb_project:
         # Collect and log final activation frequency metrics
@@ -570,7 +574,7 @@ def main(
             config_path = Path(tmp_dir) / "final_config.yaml"
             with open(config_path, "w") as f:
                 yaml.dump(config.model_dump(mode="json"), f, indent=2)
-            wandb.save(str(config_path), policy="now")
+            wandb.save(str(config_path), policy="now", base_path=tmp_dir)
             # Unfortunately wandb.save is async, so we need to wait for it to finish before
             # continuing, and wandb python api provides no way to do this.
             # TODO: Find a better way to do this.
