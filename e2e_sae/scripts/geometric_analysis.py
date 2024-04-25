@@ -932,8 +932,10 @@ if __name__ == "__main__":
         ("e2e-recon", "local"),
     ]:
         # Store csv of indices and max similarities for each layer for e2e-recon vs local
-        write_csv = run_type == ("e2e-recon", "local")
-        create_cross_max_similarity_plots(api, project, run_types=run_type, constant_val="CE")
+        write_csv = run_type in [("e2e-recon", "local"), ("local", "e2e-recon")]
+        create_cross_max_similarity_plots(
+            api, project, run_types=run_type, constant_val="CE", write_csv=write_csv
+        )
 
     create_seed_max_similarity_comparison_plots(
         api, project, run_ids=("1jy3m5j0", "uqfp43ti"), layer=6, run_type="local"
