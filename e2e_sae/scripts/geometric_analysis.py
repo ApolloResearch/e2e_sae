@@ -53,7 +53,7 @@ class LayerRegions(BaseModel):
 REGIONS: dict[str, dict[int, LayerRegions]] = {
     "e2e_local": {
         2: LayerRegions(
-            filename="umap_embeds_blocks.2.hook_resid_pre.pt",
+            filename="e2e_local_umap_blocks.2.hook_resid_pre.pt",
             regions=[
                 Region(
                     coords=RegionCoords(xmin=-2.7, xmax=-2.3, ymin=1.3, ymax=1.6),
@@ -78,7 +78,7 @@ REGIONS: dict[str, dict[int, LayerRegions]] = {
             ],
         ),
         6: LayerRegions(
-            filename="umap_embeds_blocks.6.hook_resid_pre.pt",
+            filename="e2e_local_umap_blocks.6.hook_resid_pre.pt",
             regions=[
                 # Region(coords=RegionCoords(xmax=3), description="E2e outlier area in bottom left"),
                 Region(
@@ -104,7 +104,7 @@ REGIONS: dict[str, dict[int, LayerRegions]] = {
             ],
         ),
         10: LayerRegions(
-            filename="umap_embeds_blocks.10.hook_resid_pre.pt",
+            filename="e2e_local_umap_blocks.10.hook_resid_pre.pt",
             regions=[
                 Region(
                     coords=RegionCoords(xmin=2, xmax=2.2, ymin=2.3, ymax=2.5),
@@ -127,16 +127,87 @@ REGIONS: dict[str, dict[int, LayerRegions]] = {
     },
     "e2e-recon_local": {
         2: LayerRegions(
-            filename="umap_embeds_blocks.2.hook_resid_pre.pt",
-            regions=[],
+            filename="e2e-recon_local_umap_blocks.2.hook_resid_pre.pt",
+            regions=[
+                Region(
+                    coords=RegionCoords(xmin=-2.8, xmax=-2.4, ymin=-0.4, ymax=-0.1),
+                    description="Local outlier region on left",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=9.6, xmax=10, ymin=6, ymax=6.5),
+                    description="Mixed line at top",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=10.2, xmax=10.4, ymin=1, ymax=1.1),
+                    description="Local cluster in middle",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=14.2, xmax=14.4, ymin=0, ymax=0.4),
+                    description="Mostly e2e-recon cluster on right",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=9, xmax=9.5, ymin=-0.5, ymax=0.0),
+                    description="Mixed in middle",
+                ),
+            ],
         ),
         6: LayerRegions(
-            filename="umap_embeds_blocks.6.hook_resid_pre.pt",
-            regions=[],
+            filename="e2e-recon_local_umap_blocks.6.hook_resid_pre.pt",
+            regions=[
+                Region(
+                    coords=RegionCoords(xmin=-0.5, xmax=0, ymin=-0.5, ymax=-0.1),
+                    description="Mostly-local line at bottom",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=7.8, xmax=8.5, ymin=1, ymax=1.5),
+                    description="e2e-recon outlier bottom right",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=-5.5, xmax=-5, ymin=6.2, ymax=6.5),
+                    description="Mostly-local cluster on left",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=5.5, xmax=6, ymin=8.5, ymax=8.8),
+                    description="Mixed cluster on right",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=0.0, xmax=0.5, ymin=2.45, ymax=2.7),
+                    description="Local cluster above bottom line touching e2e-recon cluster",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=0.0, xmax=0.5, ymin=2.2, ymax=2.45),
+                    description="e2e-recon cluster above bottome line touching local cluster",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=-1, xmax=-0.5, ymin=8.5, ymax=8.7),
+                    description="Mixed in middle",
+                ),
+            ],
         ),
         10: LayerRegions(
-            filename="umap_embeds_blocks.10.hook_resid_pre.pt",
-            regions=[],
+            filename="e2e-recon_local_umap_blocks.10.hook_resid_pre.pt",
+            regions=[
+                Region(
+                    coords=RegionCoords(xmin=5.5, xmax=6, ymin=-0.1, ymax=0.2),
+                    description="Local dense cluster on right",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=6, xmax=6.5, ymin=1, ymax=1.5),
+                    description="e2e-recon outlier right",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=3.7, xmax=4, ymin=0.3, ymax=0.5),
+                    description="Mostly e2e-recon in right/middle",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=-2.5, xmax=-2.3, ymin=-2.3, ymax=-2),
+                    description="Mixed hanging off bottom left",
+                ),
+                Region(
+                    coords=RegionCoords(xmin=-0.5, xmax=-0.2, ymin=2, ymax=2.3),
+                    description="Mixed in middle",
+                ),
+            ],
         ),
     },
 }
@@ -398,7 +469,7 @@ def plot_umap(
         embedding = embedding[mask]
 
     colors = sns.color_palette()[: len(labels)]
-    plt.figure(figsize=(10, 10))
+    plt.figure(figsize=(10, 10), dpi=600)
     for i, label in enumerate(labels):
         plt.scatter(
             embedding[i * alive_elements_per_dict[i] : (i + 1) * alive_elements_per_dict[i], 0],  # type: ignore
@@ -444,7 +515,7 @@ def plot_umap(
             )
             plt.gca().add_patch(rect)  # type: ignore
 
-    plt.savefig(out_file)
+    plt.savefig(out_file, dpi=300)
     plt.savefig(out_file.with_suffix(".svg"))
     logger.info(f"Saved UMAP plot to {out_file}")
 
@@ -503,15 +574,15 @@ def get_alive_dict_elements(
 def create_umap_plots(
     api: wandb.Api,
     project: str,
-    run_types: Sequence[str],
+    run_types: tuple[str, str],
     compute_umaps: bool = True,
+    constant_val: Literal["CE", "l0"] = "CE",
     lims: dict[int, dict[str, tuple[float | None, float | None]]] | None = None,
+    grid: bool = False,
 ):
     run_types_str = "_".join(run_types)
-    constant_val: Literal["CE", "l0"] = "CE"
-    # Must chose two run types from ("e2e", "local", "e2e-recon") to compare
     run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS  # type: ignore
-    out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}_{'_'.join(run_types)}"
+    out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if lims is None:
@@ -541,26 +612,24 @@ def create_umap_plots(
         umap_file = embed_file.with_suffix(".png")
 
         # Get indices for all embeddings
-        all_e2e_indices, all_local_indices = get_dict_indices_for_embedding_range(embed_info)
-        assert len(all_e2e_indices) + len(all_local_indices) == embed_info.embedding.shape[0]
-        e2e_embeds = embed_info.embedding[: len(all_e2e_indices)]
-        local_embeds = embed_info.embedding[len(all_e2e_indices) :]
+        dict_1_indices, dict_2_indices = get_dict_indices_for_embedding_range(embed_info)
+        assert len(dict_1_indices) + len(dict_2_indices) == embed_info.embedding.shape[0]
+        dict_1_embeds = embed_info.embedding[: len(dict_1_indices)]
+        dict_2_embeds = embed_info.embedding[len(dict_1_indices) :]
 
         # Create a csv file with columns: RunType, EmbeddingIndex, X, Y.
         # Useful for neuronpedia to upload to their website
-        with open(
-            out_dir / f"layer-{layer_num}_constant_{constant_val}_{run_types_str}_embeds.csv", "w"
-        ) as f:
+        with open(embed_file.with_suffix(".csv"), "w") as f:
             f.write("RunType,EmbeddingIndex,X,Y\n")
             for i in range(len(embed_info.embedding)):
-                if i < len(all_e2e_indices):
+                if i < len(dict_1_indices):
                     f.write(
-                        f"{run_types[0]},{all_e2e_indices[i]},{e2e_embeds[i][0]},{e2e_embeds[i][1]}\n"
+                        f"{run_types[0]},{dict_1_indices[i]},{dict_1_embeds[i][0]},{dict_1_embeds[i][1]}\n"
                     )
                 else:
-                    idx = i - len(all_e2e_indices)
+                    idx = i - len(dict_1_indices)
                     f.write(
-                        f"{run_types[1]},{all_local_indices[idx]},{local_embeds[idx][0]},{local_embeds[idx][1]}\n"
+                        f"{run_types[1]},{dict_2_indices[idx]},{dict_2_embeds[idx][0]},{dict_2_embeds[idx][1]}\n"
                     )
 
         # The above but handle arbitrary number of run types
@@ -571,25 +640,25 @@ def create_umap_plots(
             run_types=run_types,
             out_file=umap_file,
             lims=lims[layer_num],
-            grid=False,
+            grid=grid,
             regions=REGIONS[run_types_str][layer_num].regions,
         )
         for i, region in enumerate(REGIONS[run_types_str][layer_num].regions):
-            e2e_indices, local_indices = get_dict_indices_for_embedding_range(
+            region_dict_1_indices, region_dict_2_indices = get_dict_indices_for_embedding_range(
                 embed_info, **region.coords.model_dump()
             )
 
             region_filename = REGIONS[run_types_str][layer_num].filename
             path_from_repo_root = (out_dir / region_filename).relative_to(REPO_ROOT)
-            with open(out_dir / f"layer-{layer_num}_region-{i}.json", "w") as f:
+            with open(f"{embed_file}_region_{i}.json", "w") as f:
                 json.dump(
                     {
                         "embedding_file": str(path_from_repo_root),
                         "run_labels": labels,
                         "description": region.description,
                         "coords": region.coords.model_dump(),
-                        "e2e": e2e_indices,
-                        "local": local_indices,
+                        run_types[0]: region_dict_1_indices,
+                        run_types[1]: region_dict_2_indices,
                     },
                     f,
                     indent=2,
@@ -691,7 +760,9 @@ def create_max_pairwise_similarity_plots(api: wandb.Api, project: str):
         )
 
 
-def get_cross_max_similarities(api: wandb.Api, project_name: str, run_ids: tuple[str, str]):
+def get_cross_max_similarities(
+    api: wandb.Api, project_name: str, run_ids: tuple[str, str]
+) -> tuple[Float[Tensor, "n_dict_1"], list[list[int]]]:
     """Get the max pairwise cosine similarity between the alive dictionary elements of two runs.
 
     Args:
@@ -700,7 +771,8 @@ def get_cross_max_similarities(api: wandb.Api, project_name: str, run_ids: tuple
         run_ids: The IDs of the two runs to compare.
 
     Returns:
-        The max pairwise cosine similarity between the alive dictionary elements of the two runs.
+        - The max pairwise cosine similarity between the alive dictionary elements of the two runs.
+        - The indices of the alive dictionary elements for each run.
     """
     alive_elements: list[AliveElements] = []
     for run_id in run_ids:
@@ -715,7 +787,9 @@ def get_cross_max_similarities(api: wandb.Api, project_name: str, run_ids: tuple
     # Get the max pairwise cosine similarity for each dictionary element
     max_cosine_sim, _ = torch.max(cross_similarities, dim=1)
 
-    return max_cosine_sim
+    alive_indices = [ae.alive_indices for ae in alive_elements]
+
+    return max_cosine_sim, alive_indices
 
 
 CrossMaxSimilarity = dict[int, Float[Tensor, "n_dict_1"]]  # noqa: F821
@@ -750,7 +824,11 @@ def plot_cross_max_similarity(
 
 
 def create_cross_max_similarity_plots(
-    api: wandb.Api, project: str, run_types: tuple[str, str], constant_val: str = "CE"
+    api: wandb.Api,
+    project: str,
+    run_types: tuple[str, str],
+    constant_val: str = "CE",
+    write_csv: bool = False,
 ):
     """Create plots comparing the max similarities between different run types."""
     run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS
@@ -759,17 +837,28 @@ def create_cross_max_similarity_plots(
 
     # Get pairwise similarities between the two runtypes for each layer
     cross_max_similarity: CrossMaxSimilarity = {}
+    dict_1_alive_indices: dict[int, list[int]] = {}
     for layer_num in run_dict:
-        cross_max_similarity[layer_num] = get_cross_max_similarities(
+        max_cosine_sim, alive_indices = get_cross_max_similarities(
             api=api,
             project_name=project,
             run_ids=(run_dict[layer_num][run_types[0]], run_dict[layer_num][run_types[1]]),
         )
+        cross_max_similarity[layer_num] = max_cosine_sim
+        dict_1_alive_indices[layer_num] = alive_indices[0]
 
     plot_cross_max_similarity(
         cross_max_similarity,
         out_file=out_dir / f"cross_max_similarities_{run_types[0]}_{run_types[1]}.png",
     )
+
+    if write_csv:
+        # Create a csv with columns Layer, Dict1Index, MaxCosineSim
+        with open(out_dir / f"cross_max_similarities_{run_types[0]}_{run_types[1]}.csv", "w") as f:
+            f.write("Layer,Dict1Index,MaxCosineSim\n")
+            for layer_num, max_cosine_sim in cross_max_similarity.items():
+                for i, max_sim in enumerate(max_cosine_sim.flatten().detach().numpy()):
+                    f.write(f"{layer_num},{dict_1_alive_indices[layer_num][i]},{max_sim}\n")
 
 
 def create_seed_max_similarity_comparison_plots(
@@ -780,7 +869,7 @@ def create_seed_max_similarity_comparison_plots(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Get pairwise similarities between the two seeds for each layer
-    layer_cross_max_similarity = get_cross_max_similarities(
+    layer_cross_max_similarity, _ = get_cross_max_similarities(
         api=api,
         project_name=project,
         run_ids=run_ids,
@@ -831,9 +920,10 @@ if __name__ == "__main__":
     create_random_cross_max_similarity_plots(
         api, project, run_id="zgdpkafo", layer=6, run_type="e2e-recon"
     )
+
     create_max_pairwise_similarity_plots(api, project)
 
-    for r in [
+    for run_type in [
         ("e2e", "local"),
         ("e2e", "e2e-recon"),
         ("local", "e2e-recon"),
@@ -841,28 +931,57 @@ if __name__ == "__main__":
         ("e2e-recon", "e2e"),
         ("e2e-recon", "local"),
     ]:
-        create_cross_max_similarity_plots(api, project, run_types=r, constant_val="CE")
-    create_cross_max_similarity_plots(
-        api, project, run_types=("e2e", "e2e-recon"), constant_val="CE"
-    )
+        # Store csv of indices and max similarities for each layer for e2e-recon vs local
+        write_csv = run_type == ("e2e-recon", "local")
+        create_cross_max_similarity_plots(api, project, run_types=run_type, constant_val="CE")
 
     create_seed_max_similarity_comparison_plots(
         api, project, run_ids=("1jy3m5j0", "uqfp43ti"), layer=6, run_type="local"
     )
+
+    # # These two are also relevent but not in the paper
+    # # Sparsity coeff 1.5
+    # create_seed_max_similarity_comparison_plots(
+    #     api, project, run_ids=("atfccmo3", "tvj2owza"), layer=6, run_type="e2e"
+    # )
+    # # This is far less similar. Has lower sparsity too (0.2)
+    # create_seed_max_similarity_comparison_plots(
+    #     api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
+    # )
+
     create_seed_max_similarity_comparison_plots(
-        api, project, run_ids=("atfccmo3", "tvj2owza"), layer=6, run_type="e2e"
+        api, project, run_ids=("bok0t1sw", "tuzvyysg"), layer=6, run_type="e2e"
     )
     create_seed_max_similarity_comparison_plots(
-        api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
+        api, project, run_ids=("y8sca507", "hqo5azo2"), layer=6, run_type="e2e-recon"
     )
 
-    # # Post-hoc ignore the identified outliers in e2e-local umap
-    # e2e_local_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
-    #     2: {"x": (-2.0, None), "y": (None, None)},
-    #     6: {"x": (4.0, None), "y": (None, None)},
-    #     10: {"x": (None, None), "y": (None, None)},
-    # }
-    # create_umap_plots(
-    #     api, project, run_types=("e2e", "local"), compute_umaps=True, lims=e2e_local_lims
-    # )
-    create_umap_plots(api, project, run_types=("e2e-recon", "local"), compute_umaps=True, lims=None)
+    # Post-hoc ignore the identified outliers in e2e-local umap
+    e2e_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
+        2: {"x": (-2.0, None), "y": (None, None)},
+        6: {"x": (4.0, None), "y": (None, None)},
+        10: {"x": (None, None), "y": (None, None)},
+    }
+    create_umap_plots(
+        api,
+        project,
+        run_types=("e2e", "local"),
+        compute_umaps=False,
+        constant_val="CE",
+        lims=e2e_local_ce_lims,
+    )
+
+    e2e_recon_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
+        2: {"x": (4, None), "y": (None, None)},
+        6: {"x": (None, None), "y": (None, None)},
+        10: {"x": (None, None), "y": (None, None)},
+    }
+    create_umap_plots(
+        api,
+        project,
+        run_types=("e2e-recon", "local"),
+        compute_umaps=False,
+        constant_val="CE",
+        lims=e2e_recon_local_ce_lims,
+        grid=False,
+    )

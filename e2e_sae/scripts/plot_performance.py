@@ -298,6 +298,7 @@ def plot_two_axes_line_single_run_type(
     title: str,
     iter_var: str,
     iter_vals: list[float],
+    filename_prefix: str = "",
 ) -> None:
     """Plot the CE loss difference vs L0 and alive_dict_elements for different values of iter_var.
 
@@ -310,6 +311,7 @@ def plot_two_axes_line_single_run_type(
         title: The title of the plot.
         iter_var: The variable in the DataFrame to iterate over.
         iter_vals: The values to iterate over.
+        filename_prefix: The prefix to add to the filename.
     """
     colors = sns.color_palette("tab10", n_colors=len(iter_vals))
     fig, axs = plt.subplots(1, 2, figsize=(8, 6), gridspec_kw={"wspace": 0.15, "top": 0.84})
@@ -373,8 +375,11 @@ def plot_two_axes_line_single_run_type(
         rotation=90,
     )
     fig.suptitle(title)
-    plt.savefig(out_dir / f"l0_alive_elements_vs_ce_loss_{run_type}.png")
+    filename = f"{filename_prefix}_l0_alive_elements_vs_ce_loss_{run_type}.png"
+    plt.savefig(out_dir / filename)
+    plt.savefig(out_dir / filename.replace(".png", ".svg"))
     plt.close(fig)
+    logger.info(f"Saved to {out_dir / filename}")
 
 
 def plot_two_axes_line(
@@ -511,7 +516,6 @@ def plot_two_axes_line(
 
     if out_file is not None:
         plt.savefig(out_file)
-        # Save as svg also
         plt.savefig(Path(out_file).with_suffix(".svg"))
     plt.close(fig)
 
@@ -532,10 +536,15 @@ def plot_seed_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[st
     for run_type in run_types:
         layer_df = df.loc[(df["run_type"] == run_type)]
 
-        # Get only the layer-sparsity pairs that have more than one seed
-        layer_df = layer_df.groupby(["layer", "sparsity_coeff", "n_samples", "ratio"]).filter(
-            lambda x: x["seed"].nunique() > 1
-        )
+        if run_type == "e2e-recon":
+            # Have to special case here because of old runs with slight differences not being
+            # filtered out
+            layer_df = layer_df.loc[layer_df["name"].str.contains("seed-comparison")]
+        else:
+            # Get only the layer-sparsity pairs that have more than one seed
+            layer_df = layer_df.groupby(["layer", "sparsity_coeff", "n_samples", "ratio"]).filter(
+                lambda x: x["seed"].nunique() > 1
+            )
         if layer_df.empty:
             continue
         plt.figure(figsize=(8, 6))
@@ -554,9 +563,8 @@ def plot_seed_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[st
         plt.ylabel("CE loss difference\n(original model - model with sae)")
         plt.legend(title="Seed", loc="best")
         plt.tight_layout()
-        plt.savefig(out_dir / f"l0_vs_ce_loss_layers_{layers}_{run_type}.png")
-        # Also save to svg
-        plt.savefig(out_dir / f"l0_vs_ce_loss_layers_{layers}_{run_type}.svg")
+        plt.savefig(out_dir / f"seed_l0_vs_ce_loss_layers_{layers}_{run_type}.png")
+        plt.savefig(out_dir / f"seed_l0_vs_ce_loss_layers_{layers}_{run_type}.svg")
         plt.close()
 
         # Also write all the "id"s to file
@@ -610,9 +618,10 @@ def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[s
             df=combined_df,
             run_type=run_type,
             out_dir=ratios_dir,
-            title=f"run_type={run_type}: L0 and Alive Dict Elements vs CE Loss Diff in {sae_pos}",
+            title=f"{run_type}: L0 + Alive Elements vs CE Loss Increase {sae_pos}",
             iter_var="ratio",
             iter_vals=ratios,
+            filename_prefix="dict_ratio",
         )
 
         # Also write all the "id"s to file
@@ -665,14 +674,14 @@ def plot_n_samples_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequen
 
         samples = sorted(combined_df["n_samples"].unique())
 
-        title = f"run_type={run_type}: L0 and Alive Dict Elements vs CE Loss Diff in {sae_pos}"
         plot_two_axes_line_single_run_type(
             df=combined_df,
             run_type=run_type,
             out_dir=n_samples_dir,
-            title=title,
+            title=f"{run_type}: L0 + Alive Elements vs CE Loss Increase {sae_pos}",
             iter_var="n_samples",
             iter_vals=samples,
+            filename_prefix="n_samples",
         )
 
         # Also write all the "id"s to file
@@ -711,10 +720,6 @@ def gpt2_plots():
     run_types = ("e2e", "local", "e2e-recon")
     n_layers = 12
 
-    out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
-    out_dir.mkdir(exist_ok=True, parents=True)
-    logger.info(f"Saving plots to {out_dir}")
-
     df = get_df_gpt2()
 
     plot_n_samples_comparison(
@@ -734,6 +739,9 @@ def gpt2_plots():
         out_dir=Path(__file__).resolve().parent / "out",
         run_types=run_types,
     )
+
+    out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
+    out_dir.mkdir(exist_ok=True, parents=True)
 
     performance_df = df.loc[(df["ratio"] == 60) & (df["seed"] == 0) & (df["n_samples"] == 400_000)]
     # For layer 2 we filter out the runs with L0 > 200. Otherwise we end up with point in one
