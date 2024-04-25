@@ -1,3 +1,4 @@
+import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal
@@ -390,8 +391,8 @@ def plot_two_axes_line(
     xlabel1: str,
     xlabel2: str,
     ylabel: str,
+    out_file: str | Path,
     title: str | None = None,
-    out_file: str | Path | None = None,
     run_types: Sequence[str] = ("e2e", "local", "e2e-recon"),
     xlim1: Mapping[int, tuple[float | None, float | None]] | None = None,
     xlim2: Mapping[int, tuple[float | None, float | None]] | None = None,
@@ -420,7 +421,6 @@ def plot_two_axes_line(
         ylim: The y-axis limits for each layer.
         layers: The layers to include in the plot. If None, all layers in the df will be included.
     """
-
     if layers is None:
         layers = sorted(df["layer"].unique())
     n_layers = len(layers)
@@ -436,6 +436,7 @@ def plot_two_axes_line(
     fig = plt.figure(figsize=(8, 4 * n_layers), constrained_layout=True)
     subfigs = fig.subfigures(n_layers)
     subfigs = np.atleast_1d(subfigs)
+
     for subfig, layer in zip(subfigs, layers, strict=False):
         layer_df = df.loc[df["layer"] == layer]
         axs = subfig.subplots(1, 2)
@@ -514,10 +515,82 @@ def plot_two_axes_line(
     if title is not None:
         fig.suptitle(title)
 
-    if out_file is not None:
-        plt.savefig(out_file)
-        plt.savefig(Path(out_file).with_suffix(".svg"))
+    plt.savefig(out_file)
+    plt.savefig(Path(out_file).with_suffix(".svg"))
     plt.close(fig)
+    logger.info(f"Saved to {out_file}")
+
+
+def calc_summary_metric(
+    df: pd.DataFrame,
+    x1: str,
+    x2: str,
+    out_file: str | Path,
+    interpolate_layer: int,
+    x1_interpolation_range: tuple[float, float],
+    x2_interpolation_range: tuple[float, float],
+    y: str = "CELossIncrease",
+    run_types: Sequence[str] = ("e2e", "local", "e2e-recon"),
+) -> None:
+    """Calculate and save the summary metric for the ratio difference in the y-axis.
+
+    Args:
+        df: DataFrame containing the data.
+        x1: The variable to plot on the first x-axis.
+        x2: The variable to plot on the second x-axis.
+        out_file: The filename which the summary metric will be saved as.
+        interpolate_layer: The layer to interpolate x values for.
+        x1_interpolation_range: The range of x1 values to interpolate over.
+        x2_interpolation_range: The range of x2 values to interpolate over.
+        y: The variable to plot on the y-axis.
+        run_types: The run types to include in the calculation.
+    """
+    # Take 20 points between the interpolation range
+    x1_interpolation_lines = np.linspace(
+        x1_interpolation_range[0], x1_interpolation_range[1], num=20
+    )
+    x2_interpolation_lines = np.linspace(
+        x2_interpolation_range[0], x2_interpolation_range[1], num=20
+    )
+
+    layer_df = df.loc[df["layer"] == interpolate_layer]
+    intersections = {x1: {}, x2: {}}
+    for run_type in run_types:
+        if run_type not in RUN_TYPE_MAP:
+            raise ValueError(f"Invalid run type: {run_type}")
+        data = layer_df.loc[layer_df["run_type"] == run_type]
+        if not data.empty:
+            data = data.sort_values(y)
+            for metric, vertical_lines in zip(
+                [x1, x2], [x1_interpolation_lines, x2_interpolation_lines], strict=True
+            ):
+                # np.interp requires monotically increasing data.
+                if np.all(np.diff(data[metric]) > 0):
+                    interp_x = data[metric].copy()
+                    interp_y = data[y].copy()
+                elif np.all(np.diff(data[metric]) < 0):
+                    # Reverse the order of xs and ys
+                    interp_x = data[metric].copy()[::-1]
+                    interp_y = data[y].copy()[::-1]
+                else:
+                    raise ValueError(
+                        f"Data in column {metric} is not monotonic, cannot interpolate"
+                    )
+                intersections[metric][run_type] = np.interp(vertical_lines, interp_x, interp_y)
+
+    # Calculate the summary statistic for the ratio difference in the y-axis
+    # Our summary metrics are always compared to the "local" run type
+    comparison_cols = [run_type for run_type in run_types if run_type != "local"]
+    ce_ratios = {}
+    for col in comparison_cols:
+        ce_ratios[col] = {}
+        for metric in [x1, x2]:
+            ce_ratios[col][metric] = (
+                (intersections[metric][col] / intersections[metric]["local"]).mean().item()
+            )
+    with open(out_file, "w") as f:
+        json.dump(ce_ratios, f)
+    logger.info(f"Summary saved to {out_file}")
 
 
 def plot_seed_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
@@ -614,12 +687,13 @@ def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[s
         combined_df = pd.concat([run_type_df, runs_ratio_60])
         ratios = sorted(combined_df["ratio"].unique())
 
+        combined_df["dict_size_ratio"] = combined_df["ratio"]
         plot_two_axes_line_single_run_type(
             df=combined_df,
             run_type=run_type,
             out_dir=ratios_dir,
             title=f"{run_type}: L0 + Alive Elements vs CE Loss Increase {sae_pos}",
-            iter_var="ratio",
+            iter_var="dict_size_ratio",
             iter_vals=ratios,
             filename_prefix="dict_ratio",
         )
@@ -749,6 +823,8 @@ def gpt2_plots():
     performance_df = performance_df.loc[
         ~((performance_df["L0"] > 200) & (performance_df["layer"] == 2))
     ]
+    # Some runs with seed-comparison in the name are duplicates, ignore those
+    performance_df = performance_df.loc[~performance_df["name"].str.contains("seed-comparison")]
 
     # ylims for plots with ce_diff on the y axis
     loss_increase_lims = {2: (0.2, 0.0), 6: (0.4, 0.0), 10: (0.4, 0.0)}
@@ -770,6 +846,17 @@ def gpt2_plots():
         xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
         ylim=loss_increase_lims,
     )
+    # Calculate the summary metric for the CE ratio difference
+    calc_summary_metric(
+        df=performance_df,
+        x1="L0",
+        x2="alive_dict_elements",
+        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_summary.json",
+        interpolate_layer=6,
+        x1_interpolation_range=(500, 50),
+        x2_interpolation_range=(23000, 35000),
+    )
+    exit()
     plot_scatter_or_line(
         performance_df,
         x="out_to_in",
