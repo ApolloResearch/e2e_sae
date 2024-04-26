@@ -1,3 +1,4 @@
+import os
 from functools import partial
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -372,12 +373,15 @@ class SAETransformer(nn.Module):
         api = wandb.Api()
         run: Run = api.run(wandb_project_run_id)
 
+        cache_dir = Path(os.environ.get("SAE_CACHE_DIR", "/tmp/"))
+        model_cache_dir = cache_dir / wandb_project_run_id
+
         train_config_file_remote = [
             file for file in run.files() if file.name.endswith("final_config.yaml")
         ][0]
 
         train_config_file = train_config_file_remote.download(
-            exist_ok=True, replace=True, root="/tmp/"
+            exist_ok=True, replace=True, root=model_cache_dir
         ).name
 
         checkpoints = [file for file in run.files() if file.name.endswith(".pt")]
@@ -385,7 +389,7 @@ class SAETransformer(nn.Module):
             checkpoints, key=lambda x: int(x.name.split(".pt")[0].split("_")[-1])
         )[-1]
         latest_checkpoint_file = latest_checkpoint_remote.download(
-            exist_ok=True, replace=True, root="/tmp/"
+            exist_ok=True, replace=True, root=model_cache_dir
         ).name
         assert latest_checkpoint_file is not None, "Failed to download the latest checkpoint."
 

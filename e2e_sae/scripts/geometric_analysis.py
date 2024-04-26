@@ -1,4 +1,5 @@
 import json
+import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Literal
@@ -548,10 +549,13 @@ def get_alive_dict_elements(
     weight_files = [file for file in run.files() if file.name.endswith(".pt")]
     # Latest checkpoint
     weight_file = sorted(weight_files, key=lambda x: int(x.name.split(".pt")[0].split("_")[-1]))[-1]
+
+    cache_dir = Path(os.environ.get("SAE_CACHE_DIR", "/tmp/"))
+    model_cache_dir = cache_dir / project_name / run.id
     latest_checkpoint = wandb.restore(
         weight_file.name,
         run_path=f"{project_name}/{run.id}",
-        root=f"/tmp/{run.id}/",
+        root=model_cache_dir,
         replace=False,
     )
     assert latest_checkpoint is not None
