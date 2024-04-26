@@ -762,7 +762,7 @@ def create_max_pairwise_similarity_plots(api: wandb.Api, project: str):
 
 def get_cross_max_similarities(
     api: wandb.Api, project_name: str, run_ids: tuple[str, str]
-) -> tuple[Float[Tensor, "n_dict_1"], list[list[int]]]:
+) -> tuple[Float[Tensor, "n_dict_1"], list[list[int]]]:  # noqa: F821
     """Get the max pairwise cosine similarity between the alive dictionary elements of two runs.
 
     Args:
@@ -937,12 +937,11 @@ if __name__ == "__main__":
             api, project, run_types=run_type, constant_val="CE", write_csv=write_csv
         )
 
-    create_seed_max_similarity_comparison_plots(
-        api, project, run_ids=("1jy3m5j0", "uqfp43ti"), layer=6, run_type="local"
-    )
-
-    # # These two are also relevent but not in the paper
+    # # These three are also relevent but not in the paper
     # # Sparsity coeff 1.5
+    # create_seed_max_similarity_comparison_plots(
+    #     api, project, run_ids=("bok0t1sw", "tuzvyysg"), layer=6, run_type="e2e"
+    # )
     # create_seed_max_similarity_comparison_plots(
     #     api, project, run_ids=("atfccmo3", "tvj2owza"), layer=6, run_type="e2e"
     # )
@@ -951,9 +950,15 @@ if __name__ == "__main__":
     #     api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
     # )
 
+    # sparsity coeff 4 (same as constant CE)
     create_seed_max_similarity_comparison_plots(
-        api, project, run_ids=("bok0t1sw", "tuzvyysg"), layer=6, run_type="e2e"
+        api, project, run_ids=("1jy3m5j0", "uqfp43ti"), layer=6, run_type="local"
     )
+    # spsarsity coeff 3 (same as constant CE)
+    create_seed_max_similarity_comparison_plots(
+        api, project, run_ids=("pzelh1s8", "ir00gg9g"), layer=6, run_type="e2e"
+    )
+    # sparsity coeff 50 (same as constant CE)
     create_seed_max_similarity_comparison_plots(
         api, project, run_ids=("y8sca507", "hqo5azo2"), layer=6, run_type="e2e-recon"
     )
