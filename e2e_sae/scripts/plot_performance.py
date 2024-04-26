@@ -593,59 +593,66 @@ def calc_summary_metric(
     logger.info(f"Summary saved to {out_file}")
 
 
-def plot_seed_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
-    """Plot the CE loss difference vs L0 for each layer, comparing different seeds.
+def plot_seed_comparison(
+    df: pd.DataFrame,
+    run_ids: Sequence[tuple[str, str]],
+    out_dir: Path,
+) -> None:
+    """Plot the CE loss difference vs L0 for all runs, comparing seeds.
 
     Args:
         df: DataFrame containing the data.
+        run_ids: List of run id tuples indicating the same runs with different seeds.
         out_dir: The directory to save the plots to.
-        run_types: The run types to include in the plot.
     """
     out_dir.mkdir(exist_ok=True, parents=True)
 
-    seeds = df["seed"].unique()
-    colors = sns.color_palette("tab10", n_colors=len(seeds))
+    sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
+    fig, ax = plt.subplots(figsize=(8, 6))
+    assert isinstance(ax, plt.Axes)
 
-    for run_type in run_types:
-        layer_df = df.loc[(df["run_type"] == run_type)]
+    for run_id1, run_id2 in run_ids:
+        run1 = df.loc[df["id"] == run_id1]
+        run2 = df.loc[df["id"] == run_id2]
+        assert not run1.empty and not run2.empty, f"Run ID not found: {run_id1} or {run_id2}"
+        assert run1["run_type"].nunique() == 1 and run2["run_type"].nunique() == 1
+        run_type = run1["run_type"].iloc[0]
+        assert run_type == run2["run_type"].iloc[0]
+        color = sns.color_palette()[list(RUN_TYPE_MAP.keys()).index(run_type)]
 
-        if run_type == "e2e-recon":
-            # Have to special case here because of old runs with slight differences not being
-            # filtered out
-            layer_df = layer_df.loc[layer_df["name"].str.contains("seed-comparison")]
-        else:
-            # Get only the layer-sparsity pairs that have more than one seed
-            layer_df = layer_df.groupby(["layer", "sparsity_coeff", "n_samples", "ratio"]).filter(
-                lambda x: x["seed"].nunique() > 1
-            )
-        if layer_df.empty:
-            continue
-        plt.figure(figsize=(8, 6))
-        for i, seed in enumerate(seeds):
-            seed_df = layer_df.loc[layer_df["seed"] == seed]
-            plt.scatter(
-                seed_df["L0"],
-                seed_df["CE_diff"],
-                label=f"Seed {seed}",
-                color=colors[i],
-                alpha=0.8,
-            )
-        layers = "-".join([str(l) for l in sorted(layer_df["layer"].unique())])
-        plt.title(f"Layers {layers}: L0 vs CE Loss Difference (run_type={run_type})")
-        plt.xlabel("L0")
-        plt.ylabel("CE loss difference\n(original model - model with sae)")
-        plt.legend(title="Seed", loc="best")
-        plt.tight_layout()
-        plt.savefig(out_dir / f"seed_l0_vs_ce_loss_layers_{layers}_{run_type}.png")
-        plt.savefig(out_dir / f"seed_l0_vs_ce_loss_layers_{layers}_{run_type}.svg")
-        plt.close()
+        ax.scatter(
+            [run1["L0"].iloc[0], run2["L0"].iloc[0]],
+            [run1["CELossIncrease"].iloc[0], run2["CELossIncrease"].iloc[0]],
+            color=color,
+            label=run_type,
+        )
 
-        # Also write all the "id"s to file
-        ids = layer_df["id"].unique().tolist()
-        with open(out_dir / f"ids_layers_{layers}_{run_type}.txt", "w") as f:
-            f.write(",".join(ids))
+        ax.plot(
+            [run1["L0"].iloc[0], run2["L0"].iloc[0]],
+            [run1["CELossIncrease"].iloc[0], run2["CELossIncrease"].iloc[0]],
+            color=color,
+        )
 
-        logger.info(f"Saved to {out_dir / f'ids_layers_{layers}_{run_type}.png'}")
+    ax.set_xlabel("L0")
+    ax.set_ylabel("CE Loss Increase")
+    # Ensure that there is only one legend entry for each run type, but ensure the colours are correct
+    handles, labels = ax.get_legend_handles_labels()
+    unique_labels = []
+    unique_handles = []
+    for label, handle in zip(labels, handles, strict=False):
+        if label not in unique_labels:
+            unique_labels.append(label)
+            unique_handles.append(handle)
+    ax.legend(unique_handles, unique_labels, title="Run Type", loc="lower right")
+
+    ax.set_title("L0 vs CE Loss Increase (Seed Comparison)")
+
+    plt.tight_layout()
+    out_file = out_dir / "seed_comparison.png"
+    plt.savefig(out_file)
+    plt.savefig(out_file.with_suffix(".svg"))
+    plt.close()
+    logger.info(f"Saved to {out_file}")
 
 
 def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
@@ -656,8 +663,7 @@ def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[s
         out_dir: The directory to save the plots to.
         run_types: The run types to include in the plot.
     """
-    ratios_dir = out_dir / "ratio_comparison"
-    ratios_dir.mkdir(exist_ok=True, parents=True)
+    out_dir.mkdir(exist_ok=True, parents=True)
     ratios_runs = df.loc[df["ratio"] != 60]
     for run_type in run_types:
         run_type_df = ratios_runs.loc[ratios_runs["run_type"] == run_type]
@@ -691,7 +697,7 @@ def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[s
         plot_two_axes_line_single_run_type(
             df=combined_df,
             run_type=run_type,
-            out_dir=ratios_dir,
+            out_dir=out_dir,
             title=f"{run_type}: L0 + Alive Elements vs CE Loss Increase {sae_pos}",
             iter_var="dict_size_ratio",
             iter_vals=ratios,
@@ -700,7 +706,7 @@ def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[s
 
         # Also write all the "id"s to file
         ids = combined_df["id"].unique().tolist()
-        with open(ratios_dir / f"ids_ratio_comparison_{run_type}.txt", "w") as f:
+        with open(out_dir / f"ids_ratio_comparison_{run_type}.txt", "w") as f:
             f.write(",".join(ids))
 
 
@@ -773,7 +779,13 @@ def get_df_gpt2() -> pd.DataFrame:
 
     df = create_run_df(runs)
 
-    assert df["lr"].nunique() == 1 and df["lr"].unique()[0] == 5e-4
+    # df for all run_types except for local should only have one unique lr (5e-4)
+    assert (
+        df.loc[df["run_type"] != "local"]["lr"].nunique() == 1
+        and df.loc[df["run_type"] != "local"]["lr"].unique()[0] == 5e-4
+    )
+
+    # assert df["lr"].nunique() == 1 and df["lr"].unique()[0] == 5e-4
     assert df["model_name"].nunique() == 1
 
     # Ignore runs that have an L0 bigger than d_resid
@@ -790,6 +802,38 @@ def get_df_gpt2() -> pd.DataFrame:
     return df
 
 
+def plot_local_lr_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
+    """Plot a two axes line plot with L0 and alive_dict_elements on the x-axis and CE loss increase
+    on the y-axis. Colored by learning rate.
+    """
+    out_dir.mkdir(exist_ok=True, parents=True)
+
+    lrs = df["lr"].unique()
+    for layer in df["layer"].unique():
+        layer_df = df.loc[df["layer"] == layer]
+        if layer_df.empty:
+            continue
+        # Get all the local runs. These should be the runs that have kl_coeff of 0.0 or nan
+        local_df = layer_df.loc[(layer_df["kl_coeff"] == 0.0) | layer_df["kl_coeff"].isnull()]
+        if local_df.empty:
+            continue
+
+        sae_pos = local_df["sae_pos"].unique()[0]
+        lrs = sorted(local_df["lr"].unique())
+        # Plot a two axes line plot with L0 and alive_dict_elements on the x-axis and CE loss
+        # increase on the y-axis. Colored by learning rate
+
+        plot_two_axes_line_single_run_type(
+            df=local_df,
+            run_type="local",
+            out_dir=out_dir,
+            title=f"Local: L0 + Alive Elements vs CE Loss Increase {sae_pos}",
+            iter_var="lr",
+            iter_vals=lrs,
+            filename_prefix="lr",
+        )
+
+
 def gpt2_plots():
     run_types = ("e2e", "local", "e2e-recon")
     n_layers = 12
@@ -802,16 +846,34 @@ def gpt2_plots():
         run_types=run_types,
     )
 
+    # 1 seed in each layer
+    local_seed_ids = [("ue3lz0n7", "d8vgjnyc"), ("1jy3m5j0", "uqfp43ti"), ("m2hntlav", "77bp68uk")]
+    e2e_seed_ids = [("ovhfts9n", "slxwr007"), ("tvj2owza", "atfccmo3"), ("jnjpmyqk", "ac9i1g6v")]
+    e2e_recon_ids = [("y8sca507", "hqo5azo2")]
+    seed_ids = local_seed_ids + e2e_seed_ids + e2e_recon_ids
     plot_seed_comparison(
-        df=df.loc[df["n_samples"] == 400_000],
+        df=df,
+        run_ids=seed_ids,
         out_dir=Path(__file__).resolve().parent / "out" / "seed_comparison",
-        run_types=run_types,
     )
 
     plot_ratio_comparison(
         df=df.loc[(df["seed"] == 0) & (df["n_samples"] == 400_000)],
-        out_dir=Path(__file__).resolve().parent / "out",
+        out_dir=Path(__file__).resolve().parent / "out" / "ratio_comparison",
         run_types=run_types,
+    )
+
+    # Layer 6 local learning rate comparison
+    plot_local_lr_comparison(
+        df=df.loc[
+            (df["seed"] == 0)
+            & (df["n_samples"] == 400_000)
+            & (df["ratio"] == 60)
+            & (df["run_type"] == "local")
+            & (df["layer"] == 6)
+        ],
+        out_dir=Path(__file__).resolve().parent / "out" / "lr_comparison",
+        run_types="local",
     )
 
     out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
@@ -856,7 +918,6 @@ def gpt2_plots():
         x1_interpolation_range=(500, 50),
         x2_interpolation_range=(23000, 35000),
     )
-    exit()
     plot_scatter_or_line(
         performance_df,
         x="out_to_in",
