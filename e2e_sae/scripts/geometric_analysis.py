@@ -32,6 +32,10 @@ CONSTANT_L0_RUNS = {
 }
 
 
+COLOR_E2E, COLOR_LWS, COLOR_E2E_RECON = sns.color_palette()[:3]
+COLOR_MAP = {"e2e": COLOR_E2E, "local": COLOR_LWS, "e2e-recon": COLOR_E2E_RECON}
+
+
 class RegionCoords(BaseModel):
     xmin: float
     xmax: float
@@ -357,7 +361,7 @@ def get_cosine_similarity(
     # Compute cosine similarity using matrix multiplication
     cosine_sim: Float[Tensor, "n_dict_1 n_dict_2"] = torch.mm(dict_elements_1.T, dict_elements_2)
 
-    return cosine_sim
+    return cosine_sim.cpu()
 
 
 def plot_cosine_similarity_heatmap(
@@ -861,6 +865,44 @@ def create_cross_max_similarity_plots(
                     f.write(f"{layer_num},{dict_1_alive_indices[layer_num][i]},{max_sim}\n")
 
 
+def cross_seed_similarity_all_types(
+    api: wandb.Api,
+    project: str,
+    run_ids: dict[str, tuple[str, str]],
+):
+    sim_dict = {
+        run_type: get_cross_max_similarities(
+            api=api,
+            project_name=project,
+            run_ids=run_ids[run_type],
+        )[0]
+        for run_type in run_ids
+    }
+    fig, axs = plt.subplots(3, 1, figsize=(5, 4), sharex=True)
+
+    for i, (run_type, max_cosine_sim) in enumerate(sim_dict.items()):
+        sims = max_cosine_sim.flatten().detach().numpy()
+        axs[i].hist(
+            sims,
+            range=(0, 1),
+            bins=100,
+            color=COLOR_MAP[run_type],
+            density=True,
+            alpha=0.7,
+        )
+        axs[i].set_yticks([])
+        axs[i].set_title(run_type)
+
+    plt.xlabel("Max Cosine Similarity")
+    plt.xlim(0, 1)
+    plt.tight_layout(h_pad=0.3)
+
+    out_dir = Path(__file__).parent / "out" / "seed_comparison"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out_dir / "cross_seed_all_types.png")
+    plt.savefig(out_dir / "cross_seed_all_types.svg")
+
+
 def create_seed_max_similarity_comparison_plots(
     api: wandb.Api, project: str, run_ids: tuple[str, str], layer: int, run_type: str
 ):
@@ -950,18 +992,12 @@ if __name__ == "__main__":
     #     api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
     # )
 
-    # sparsity coeff 4 (same as constant CE)
-    create_seed_max_similarity_comparison_plots(
-        api, project, run_ids=("1jy3m5j0", "uqfp43ti"), layer=6, run_type="local"
-    )
-    # spsarsity coeff 3 (same as constant CE)
-    create_seed_max_similarity_comparison_plots(
-        api, project, run_ids=("pzelh1s8", "ir00gg9g"), layer=6, run_type="e2e"
-    )
-    # sparsity coeff 50 (same as constant CE)
-    create_seed_max_similarity_comparison_plots(
-        api, project, run_ids=("y8sca507", "hqo5azo2"), layer=6, run_type="e2e-recon"
-    )
+    run_ids: dict[str, tuple[str, str]] = {
+        "e2e": ("atfccmo3", "tvj2owza"),
+        "local": ("pzelh1s8", "ir00gg9g"),
+        "e2e-recon": ("y8sca507", "hqo5azo2"),
+    }
+    cross_seed_similarity_all_types(api, project, run_ids)
 
     # Post-hoc ignore the identified outliers in e2e-local umap
     e2e_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
