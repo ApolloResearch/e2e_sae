@@ -1,7 +1,7 @@
 import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
@@ -13,6 +13,7 @@ import umap
 import wandb
 from jaxtyping import Float
 from matplotlib import colors as mcolors
+from matplotlib.figure import Figure
 from pydantic import BaseModel, ConfigDict
 from torch import Tensor
 from wandb.apis.public import Run
@@ -718,6 +719,37 @@ def get_max_pairwise_similarities(
     return max_pairwise_similarities
 
 
+def create_subplot_hists(
+    sim_list: Sequence[Float[Tensor, "n_dict"]],
+    titles: Sequence[str | None],
+    colors: Sequence[Any] | None = None,
+    bins: int = 100,
+    fig: Figure | None = None,
+    figsize: tuple[float, float] = (5, 4),
+    xlim: tuple[float, float] = (0, 1),
+    xlabel: str = "Cosine Similarity",
+    suptitle: str | None = None,
+    out_file: Path | None = None,
+):
+    fig = fig or plt.figure(figsize=figsize, layout="constrained")
+    axs = fig.subplots(len(sim_list), 1, sharex=True)
+    axs = np.atleast_1d(axs)
+    colors = colors or [None for _ in sim_list]
+    for ax, sims, title, color in zip(axs, sim_list, titles, colors, strict=True):
+        ax.hist(sims.flatten().detach().numpy(), bins=bins, color=color, alpha=0.5)
+        ax.set_title(title)
+        ax.set_yticks([])
+
+    axs[-1].set_xlim(xlim)
+    axs[-1].set_xlabel(xlabel)
+    # plt.tight_layout()
+    if suptitle is not None:
+        fig.suptitle(suptitle, fontweight="bold")
+    if out_file:
+        plt.savefig(out_file)
+        logger.info(f"Saved subplot histograms to {out_file}")
+
+
 def plot_max_pairwise_similarities(
     max_pairwise_similarities: MaxPairwiseSimilarities,
     constant_val: str,
@@ -757,11 +789,34 @@ def create_max_pairwise_similarity_plots(api: wandb.Api, project: str):
             out_file=out_file,
             from_file=False,
         )
-        plot_max_pairwise_similarities(
-            pairwise_similarities,
-            constant_val=constant_val,
-            out_file=out_file.with_suffix(".png"),
+
+        # plot all layers
+        fig = plt.figure(figsize=(10, 4), layout="constrained")
+        subfigs = fig.subfigures(1, len(pairwise_similarities), wspace=0.05)
+        for i, (layer_num, layer_similarities) in enumerate(pairwise_similarities.items()):
+            create_subplot_hists(
+                sim_list=list(layer_similarities.values()),
+                titles=list(layer_similarities.keys()),
+                colors=[COLOR_MAP[run_type] for run_type in layer_similarities],
+                fig=subfigs[i],
+                suptitle=f"Layer {layer_num}",
+            )
+            # subfigs[i].suptitle(f"Layer {layer_num}")
+        fig.suptitle(
+            f"Within SAE Similarities (Constant {constant_val.upper()})", fontweight="bold"
         )
+        out_file = out_dir / f"within_sae_similarities_{constant_val}_all_layers.png"
+
+        if constant_val == "CE":
+            # Just layer 6
+            fig = create_subplot_hists(
+                sim_list=list(pairwise_similarities[6].values()),
+                titles=list(pairwise_similarities[6].keys()),
+                colors=[COLOR_MAP[run_type] for run_type in pairwise_similarities[6]],
+                figsize=(4, 4),
+                out_file=out_dir / "within_sae_similarities_CE_layer_6.png",
+                suptitle="Within SAE Similarities",
+            )
 
 
 def get_cross_max_similarities(
