@@ -34,10 +34,15 @@ CONSTANT_L0_RUNS = {
 }
 
 
+# COLOR_MAP = {
+#     "local": plt.get_cmap("Dark2").colors[1],  # type: ignore[reportAttributeAccessIssue]
+#     "e2e": plt.get_cmap("Dark2").colors[4],  # type: ignore[reportAttributeAccessIssue]
+#     "downstream": plt.get_cmap("Dark2").colors[2],  # type: ignore[reportAttributeAccessIssue]
+# }
 COLOR_MAP = {
-    "local": plt.get_cmap("Dark2").colors[5],  # type: ignore[reportAttributeAccessIssue]
-    "e2e": plt.get_cmap("Dark2").colors[2],  # type: ignore[reportAttributeAccessIssue]
-    "downstream": plt.get_cmap("Dark2").colors[3],  # type: ignore[reportAttributeAccessIssue]
+    "local": sns.color_palette("deep")[0],  # type: ignore[reportAttributeAccessIssue]
+    "e2e": sns.color_palette("deep")[5],  # type: ignore[reportAttributeAccessIssue]
+    "downstream": sns.color_palette("deep")[3],  # type: ignore[reportAttributeAccessIssue]
 }
 
 
@@ -448,6 +453,7 @@ def plot_umap(
     lims: dict[str, tuple[float | None, float | None]] | None = None,
     grid: bool = False,
     regions: list[Region] | None = None,
+    legend_title: str | None = None,
 ):
     """Plot the UMAP embedding of the alive dictionary elements, colored by the labels.
 
@@ -464,7 +470,6 @@ def plot_umap(
     """
     embedding = embed_info.embedding.detach().clone()
     alive_elements_per_dict = embed_info.alive_elements_per_dict
-    sae_pos = embed_info.sae_pos
 
     # Ignore all embeddings that are outside the limits
     if lims is not None:
@@ -479,7 +484,7 @@ def plot_umap(
             mask &= embedding[:, 1] <= lims["y"][1]
         embedding = embedding[mask]
 
-    plt.figure(figsize=(10, 10), dpi=600)
+    plt.figure(figsize=(8, 8), dpi=600)
     for i, label in enumerate(labels):
         plt.scatter(
             embedding[i * alive_elements_per_dict[i] : (i + 1) * alive_elements_per_dict[i], 0],  # type: ignore
@@ -497,9 +502,9 @@ def plot_umap(
         )
         for label, color in zip(labels, colors, strict=False)
     ]
-    plt.legend(handles=legend_elements)
-    run_type_str = " and ".join(run_types)
-    plt.title(f"UMAP of alive dictionary elements in {sae_pos}: {run_type_str}")
+    plt.legend(handles=legend_elements, loc="lower right", title=legend_title)
+    # run_type_str = " and ".join(run_types)
+    # plt.title(f"UMAP of alive dictionary elements in {sae_pos}: {run_type_str}")
 
     if grid:
         # Put ticks every 0.5 points
@@ -508,6 +513,9 @@ def plot_umap(
         # Make the tick text size smaller
         plt.tick_params(axis="both", which="major", labelsize=8)
         plt.grid()
+    else:
+        plt.xticks([])
+        plt.yticks([])
 
     # Draw square boxes around the identified regions
     if regions is not None:
@@ -526,8 +534,9 @@ def plot_umap(
             )
             plt.gca().add_patch(rect)  # type: ignore
 
-    plt.savefig(out_file, dpi=300)
-    plt.savefig(out_file.with_suffix(".svg"))
+    plt.tight_layout()
+    plt.savefig(out_file, dpi=300, bbox_inches="tight")
+    plt.savefig(out_file.with_suffix(".svg"), bbox_inches="tight")
     logger.info(f"Saved UMAP plot to {out_file}")
 
 
@@ -596,7 +605,7 @@ def create_umap_plots(
 ):
     run_types_str = "_".join(run_types)
     run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS  # type: ignore
-    out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}"
+    out_dir = Path(__file__).parent / "out" / "umap" / f"constant_{constant_val}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if lims is None:
@@ -650,12 +659,13 @@ def create_umap_plots(
         labels = [f"{run_type}-{run_ids[run_type]}" for run_type in run_types]
         plot_umap(
             embed_info,
-            labels=labels,
+            labels=run_types,
             run_types=run_types,
             out_file=umap_file,
             lims=lims[layer_num],
             grid=grid,
             regions=REGIONS[run_types_str][layer_num].regions,
+            legend_title=f"Layer {layer_num}",
         )
         for i, region in enumerate(REGIONS[run_types_str][layer_num].regions):
             region_dict_1_indices, region_dict_2_indices = get_dict_indices_for_embedding_range(
@@ -741,12 +751,12 @@ def create_subplot_hists(
     out_file: Path | None = None,
 ):
     fig = fig or plt.figure(figsize=figsize, layout="constrained")
-    axs = fig.subplots(len(sim_list), 1, sharex=True)
+    axs = fig.subplots(len(sim_list), 1, sharex=True, gridspec_kw={"hspace": 0.1})
     axs = np.atleast_1d(axs)
     colors = colors or [None for _ in sim_list]
     for ax, sims, title, color in zip(axs, sim_list, titles, colors, strict=True):
-        ax.hist(sims.flatten().detach().numpy(), bins=bins, color=color, alpha=0.85)
-        ax.set_title(title)
+        ax.hist(sims.flatten().detach().numpy(), bins=bins, color=color, alpha=1)
+        ax.set_title(title, pad=2)
         ax.set_yticks([])
 
     axs[-1].set_xlim(xlim)
@@ -756,6 +766,7 @@ def create_subplot_hists(
         fig.suptitle(suptitle, fontweight="bold")
     if out_file:
         plt.savefig(out_file)
+        plt.savefig(out_file.with_suffix(".svg"))
         logger.info(f"Saved plot to {out_file}")
 
 
@@ -780,7 +791,7 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
         for i, (layer_num, layer_similarities) in enumerate(pairwise_similarities.items()):
             create_subplot_hists(
                 sim_list=list(layer_similarities.values()),
-                titles=list(layer_similarities.keys()),
+                titles=["local", "e2e", "e2e + downstream"],
                 colors=[COLOR_MAP[run_type] for run_type in layer_similarities],
                 fig=subfigs[i],
                 suptitle=f"Layer {layer_num}",
@@ -790,12 +801,15 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
             f"Within SAE Similarities (Constant {constant_val.upper()})", fontweight="bold"
         )
         out_file = out_dir / f"within_sae_similarities_{constant_val}_all_layers.png"
+        plt.savefig(out_file)
+        plt.savefig(out_file.with_suffix(".svg"))
+        logger.info(f"Saved plot to {out_file}")
 
         if constant_val == "CE":
             # Just layer 6
             fig = create_subplot_hists(
                 sim_list=list(pairwise_similarities[6].values()),
-                titles=list(pairwise_similarities[6].keys()),
+                titles=["local", "e2e", "e2e + downstream"],
                 colors=[COLOR_MAP[run_type] for run_type in pairwise_similarities[6]],
                 figsize=(4, 4),
                 out_file=out_dir / "within_sae_similarities_CE_layer_6.png",
@@ -879,6 +893,8 @@ def create_cross_type_similarity_plots(
     fig.suptitle(f"Cross Type Similarities (Constant {constant_val.upper()})", fontweight="bold")
     out_file = out_dir / "cross_type_similarities_all_layers.png"
     plt.savefig(out_file)
+    plt.savefig(out_file.with_suffix(".svg"))
+    logger.info(f"Saved plot to {out_file}")
 
     # Just layer 6
     fig = create_subplot_hists(
