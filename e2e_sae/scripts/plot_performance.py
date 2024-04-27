@@ -42,7 +42,7 @@ def plot_scatter_or_line(
     z: str | None = None,
     xlim: Mapping[int, tuple[float | None, float | None]] | None = None,
     ylim: Mapping[int, tuple[float | None, float | None]] | None = None,
-    run_types: tuple[str, ...] = ("e2e", "local", "downstream"),
+    run_types: tuple[str, ...] = ("local", "e2e", "downstream"),
     sparsity_label: bool = False,
     plot_type: Literal["scatter", "line"] | None = None,
     layers: Sequence[int] | None = None,
@@ -191,7 +191,7 @@ def plot_per_layer_metric(
     out_file: str | Path | None = None,
     ylim: tuple[float | None, float | None] = (None, None),
     legend_label_cols_and_precision: list[tuple[str, int]] | None = None,
-    run_types: Sequence[str] = ("e2e", "local", "downstream"),
+    run_types: Sequence[str] = ("local", "e2e", "downstream"),
     horz_layout: bool = False,
 ) -> None:
     """
@@ -503,7 +503,7 @@ def plot_two_axes_line(
     ylabel: str,
     out_file: str | Path,
     title: str | None = None,
-    run_types: Sequence[str] = ("e2e", "local", "downstream"),
+    run_types: Sequence[str] = ("local", "e2e", "downstream"),
     xlim1: Mapping[int, tuple[float | None, float | None]] | None = None,
     xlim2: Mapping[int, tuple[float | None, float | None]] | None = None,
     xticks1: tuple[list[float], list[str]] | None = None,
@@ -612,7 +612,7 @@ def calc_summary_metric(
     x1_interpolation_range: tuple[float, float],
     x2_interpolation_range: tuple[float, float],
     y: str = "CELossIncrease",
-    run_types: Sequence[str] = ("e2e", "local", "downstream"),
+    run_types: Sequence[str] = ("local", "e2e", "downstream"),
 ) -> None:
     """Calculate and save the summary metric for the ratio difference in the y-axis.
 
@@ -927,7 +927,7 @@ def plot_local_lr_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequenc
 
 
 def gpt2_plots():
-    run_types = ("e2e", "local", "downstream")
+    run_types = ("local", "e2e", "downstream")
     n_layers = 12
 
     df = get_df_gpt2()
@@ -1098,11 +1098,11 @@ def get_tinystories_1m_df() -> pd.DataFrame:
     local_properties = (
         (df["lr"] == 0.01) & (df["n_samples"] == 400_000) & (df["run_type"] == "local")
     )
-    # Note how we only have runs with 250k samples for e2e-recon
+    # Note how we only have runs with 250k samples for downstream
     e2e_recon_properties = (
         (df["lr"] == 0.001)
         & (df["n_samples"] == 250_000)
-        & (df["run_type"] == "e2e-recon")
+        & (df["run_type"] == "downstream")
         & (df["in_to_orig_coeff"] == 1000)  # This is seemed the best for kl_coeff=0.5
     )
     df = df.loc[
@@ -1119,7 +1119,7 @@ def get_tinystories_1m_df() -> pd.DataFrame:
 
 def tinystories_1m_plots():
     # Plot tinystories_1m performance
-    run_types = ("e2e", "local", "e2e-recon")
+    run_types = ("local", "e2e", "downstream")
     out_dir = Path(__file__).resolve().parent / "out" / "tinystories-1m" / "_".join(run_types)
     out_dir.mkdir(exist_ok=True, parents=True)
     logger.info(f"Saving plots to {out_dir}")
