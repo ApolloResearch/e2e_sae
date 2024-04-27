@@ -292,6 +292,32 @@ def plot_per_layer_metric(
     plt.close()
 
 
+def _format_two_axes(axs: Sequence[plt.Axes]) -> None:
+    """Adds better arrows, and moves the y-axis to the right of the second subplot."""
+    # move y-axis to right of second subplot
+    axs[1].yaxis.set_label_position("right")
+    axs[1].yaxis.set_ticks_position("right")
+    axs[1].yaxis.set_tick_params(color="white")
+
+    # add "Better" text annotations
+    axs[0].text(
+        s="Better →", x=1, y=1.02, ha="right", va="bottom", fontsize=10, transform=axs[0].transAxes
+    )
+    axs[1].text(
+        s="← Better", x=0, y=1.02, ha="left", va="bottom", fontsize=10, transform=axs[1].transAxes
+    )
+    axs[0].text(
+        s="Better →",
+        x=1.075,
+        y=1,
+        ha="center",
+        va="top",
+        fontsize=10,
+        transform=axs[0].transAxes,
+        rotation=90,
+    )
+
+
 def plot_two_axes_line_single_run_type(
     df: pd.DataFrame,
     run_type: str,
@@ -354,27 +380,10 @@ def plot_two_axes_line_single_run_type(
     axs[1].set_xlabel("Alive Dictionary Elements")
     axs[0].set_ylabel("CE Loss Increase")
     axs[1].set_ylabel("CE Loss Increase")
-    # move y-axis to right of second subplot
-    axs[1].yaxis.set_label_position("right")
-    axs[1].yaxis.set_ticks_position("right")
-    axs[1].yaxis.set_tick_params(color="white")
-    # add "Better" text annotations
-    axs[0].text(
-        s="Better →", x=1, y=1.02, ha="right", va="bottom", fontsize=10, transform=axs[0].transAxes
-    )
-    axs[1].text(
-        s="← Better", x=0, y=1.02, ha="left", va="bottom", fontsize=10, transform=axs[1].transAxes
-    )
-    axs[0].text(
-        s="Better →",
-        x=1.075,
-        y=1,
-        ha="center",
-        va="top",
-        fontsize=10,
-        transform=axs[0].transAxes,
-        rotation=90,
-    )
+
+    # add better labels and move right axis
+    _format_two_axes((axs[0], axs[1]))
+
     fig.suptitle(title)
     filename = f"{filename_prefix}_l0_alive_elements_vs_ce_loss_{run_type}.png"
     plt.savefig(out_dir / filename)
@@ -472,45 +481,13 @@ def plot_two_axes_line(
         axs[0].set_ylabel(ylabel)
         axs[1].set_ylabel(ylabel)
 
-        # move y-axis to right of second subplot
-        axs[1].yaxis.set_label_position("right")
-        axs[1].yaxis.set_ticks_position("right")
-        axs[1].yaxis.set_tick_params(color="white")
-
         if xticks1 is not None:
             axs[0].set_xticks(xticks1[0], xticks1[1])
         if xticks2 is not None:
             axs[1].set_xticks(xticks2[0], xticks2[1])
 
-        # add "Better" text annotations
-        axs[0].text(
-            s="Better →",
-            x=1,
-            y=1.02,
-            ha="right",
-            va="bottom",
-            fontsize=10,
-            transform=axs[0].transAxes,
-        )
-        axs[1].text(
-            s="← Better",
-            x=0,
-            y=1.02,
-            ha="left",
-            va="bottom",
-            fontsize=10,
-            transform=axs[1].transAxes,
-        )
-        axs[0].text(
-            s="Better →",
-            x=1.075,
-            y=1,
-            ha="center",
-            va="top",
-            fontsize=10,
-            transform=axs[0].transAxes,
-            rotation=90,
-        )
+        # add better labels and move right axis
+        _format_two_axes(axs)
 
     if title is not None:
         fig.suptitle(title)
