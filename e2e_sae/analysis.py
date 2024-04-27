@@ -10,7 +10,7 @@ def _get_run_type(kl_coeff: float | None, in_to_orig_coeff: float | None) -> str
         and kl_coeff > 0
         and in_to_orig_coeff > 0
     ):
-        return "e2e-recon"
+        return "downstream"
     if kl_coeff is not None and kl_coeff > 0:
         return "e2e"
     return "local"
@@ -20,7 +20,7 @@ def _get_run_type_using_names(run_name: str) -> str:
     if "logits-kl-1.0" in run_name and "in-to-orig" not in run_name:
         return "e2e"
     if "logits-kl-" in run_name and "in-to-orig" in run_name:
-        return "e2e-recon"
+        return "downstream"
     return "local"
 
 

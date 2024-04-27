@@ -18,15 +18,15 @@ from e2e_sae.log import logger
 
 RUN_TYPE_MAP = {
     "e2e": ("End-to-end", "o"),
-    "e2e-recon": ("End-to-end-recon", "X"),
+    "downstream": ("Downstream", "X"),
     "local": ("Local", "^"),
 }
 
 # Runs with constant CE loss increase for each layer. Values represent wandb run IDs.
 CONSTANT_CE_RUNS = {
-    2: {"e2e": "ovhfts9n", "local": "ue3lz0n7", "e2e-recon": "visi12en"},
-    6: {"e2e": "zgdpkafo", "local": "1jy3m5j0", "e2e-recon": "2lzle2f0"},
-    10: {"e2e": "8crnit9h", "local": "m2hntlav", "e2e-recon": "cvj5um2h"},
+    2: {"e2e": "ovhfts9n", "local": "ue3lz0n7", "downstream": "visi12en"},
+    6: {"e2e": "zgdpkafo", "local": "1jy3m5j0", "downstream": "2lzle2f0"},
+    10: {"e2e": "8crnit9h", "local": "m2hntlav", "downstream": "cvj5um2h"},
 }
 
 
@@ -41,7 +41,7 @@ def plot_scatter_or_line(
     z: str | None = None,
     xlim: Mapping[int, tuple[float | None, float | None]] | None = None,
     ylim: Mapping[int, tuple[float | None, float | None]] | None = None,
-    run_types: tuple[str, ...] = ("e2e", "local", "e2e-recon"),
+    run_types: tuple[str, ...] = ("e2e", "local", "downstream"),
     sparsity_label: bool = False,
     plot_type: Literal["scatter", "line"] | None = None,
     layers: Sequence[int] | None = None,
@@ -190,7 +190,7 @@ def plot_per_layer_metric(
     out_file: str | Path | None = None,
     ylim: tuple[float | None, float | None] = (None, None),
     legend_label_cols_and_precision: list[tuple[str, int]] | None = None,
-    run_types: Sequence[str] = ("e2e", "local", "e2e-recon"),
+    run_types: Sequence[str] = ("e2e", "local", "downstream"),
     horz_layout: bool = False,
 ) -> None:
     """
@@ -221,7 +221,7 @@ def plot_per_layer_metric(
     n_sae_layers = len(sae_layers)
 
     color_e2e, color_lws, color_e2e_recon = sns.color_palette()[:3]
-    color_map = {"e2e": color_e2e, "local": color_lws, "e2e-recon": color_e2e_recon}
+    color_map = {"e2e": color_e2e, "local": color_lws, "downstream": color_e2e_recon}
 
     if horz_layout:
         assert sae_layers == [2, 6, 10]
@@ -393,7 +393,7 @@ def plot_two_axes_line(
     ylabel: str,
     out_file: str | Path,
     title: str | None = None,
-    run_types: Sequence[str] = ("e2e", "local", "e2e-recon"),
+    run_types: Sequence[str] = ("e2e", "local", "downstream"),
     xlim1: Mapping[int, tuple[float | None, float | None]] | None = None,
     xlim2: Mapping[int, tuple[float | None, float | None]] | None = None,
     xticks1: tuple[list[float], list[str]] | None = None,
@@ -530,7 +530,7 @@ def calc_summary_metric(
     x1_interpolation_range: tuple[float, float],
     x2_interpolation_range: tuple[float, float],
     y: str = "CELossIncrease",
-    run_types: Sequence[str] = ("e2e", "local", "e2e-recon"),
+    run_types: Sequence[str] = ("e2e", "local", "downstream"),
 ) -> None:
     """Calculate and save the summary metric for the ratio difference in the y-axis.
 
@@ -791,11 +791,11 @@ def get_df_gpt2() -> pd.DataFrame:
     # Ignore runs that have an L0 bigger than d_resid
     df = df.loc[df["L0"] <= d_resid]
     # Only use the e2e+recon run in layer 10 that has kl_coeff=0.75
-    # df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "e2e-recon") & (df["kl_coeff"] != 0.75))]
+    # df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "downstream") & (df["kl_coeff"] != 0.75))]
     df = df.loc[
         ~(
             (df["layer"] == 10)
-            & (df["run_type"] == "e2e-recon")
+            & (df["run_type"] == "downstream")
             & ((df["kl_coeff"] != 0.5) | (df["in_to_orig_coeff"] != 0.05))
         )
     ]
@@ -835,7 +835,7 @@ def plot_local_lr_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequenc
 
 
 def gpt2_plots():
-    run_types = ("e2e", "local", "e2e-recon")
+    run_types = ("e2e", "local", "downstream")
     n_layers = 12
 
     df = get_df_gpt2()
