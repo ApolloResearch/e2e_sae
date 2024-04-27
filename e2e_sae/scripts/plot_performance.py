@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 
 from e2e_sae.analysis import create_run_df
 from e2e_sae.log import logger
+from e2e_sae.scripts.geometric_analysis import COLOR_MAP
 
 RUN_TYPE_MAP = {
     "e2e": ("End-to-end", "o"),
@@ -392,6 +393,106 @@ def plot_two_axes_line_single_run_type(
     logger.info(f"Saved to {out_dir / filename}")
 
 
+# TODO: replace calls with plot_two_axes_line_facet (which is a bit more general)
+def plot_two_axes_line_facet(
+    df: pd.DataFrame,
+    x1: str,
+    x2: str,
+    y: str,
+    facet_by: str,
+    line_by: str,
+    xlabel1: str | None = None,
+    xlabel2: str | None = None,
+    ylabel: str | None = None,
+    suptitle: str | None = None,
+    facet_vals: Sequence[Any] | None = None,
+    xlim1: Mapping[Any, tuple[float | None, float | None]] | None = None,
+    xlim2: Mapping[Any, tuple[float | None, float | None]] | None = None,
+    xticks1: tuple[list[float], list[str]] | None = None,
+    xticks2: tuple[list[float], list[str]] | None = None,
+    ylim: Mapping[Any, tuple[float | None, float | None]] | None = None,
+    styles: Mapping[Any, Mapping[str, Any]] | None = None,
+    title: Mapping[Any, str] | None = None,
+    out_file: str | Path | None = None,
+) -> None:
+    """Line plot with two x-axes and one y-axis between them. One line for each run type.
+
+    Args:
+        df: DataFrame containing the data.
+        x1: The variable to plot on the first x-axis.
+        x2: The variable to plot on the second x-axis.
+        y: The variable to plot on the y-axis.
+        title: The title of the plot.
+        xlabel1: The label for the first x-axis.
+        xlabel2: The label for the second x-axis.
+        ylabel: The label for the y-axis.
+        out_file: The filename which the plot will be saved as.
+        run_types: The run types to include in the plot.
+        xlim1: The x-axis limits for the first x-axis for each layer.
+        xlim2: The x-axis limits for the second x-axis for each layer.
+        xticks1: The x-ticks for the first x-axis.
+        xticks2: The x-ticks for the second x-axis.
+        ylim: The y-axis limits for each layer.
+        layers: The layers to include in the plot. If None, all layers in the df will be included.
+    """
+    if facet_vals is None:
+        facet_vals = sorted(df[facet_by].unique())
+
+    sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
+    fig = plt.figure(figsize=(8, 4 * len(facet_vals)), constrained_layout=True)
+    subfigs = fig.subfigures(len(facet_vals))
+    subfigs = np.atleast_1d(subfigs)
+
+    for subfig, facet_val in zip(subfigs, facet_vals, strict=False):
+        axs = subfig.subplots(1, 2)
+        facet_df = df.loc[df[facet_by] == facet_val]
+        for line_val, data in facet_df.groupby(line_by):
+            line_style = {"label": line_val, "marker": "o", "linewidth": 1.1}  # default
+            line_style.update({} if styles is None else styles[line_val])  # specific overrides
+            if not data.empty:
+                # draw the lines between points based on the y value
+                data = data.sort_values(y)
+                axs[0].plot(data[x1], data[y], **line_style)
+                axs[1].plot(data[x2], data[y], **line_style)
+
+        if facet_val == facet_vals[-1]:
+            axs[0].legend(title=line_by, loc="lower left")
+
+        if xlim1 is not None:
+            axs[0].set_xlim(xmin=xlim1[facet_val][0], xmax=xlim1[facet_val][1])
+        if xlim2 is not None:
+            axs[1].set_xlim(xmin=xlim2[facet_val][0], xmax=xlim2[facet_val][1])
+        if ylim is not None:
+            axs[0].set_ylim(ymin=ylim[facet_val][0], ymax=ylim[facet_val][1])
+            axs[1].set_ylim(ymin=ylim[facet_val][0], ymax=ylim[facet_val][1])
+
+        # Set a title above axs[0] and axs[1] to show the layer number
+        row_title = title[facet_val] if title is not None else None
+        subfig.suptitle(row_title, fontweight="bold")
+        axs[0].set_xlabel(xlabel1 or x1)
+        axs[1].set_xlabel(xlabel2 or x2)
+        axs[0].set_ylabel(ylabel or y)
+        axs[1].set_ylabel(ylabel or y)
+
+        if xticks1 is not None:
+            axs[0].set_xticks(xticks1[0], xticks1[1])
+        if xticks2 is not None:
+            axs[1].set_xticks(xticks2[0], xticks2[1])
+
+        # add better labels and move right axis
+        _format_two_axes(axs)
+
+    if suptitle is not None:
+        fig.suptitle(suptitle)
+
+    if out_file is not None:
+        plt.savefig(out_file)
+        plt.savefig(Path(out_file).with_suffix(".svg"))
+        logger.info(f"Saved to {out_file}")
+
+    plt.close(fig)
+
+
 def plot_two_axes_line(
     df: pd.DataFrame,
     x1: str,
@@ -409,6 +510,7 @@ def plot_two_axes_line(
     xticks2: tuple[list[float], list[str]] | None = None,
     ylim: Mapping[int, tuple[float | None, float | None]] | None = None,
     layers: Sequence[int] | None = None,
+    color_map: Mapping[str, Any] | None = None,
 ) -> None:
     """Line plot with two x-axes and one y-axis between them. One line for each run type.
 
@@ -453,6 +555,7 @@ def plot_two_axes_line(
             if run_type not in RUN_TYPE_MAP:
                 raise ValueError(f"Invalid run type: {run_type}")
             label, marker = RUN_TYPE_MAP[run_type]
+            color = COLOR_MAP[run_type] if color_map is None else color_map[run_type]
             data = layer_df.loc[layer_df["run_type"] == run_type]
             if not data.empty:
                 # draw the lines between points based on the y value
@@ -463,8 +566,10 @@ def plot_two_axes_line(
                         data[y],
                         marker=marker,
                         linewidth=1.1,
-                        alpha=0.8,
+                        alpha=1,
                         label=label if i == 0 else None,
+                        color=color,
+                        markersize=5,
                     )
 
         axs[0].legend(loc="best")
@@ -642,6 +747,8 @@ def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[s
     """
     out_dir.mkdir(exist_ok=True, parents=True)
     ratios_runs = df.loc[df["ratio"] != 60]
+
+    dfs_to_plot = []
     for run_type in run_types:
         run_type_df = ratios_runs.loc[ratios_runs["run_type"] == run_type]
         if run_type_df.empty:
@@ -649,6 +756,7 @@ def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[s
         # Should have the same kl_coeff, n_samples, sae_pos, and layer
         for col in ["kl_coeff", "n_samples", "sae_pos", "layer"]:
             assert run_type_df[col].nunique() <= 1, f"Multiple {col} values found"
+
         sparsity_coeffs = run_type_df["sparsity_coeff"].unique()
         kl_coeff = run_type_df["kl_coeff"].unique()[0]
         n_samples = run_type_df["n_samples"].unique()[0]
@@ -667,24 +775,26 @@ def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[s
             & (df["layer"] == layer)
             & (df["sparsity_coeff"].isin(sparsity_coeffs))
         ]
-        combined_df = pd.concat([run_type_df, runs_ratio_60])
-        ratios = sorted(combined_df["ratio"].unique())
+        dfs_to_plot.append(pd.concat([run_type_df, runs_ratio_60]))
 
-        combined_df["dict_size_ratio"] = combined_df["ratio"]
-        plot_two_axes_line_single_run_type(
-            df=combined_df,
-            run_type=run_type,
-            out_dir=out_dir,
-            title=f"{run_type}: L0 + Alive Elements vs CE Loss Increase {sae_pos}",
-            iter_var="dict_size_ratio",
-            iter_vals=ratios,
-            filename_prefix="dict_ratio",
-        )
-
-        # Also write all the "id"s to file
-        ids = combined_df["id"].unique().tolist()
-        with open(out_dir / f"ids_ratio_comparison_{run_type}.txt", "w") as f:
-            f.write(",".join(ids))
+    combined_df = pd.concat(dfs_to_plot)
+    plot_two_axes_line_facet(
+        df=combined_df,
+        x1="L0",
+        x2="alive_dict_elements",
+        y="CELossIncrease",
+        facet_by="run_type",
+        facet_vals=run_types,
+        line_by="ratio",
+        xlim1={run_type: (300, 0) for run_type in run_types},
+        xlim2={run_type: (0, 45_000) for run_type in run_types},
+        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+        ylim={run_type: (0.75, 0) for run_type in run_types},
+        title={run_type: run_type for run_type in run_types},
+        out_file=out_dir / "ratio_comparison.png",
+        xlabel2="Alive Dictionary Elements",
+        ylabel="CE Loss Increase",
+    )
 
 
 def plot_n_samples_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
@@ -700,6 +810,9 @@ def plot_n_samples_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequen
     n_samples_dir.mkdir(exist_ok=True, parents=True)
 
     n_samples_runs = df.loc[df["n_samples"] != 400_000]
+
+    dfs_to_plot = []
+
     for run_type in run_types:
         run_type_df = n_samples_runs.loc[n_samples_runs["run_type"] == run_type]
         if run_type_df.empty:
@@ -727,24 +840,26 @@ def plot_n_samples_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequen
             & (df["layer"] == layer)
             & (df["sparsity_coeff"].isin(sparsity_coeffs))
         ]
-        combined_df = pd.concat([run_type_df, runs_samples_400k])
+        dfs_to_plot.append(pd.concat([run_type_df, runs_samples_400k]))
 
-        samples = sorted(combined_df["n_samples"].unique())
-
-        plot_two_axes_line_single_run_type(
-            df=combined_df,
-            run_type=run_type,
-            out_dir=n_samples_dir,
-            title=f"{run_type}: L0 + Alive Elements vs CE Loss Increase {sae_pos}",
-            iter_var="n_samples",
-            iter_vals=samples,
-            filename_prefix="n_samples",
-        )
-
-        # Also write all the "id"s to file
-        ids = combined_df["id"].unique().tolist()
-        with open(n_samples_dir / f"ids_n_samples_comparison_{run_type}.txt", "w") as f:
-            f.write(",".join(ids))
+    combined_df = pd.concat(dfs_to_plot)
+    plot_two_axes_line_facet(
+        df=combined_df,
+        x1="L0",
+        x2="alive_dict_elements",
+        y="CELossIncrease",
+        facet_by="run_type",
+        facet_vals=run_types,
+        line_by="n_samples",
+        xlim1={run_type: (400, 0) for run_type in run_types},
+        xlim2={run_type: (0, 48_000) for run_type in run_types},
+        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+        ylim={run_type: (0.75, 0) for run_type in run_types},
+        title={run_type: run_type for run_type in run_types},
+        out_file=out_dir / "n_samples_comparison.png",
+        xlabel2="Alive Dictionary Elements",
+        ylabel="CE Loss Increase",
+    )
 
 
 def get_df_gpt2() -> pd.DataFrame:
