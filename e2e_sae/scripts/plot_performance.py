@@ -856,7 +856,7 @@ def plot_n_samples_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequen
         xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
         ylim={run_type: (0.75, 0) for run_type in run_types},
         title={run_type: run_type for run_type in run_types},
-        out_file=out_dir / "n_samples_comparison.png",
+        out_file=n_samples_dir / "n_samples_comparison.png",
         xlabel2="Alive Dictionary Elements",
         ylabel="CE Loss Increase",
     )
