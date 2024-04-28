@@ -793,9 +793,9 @@ def plot_n_samples_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequen
         facet_by="run_type",
         facet_vals=run_types,
         line_by="n_samples",
-        xlim1={run_type: (400, 0) for run_type in run_types},
-        xlim2={run_type: (0, 48_000) for run_type in run_types},
-        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+        xlim1={run_type: (200, 0) for run_type in run_types},
+        xlim2={run_type: (10_000, 48_000) for run_type in run_types},
+        xticks2=([10_000, 20_000, 30_000, 40_000], ["10k", "20k", "30k", "40k"]),
         ylim={run_type: (0.75, 0) for run_type in run_types},
         title={run_type: run_type for run_type in run_types},
         out_file=n_samples_dir / "n_samples_comparison.png",
@@ -849,7 +849,7 @@ def gpt2_plots():
         out_dir=Path(__file__).resolve().parent / "out",
         run_types=run_types,
     )
-
+    exit()
     # # 1 seed in each layer
     local_seed_ids = [("ue3lz0n7", "d8vgjnyc"), ("1jy3m5j0", "uqfp43ti"), ("m2hntlav", "77bp68uk")]
     e2e_seed_ids = [("ovhfts9n", "slxwr007"), ("tvj2owza", "atfccmo3"), ("jnjpmyqk", "ac9i1g6v")]
