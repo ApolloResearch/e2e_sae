@@ -319,87 +319,6 @@ def _format_two_axes(axs: Sequence[plt.Axes]) -> None:
     )
 
 
-def plot_two_axes_line_single_run_type(
-    df: pd.DataFrame,
-    run_type: str,
-    out_dir: Path,
-    title: str,
-    iter_var: str,
-    iter_vals: list[float],
-    filename_prefix: str = "",
-    ylim: tuple[float | None, float | None] | None = None,
-) -> None:
-    """Plot the CE loss difference vs L0 and alive_dict_elements for different values of iter_var.
-
-    Note that these plots are only for a single run type.
-
-    Args:
-        df: DataFrame containing the data.
-        run_type: The run type to include in the plot.
-        out_dir: The directory to save the plots to.
-        title: The title of the plot.
-        iter_var: The variable in the DataFrame to iterate over.
-        iter_vals: The values to iterate over.
-        filename_prefix: The prefix to add to the filename.
-        ylim: The y-axis limits.
-    """
-    if ylim is None:
-        ylim = (None, None)
-
-    colors = sns.color_palette("tab10", n_colors=len(iter_vals))
-    fig, axs = plt.subplots(1, 2, figsize=(8, 6), gridspec_kw={"wspace": 0.15, "top": 0.84})
-    for i, vals in enumerate(iter_vals):
-        vals_df = df.loc[df[iter_var] == vals]
-        for j, (ax, x) in enumerate(zip(axs, ["L0", "alive_dict_elements"], strict=True)):
-            # Sort the data by CE_diff to ensure consistent line plotting
-            iter_var_df_sorted = vals_df.sort_values("CELossIncrease")
-            ax.scatter(
-                iter_var_df_sorted[x],
-                iter_var_df_sorted["CELossIncrease"],
-                label=f"{vals}",
-                color=colors[i],
-                alpha=0.8,
-            )
-            # Plot a line between the points
-            ax.plot(
-                iter_var_df_sorted[x],
-                iter_var_df_sorted["CELossIncrease"],
-                color=colors[i],
-                alpha=0.5,
-                linewidth=1,
-            )
-    axs[0].legend(loc="best", title=iter_var)
-
-    # the L0 axis (left) should always be decreasing, reverse it if it is not
-    if axs[0].get_xlim()[0] < axs[0].get_xlim()[1]:
-        axs[0].invert_xaxis()
-    # The alive_dict_elements axis (right) should always be increasing, reverse it if it is not
-    if axs[1].get_xlim()[0] > axs[1].get_xlim()[1]:
-        axs[1].invert_xaxis()
-
-    # CE loss increase should always be decreasing, reverse it if it is not
-    if axs[0].get_ylim()[0] < axs[0].get_ylim()[1]:
-        axs[0].invert_yaxis()
-        axs[1].invert_yaxis()
-
-    axs[0].set_ylim(ylim)
-    axs[1].set_ylim(ylim)
-    axs[0].set_xlabel("L0")
-    axs[1].set_xlabel("Alive Dictionary Elements")
-    axs[0].set_ylabel("CE Loss Increase")
-    axs[1].set_ylabel("CE Loss Increase")
-
-    # add better labels and move right axis
-    _format_two_axes((axs[0], axs[1]))
-
-    fig.suptitle(title)
-    filename = f"{filename_prefix}_l0_alive_elements_vs_ce_loss_{run_type}.png"
-    plt.savefig(out_dir / filename)
-    plt.savefig(out_dir / filename.replace(".png", ".svg"))
-    plt.close(fig)
-    logger.info(f"Saved to {out_dir / filename}")
-
-
 # TODO: replace calls with plot_two_axes_line_facet (which is a bit more general)
 def plot_two_axes_line_facet(
     df: pd.DataFrame,
@@ -450,17 +369,31 @@ def plot_two_axes_line_facet(
     subfigs = fig.subfigures(len(facet_vals))
     subfigs = np.atleast_1d(subfigs)
 
+    # Get all unique line values from the entire DataFrame
+    all_line_vals = df[line_by].unique()
+    # Sort the line values based on the type of the line_by column
+    sorted_line_vals = sorted(all_line_vals, key=str if df[line_by].dtype == object else float)
+    # Get all unique line values from the entire DataFrame
+    all_line_vals = df[line_by].unique()
     for subfig, facet_val in zip(subfigs, facet_vals, strict=False):
         axs = subfig.subplots(1, 2)
         facet_df = df.loc[df[facet_by] == facet_val]
-        for line_val, data in facet_df.groupby(line_by):
+        for line_val in sorted_line_vals:
+            data = facet_df.loc[facet_df[line_by] == line_val]
+            # for line_val, data in facet_df.groupby(line_by):
             line_style = {"label": line_val, "marker": "o", "linewidth": 1.1}  # default
-            line_style.update({} if styles is None else styles[line_val])  # specific overrides
+            line_style.update(
+                {} if styles is None else styles.get(line_val, {})
+            )  # specific overrides
             if not data.empty:
                 # draw the lines between points based on the y value
                 data = data.sort_values(y)
                 axs[0].plot(data[x1], data[y], **line_style)
                 axs[1].plot(data[x2], data[y], **line_style)
+            else:
+                # Add empty plots for missing line values to ensure they appear in the legend
+                axs[0].plot([], [], **line_style)
+                axs[1].plot([], [], **line_style)
 
         if facet_val == facet_vals[-1]:
             axs[0].legend(title=line_by, loc="lower left")
@@ -734,7 +667,9 @@ def plot_seed_comparison(
             unique_handles.append(handle)
     ax.legend(unique_handles, unique_labels, title="Run Type", loc="lower right")
 
-    ax.set_title("L0 vs CE Loss Increase (Seed Comparison)")
+    layers = list(sorted(df["layer"].unique()))
+    layers_str = "-".join(map(str, layers))
+    ax.set_title(f"Seed Comparison layers {layers_str}: L0 vs CE Loss Increase")
 
     plt.tight_layout()
     out_file = out_dir / "seed_comparison.png"
@@ -901,46 +836,13 @@ def get_df_gpt2() -> pd.DataFrame:
     return df
 
 
-def plot_local_lr_comparison(
-    df: pd.DataFrame, out_dir: Path, ylim: tuple[float | None, float | None] | None = None
-) -> None:
-    """Plot a two axes line plot with L0 and alive_dict_elements on the x-axis and CE loss increase
-    on the y-axis. Colored by learning rate.
-    """
-    out_dir.mkdir(exist_ok=True, parents=True)
-
-    lrs = df["lr"].unique()
-    for layer in df["layer"].unique():
-        layer_df = df.loc[df["layer"] == layer]
-        if layer_df.empty:
-            continue
-        # Get all the local runs. These should be the runs that have kl_coeff of 0.0 or nan
-        local_df = layer_df.loc[(layer_df["kl_coeff"] == 0.0) | layer_df["kl_coeff"].isnull()]
-        if local_df.empty:
-            continue
-
-        sae_pos = local_df["sae_pos"].unique()[0]
-        lrs = sorted(local_df["lr"].unique())
-        # Plot a two axes line plot with L0 and alive_dict_elements on the x-axis and CE loss
-        # increase on the y-axis. Colored by learning rate
-
-        plot_two_axes_line_single_run_type(
-            df=local_df,
-            run_type="local",
-            out_dir=out_dir,
-            title=f"Local: L0 + Alive Elements vs CE Loss Increase {sae_pos}",
-            iter_var="lr",
-            iter_vals=lrs,
-            filename_prefix=f"lr_layer-{layer}",
-            ylim=ylim,
-        )
-
-
 def gpt2_plots():
     run_types = ("local", "e2e", "downstream")
     n_layers = 12
 
     df = get_df_gpt2()
+
+    layers = list(sorted(df["layer"].unique()))
 
     plot_n_samples_comparison(
         df=df.loc[(df["ratio"] == 60) & (df["seed"] == 0) & (df["lr"] == 5e-4)],
@@ -964,15 +866,31 @@ def gpt2_plots():
         out_dir=Path(__file__).resolve().parent / "out" / "ratio_comparison",
         run_types=run_types,
     )
-    plot_local_lr_comparison(
-        df=df.loc[
-            (df["seed"] == 0)
-            & (df["n_samples"] == 400_000)
-            & (df["ratio"] == 60)
-            & (df["run_type"] == "local")
-        ],
-        out_dir=Path(__file__).resolve().parent / "out" / "lr_comparison",
-        ylim=(0.5, 0.0),
+
+    local_lr_df = df.loc[
+        (df["seed"] == 0)
+        & (df["n_samples"] == 400_000)
+        & (df["ratio"] == 60)
+        & (df["run_type"] == "local")
+        & ~((df["L0"] > 300) & (df["layer"] == 2))  # Avoid points in L0 but not alive_dict subplot
+    ]
+    plot_two_axes_line_facet(
+        df=local_lr_df,
+        x1="L0",
+        x2="alive_dict_elements",
+        y="CELossIncrease",
+        facet_by="layer",
+        facet_vals=layers,
+        line_by="lr",
+        xlabel1="L0",
+        xlabel2="Alive Dictionary Elements",
+        ylabel="CE Loss Increase",
+        xlim1={2: (200.0, 0.0), 6: (200.0, 0.0), 10: (300.0, 0.0)},
+        xlim2={layer: (0, 45_000) for layer in layers},
+        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+        ylim={layer: (0.4, 0) for layer in layers},
+        title={layer: f"Layer {layer}" for layer in layers},
+        out_file=Path(__file__).resolve().parent / "out" / "lr_comparison" / "lr_comparison.png",
     )
     out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
     out_dir.mkdir(exist_ok=True, parents=True)
