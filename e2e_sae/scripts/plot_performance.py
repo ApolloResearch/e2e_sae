@@ -327,6 +327,7 @@ def plot_two_axes_line_single_run_type(
     iter_var: str,
     iter_vals: list[float],
     filename_prefix: str = "",
+    ylim: tuple[float | None, float | None] | None = None,
 ) -> None:
     """Plot the CE loss difference vs L0 and alive_dict_elements for different values of iter_var.
 
@@ -340,7 +341,11 @@ def plot_two_axes_line_single_run_type(
         iter_var: The variable in the DataFrame to iterate over.
         iter_vals: The values to iterate over.
         filename_prefix: The prefix to add to the filename.
+        ylim: The y-axis limits.
     """
+    if ylim is None:
+        ylim = (None, None)
+
     colors = sns.color_palette("tab10", n_colors=len(iter_vals))
     fig, axs = plt.subplots(1, 2, figsize=(8, 6), gridspec_kw={"wspace": 0.15, "top": 0.84})
     for i, vals in enumerate(iter_vals):
@@ -377,6 +382,8 @@ def plot_two_axes_line_single_run_type(
         axs[0].invert_yaxis()
         axs[1].invert_yaxis()
 
+    axs[0].set_ylim(ylim)
+    axs[1].set_ylim(ylim)
     axs[0].set_xlabel("L0")
     axs[1].set_xlabel("Alive Dictionary Elements")
     axs[0].set_ylabel("CE Loss Increase")
@@ -524,6 +531,7 @@ def plot_two_axes_line(
         xlabel2: The label for the second x-axis.
         ylabel: The label for the y-axis.
         out_file: The filename which the plot will be saved as.
+        title: The title of the plot.
         run_types: The run types to include in the plot.
         xlim1: The x-axis limits for the first x-axis for each layer.
         xlim2: The x-axis limits for the second x-axis for each layer.
@@ -689,7 +697,6 @@ def plot_seed_comparison(
     """
     out_dir.mkdir(exist_ok=True, parents=True)
 
-    sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
     fig, ax = plt.subplots(figsize=(8, 6))
     assert isinstance(ax, plt.Axes)
 
@@ -894,7 +901,9 @@ def get_df_gpt2() -> pd.DataFrame:
     return df
 
 
-def plot_local_lr_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[str]) -> None:
+def plot_local_lr_comparison(
+    df: pd.DataFrame, out_dir: Path, ylim: tuple[float | None, float | None] | None = None
+) -> None:
     """Plot a two axes line plot with L0 and alive_dict_elements on the x-axis and CE loss increase
     on the y-axis. Colored by learning rate.
     """
@@ -922,7 +931,8 @@ def plot_local_lr_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequenc
             title=f"Local: L0 + Alive Elements vs CE Loss Increase {sae_pos}",
             iter_var="lr",
             iter_vals=lrs,
-            filename_prefix="lr",
+            filename_prefix=f"lr_layer-{layer}",
+            ylim=ylim,
         )
 
 
@@ -933,41 +943,37 @@ def gpt2_plots():
     df = get_df_gpt2()
 
     plot_n_samples_comparison(
-        df=df.loc[(df["ratio"] == 60) & (df["seed"] == 0)],
+        df=df.loc[(df["ratio"] == 60) & (df["seed"] == 0) & (df["lr"] == 5e-4)],
         out_dir=Path(__file__).resolve().parent / "out",
         run_types=run_types,
     )
 
-    # 1 seed in each layer
+    # # 1 seed in each layer
     local_seed_ids = [("ue3lz0n7", "d8vgjnyc"), ("1jy3m5j0", "uqfp43ti"), ("m2hntlav", "77bp68uk")]
     e2e_seed_ids = [("ovhfts9n", "slxwr007"), ("tvj2owza", "atfccmo3"), ("jnjpmyqk", "ac9i1g6v")]
     e2e_recon_ids = [("y8sca507", "hqo5azo2")]
     seed_ids = local_seed_ids + e2e_seed_ids + e2e_recon_ids
     plot_seed_comparison(
-        df=df,
+        df=df.loc[df["lr"] == 5e-4],
         run_ids=seed_ids,
         out_dir=Path(__file__).resolve().parent / "out" / "seed_comparison",
     )
 
     plot_ratio_comparison(
-        df=df.loc[(df["seed"] == 0) & (df["n_samples"] == 400_000)],
+        df=df.loc[(df["seed"] == 0) & (df["n_samples"] == 400_000) & (df["lr"] == 5e-4)],
         out_dir=Path(__file__).resolve().parent / "out" / "ratio_comparison",
         run_types=run_types,
     )
-
-    # Layer 6 local learning rate comparison
     plot_local_lr_comparison(
         df=df.loc[
             (df["seed"] == 0)
             & (df["n_samples"] == 400_000)
             & (df["ratio"] == 60)
             & (df["run_type"] == "local")
-            & (df["layer"] == 6)
         ],
         out_dir=Path(__file__).resolve().parent / "out" / "lr_comparison",
-        run_types="local",
+        ylim=(0.5, 0.0),
     )
-
     out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
     out_dir.mkdir(exist_ok=True, parents=True)
 
@@ -979,6 +985,9 @@ def gpt2_plots():
     ]
     # Some runs with seed-comparison in the name are duplicates, ignore those
     performance_df = performance_df.loc[~performance_df["name"].str.contains("seed-comparison")]
+
+    # Ignore runs with lr-comparison
+    performance_df = performance_df.loc[~performance_df["name"].str.contains("lr-comparison")]
 
     # ylims for plots with ce_diff on the y axis
     loss_increase_lims = {2: (0.2, 0.0), 6: (0.4, 0.0), 10: (0.4, 0.0)}
