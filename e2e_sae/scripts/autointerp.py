@@ -36,6 +36,7 @@ from neuron_explainer.explanations.simulator import (
     LogprobFreeExplanationTokenSimulator,
     NeuronSimulator,
 )
+from scipy.stats import bootstrap
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tqdm import tqdm
 
@@ -443,16 +444,7 @@ def run_autointerp(
                         print(f"Your feature is at: {feature_url}")
 
 
-def compare_autointerp_results(out_dir: Path):
-    """
-    Compare autointerp results across SAEs.
-
-    Args:
-        output_dir: Directory containing the autointerp output files.
-
-    Returns:
-        None
-    """
+def get_autointerp_results_df(out_dir: Path):
     autointerp_files = glob.glob(f"{out_dir}/*_feature-*_score-*")
     stats = {
         "layer": [],
@@ -476,7 +468,21 @@ def compare_autointerp_results(out_dir: Path):
         stats["explanationModel"].append("gpt-4-1106-preview")
         stats["explanation"].append(json_data["explanation"])
     df_stats = pd.DataFrame(stats)
+    assert not df_stats.empty
+    return df_stats
 
+
+def compare_autointerp_results(out_dir: Path):
+    """
+    Compare autointerp results across SAEs.
+
+    Args:
+        output_dir: Directory containing the autointerp output files.
+
+    Returns:
+        None
+    """
+    df_stats = get_autointerp_results_df(out_dir)
     sns.set_theme(style="whitegrid", palette="pastel")
     g = sns.catplot(
         data=df_stats,
@@ -529,30 +535,7 @@ def compare_autointerp_results(out_dir: Path):
 
 def compare_across_saes(out_dir: Path):
     # Get data about the quality of the autointerp from the .jsonl files
-    autointerp_files = glob.glob(f"{out_dir}/*_feature-*_score-*")
-    stats = {
-        "layer": [],
-        "sae": [],
-        "feature": [],
-        "explanationScore": [],
-        "explanationModel": [],
-        "autointerpModel": [],
-        "explanation": [],
-    }
-    for autointerp_file in tqdm(autointerp_files, "constructing stats from json autointerp files"):
-        with open(autointerp_file) as f:
-            json_data = json.loads(json.load(f))
-        if "feature" in json_data:
-            json_data = json_data["feature"]
-        stats["layer"].append(int(json_data["layer"].split("-")[0]))
-        stats["sae"].append("-".join(json_data["layer"].split("-")[1:]))
-        stats["feature"].append(json_data["index"])
-        stats["explanationScore"].append(json_data["explanationScore"])
-        stats["autointerpModel"].append(json_data["autointerpModel"])
-        stats["explanationModel"].append("gpt-4-1106-preview")
-        stats["explanation"].append(json_data["explanation"])
-    df_stats = pd.DataFrame(stats)
-
+    df_stats = get_autointerp_results_df(out_dir)
     # Plot the relative performance of the SAEs
     sns.set_theme(style="whitegrid", palette="pastel")
     g = sns.catplot(
@@ -607,8 +590,40 @@ def compare_across_saes(out_dir: Path):
     print(bar_file)
 
 
+def bootstrapped_bar(out_dir: Path):
+    results_df = get_autointerp_results_df(out_dir)
+    fig, axs = plt.subplots(1, 2, figsize=(8, 4), sharey=True)
+
+    sae_names = {
+        "res_scefr-ajt": "Downstream",
+        "res_sll-ajt": "CE Local",
+        "res_scl-ajt": "L0 Local",
+    }
+    # make matplotlib histogram with ci as error bars
+    for layer, ax in zip([6, 10], axs, strict=True):
+        layer_data = results_df.loc[results_df.layer == layer]
+
+        means, yerrs = [], [[], []]
+        for sae_type in sae_names:
+            sae_data = layer_data.loc[layer_data.sae == sae_type]
+            scores = sae_data.explanationScore.to_numpy()
+            ci = bootstrap((scores,), statistic=np.mean).confidence_interval
+            means.append(scores.mean())
+            yerrs[0].append(scores.mean() - ci.low)
+            yerrs[1].append(ci.high - scores.mean())
+
+        ax.bar(range(3), means, yerr=yerrs, capsize=5)
+        ax.set_title(f"Layer {layer}")
+        ax.set_xticks(range(3), sae_names.values())
+
+    axs[0].set_ylabel("Mean Explanation Score")
+
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__ == "__main__":
-    out_dir = Path("neuronpedia_outputs/autointerp")
+    out_dir = Path(__file__).parent / "out/autointerp/jordan_results_4_29"
     ## Running autointerp
     # Compare similar CE e2e+Downstream with similar CE local and similar L0 local
     sae_sets = [
@@ -628,3 +643,4 @@ if __name__ == "__main__":
     ## Analysis of autointerp results
     compare_autointerp_results(out_dir)
     compare_across_saes(out_dir)
+    bootstrapped_bar(out_dir)
