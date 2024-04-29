@@ -36,6 +36,7 @@ from neuron_explainer.explanations.simulator import (
     LogprobFreeExplanationTokenSimulator,
     NeuronSimulator,
 )
+from numpy.typing import ArrayLike
 from scipy.stats import bootstrap
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tqdm import tqdm
@@ -445,7 +446,7 @@ def run_autointerp(
 
 
 def get_autointerp_results_df(out_dir: Path):
-    autointerp_files = glob.glob(f"{out_dir}/*_feature-*_score-*")
+    autointerp_files = glob.glob(f"{out_dir}/**/*_feature-*_score-*", recursive=True)
     stats = {
         "layer": [],
         "sae": [],
@@ -469,10 +470,11 @@ def get_autointerp_results_df(out_dir: Path):
         stats["explanation"].append(json_data["explanation"])
     df_stats = pd.DataFrame(stats)
     assert not df_stats.empty
+    df_stats.dropna(inplace=True)
     return df_stats
 
 
-def compare_autointerp_results(out_dir: Path):
+def compare_autointerp_results(df_stats: pd.DataFrame):
     """
     Compare autointerp results across SAEs.
 
@@ -482,7 +484,6 @@ def compare_autointerp_results(out_dir: Path):
     Returns:
         None
     """
-    df_stats = get_autointerp_results_df(out_dir)
     sns.set_theme(style="whitegrid", palette="pastel")
     g = sns.catplot(
         data=df_stats,
@@ -533,9 +534,7 @@ def compare_autointerp_results(out_dir: Path):
     print(f"Saved to {bar_file}")
 
 
-def compare_across_saes(out_dir: Path):
-    # Get data about the quality of the autointerp from the .jsonl files
-    df_stats = get_autointerp_results_df(out_dir)
+def compare_across_saes(df_stats: pd.DataFrame):
     # Plot the relative performance of the SAEs
     sns.set_theme(style="whitegrid", palette="pastel")
     g = sns.catplot(
@@ -590,8 +589,7 @@ def compare_across_saes(out_dir: Path):
     print(bar_file)
 
 
-def bootstrapped_bar(out_dir: Path):
-    results_df = get_autointerp_results_df(out_dir)
+def bootstrapped_bar(df_stats: pd.DataFrame):
     fig, axs = plt.subplots(1, 2, figsize=(8, 4), sharey=True)
 
     sae_names = {
@@ -601,7 +599,7 @@ def bootstrapped_bar(out_dir: Path):
     }
     # make matplotlib histogram with ci as error bars
     for layer, ax in zip([6, 10], axs, strict=True):
-        layer_data = results_df.loc[results_df.layer == layer]
+        layer_data = df_stats.loc[df_stats.layer == layer]
 
         means, yerrs = [], [[], []]
         for sae_type in sae_names:
@@ -620,10 +618,43 @@ def bootstrapped_bar(out_dir: Path):
 
     plt.tight_layout()
     plt.show()
+    plt.savefig(out_dir / "bootstrapped_bar.png")
+    print(f"Saved to {out_dir / 'bootstrapped_bar.png'}")
+    plt.close()
+
+
+def bootstrap_p_value(sample_a: ArrayLike, sample_b: ArrayLike) -> float:
+    """
+    Computes 2 sided p-value, for null hypothesis that means are the same
+    """
+    sample_a, sample_b = np.asarray(sample_a), np.asarray(sample_b)
+    mean_diff = np.mean(sample_a) - np.mean(sample_b)
+    n_bootstraps = 100_000
+    bootstrapped_diffs = []
+    combined = np.concatenate([sample_a, sample_b])
+    for _ in range(n_bootstraps):
+        boot_a = np.random.choice(combined, len(sample_a), replace=True)
+        boot_b = np.random.choice(combined, len(sample_b), replace=True)
+        boot_diff = np.mean(boot_a) - np.mean(boot_b)
+        bootstrapped_diffs.append(boot_diff)
+    bootstrapped_diffs = np.array(bootstrapped_diffs)
+    p_value = np.mean(np.abs(bootstrapped_diffs) > np.abs(mean_diff))
+    return p_value
+
+
+def compute_p_values(df: pd.DataFrame):
+    ref_sae = "res_scefr-ajt"
+    for layer in [6, 10]:
+        for name, sae in [("CE Local", "res_sll-ajt"), ("L0 Local", "res_scl-ajt")]:
+            pval = bootstrap_p_value(
+                df.loc[(df.layer == layer) & (df.sae == sae)].explanationScore.to_numpy(),
+                df.loc[(df.layer == layer) & (df.sae == ref_sae)].explanationScore.to_numpy(),
+            )
+            print(f"L{layer}, Downstream vs {name}: p={pval}")
 
 
 if __name__ == "__main__":
-    out_dir = Path(__file__).parent / "out/autointerp/jordan_results_4_29"
+    out_dir = Path(__file__).parent / "out/autointerp"
     ## Running autointerp
     # Compare similar CE e2e+Downstream with similar CE local and similar L0 local
     sae_sets = [
@@ -640,7 +671,9 @@ if __name__ == "__main__":
         autointerp_scorer_model_name="gpt-3.5-turbo",
     )
 
+    df = get_autointerp_results_df(out_dir)
     ## Analysis of autointerp results
-    compare_autointerp_results(out_dir)
-    compare_across_saes(out_dir)
-    bootstrapped_bar(out_dir)
+    compare_autointerp_results(df)
+    compare_across_saes(df)
+    bootstrapped_bar(df)
+    compute_p_values(df)
