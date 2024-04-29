@@ -34,15 +34,10 @@ CONSTANT_L0_RUNS = {
 }
 
 
-# COLOR_MAP = {
-#     "local": plt.get_cmap("Dark2").colors[1],  # type: ignore[reportAttributeAccessIssue]
-#     "e2e": plt.get_cmap("Dark2").colors[4],  # type: ignore[reportAttributeAccessIssue]
-#     "downstream": plt.get_cmap("Dark2").colors[2],  # type: ignore[reportAttributeAccessIssue]
-# }
 COLOR_MAP = {
-    "local": sns.color_palette("deep")[0],  # type: ignore[reportAttributeAccessIssue]
-    "e2e": sns.color_palette("deep")[5],  # type: ignore[reportAttributeAccessIssue]
-    "downstream": sns.color_palette("deep")[3],  # type: ignore[reportAttributeAccessIssue]
+    "local": "#f0a70a",
+    "e2e": "#518c31",
+    "downstream": plt.get_cmap("tab20b").colors[2],  # type: ignore[reportAttributeAccessIssue]
 }
 
 
@@ -749,13 +744,14 @@ def create_subplot_hists(
     xlabel: str = "Cosine Similarity",
     suptitle: str | None = None,
     out_file: Path | None = None,
+    alpha=1,
 ):
     fig = fig or plt.figure(figsize=figsize, layout="constrained")
     axs = fig.subplots(len(sim_list), 1, sharex=True, gridspec_kw={"hspace": 0.1})
     axs = np.atleast_1d(axs)
     colors = colors or [None for _ in sim_list]
     for ax, sims, title, color in zip(axs, sim_list, titles, colors, strict=True):
-        ax.hist(sims.flatten().detach().numpy(), bins=bins, color=color, alpha=1)
+        ax.hist(sims.flatten().detach().numpy(), bins=bins, color=color, alpha=alpha)
         ax.set_title(title, pad=2)
         ax.set_yticks([])
 

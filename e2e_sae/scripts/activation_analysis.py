@@ -1,4 +1,4 @@
-import warnings
+import json
 from pathlib import Path
 from typing import cast
 
@@ -13,7 +13,9 @@ from wandb.apis.public import Run
 
 from e2e_sae.data import DatasetConfig, create_data_loader
 from e2e_sae.hooks import SAEActs
+from e2e_sae.log import logger
 from e2e_sae.models.transformers import SAETransformer
+from e2e_sae.scripts.geometric_analysis import COLOR_MAP, CONSTANT_CE_RUNS, create_subplot_hists
 
 ActTensor = Float[torch.Tensor, "batch seq hidden"]
 LogitTensor = Float[torch.Tensor, "batch seq vocab"]
@@ -54,7 +56,7 @@ class Acts(BaseModel):
 
 @torch.no_grad()
 def get_acts(run: Run, batch_size=5, batches=1, device: str = "cuda") -> Acts:
-    model = SAETransformer.from_wandb(f"sparsify/{run.project}/{run.id}")
+    model = SAETransformer.from_wandb(f"{run.project}/{run.id}")
     model.to(device)
     data_config = DatasetConfig(**run.config["eval_data"])
     loader, _ = create_data_loader(data_config, batch_size=batch_size)
@@ -73,13 +75,6 @@ def get_acts(run: Run, batch_size=5, batches=1, device: str = "cuda") -> Acts:
         acts.add(tokens, sae_acts, orig_logits=orig_logits, new_logits=sae_logits)
 
     return acts
-
-
-CONSTANT_CE_RUNS = {
-    2: {"e2e": "ovhfts9n", "local": "ue3lz0n7", "e2e-recon": "visi12en"},
-    6: {"e2e": "zgdpkafo", "local": "1jy3m5j0", "e2e-recon": "2lzle2f0"},
-    10: {"e2e": "8crnit9h", "local": "m2hntlav", "e2e-recon": "cvj5um2h"},
-}
 
 
 def norm_scatterplot(
@@ -127,58 +122,45 @@ def norm_scatterplot(
         plt.savefig(Path(out_file).with_suffix(".svg"))
 
 
-def get_norm_ratios(acts: Acts | None) -> tuple[float, float] | None:
-    if acts is None:
-        return None
+def get_norm_ratios(acts: Acts) -> tuple[float, float]:
     norm_ratios = torch.norm(acts.recon, dim=-1) / torch.norm(acts.orig, dim=-1)
     return norm_ratios[:, 1:].mean().item(), norm_ratios[:, 0].mean().item()
 
 
-ActsDict = dict[tuple[int, str], Acts | None]
+ActsDict = dict[tuple[int, str], Acts]
 
 
 def get_acts_from_layer_type(layer: int, run_type: str, n_batches: int = 1):
     run_id = CONSTANT_CE_RUNS[layer][run_type]
     run = wandb.Api().run(f"sparsify/gpt2/{run_id}")
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    try:
-        return get_acts(run, batch_size=5, batches=n_batches, device=device)
-    except IndexError:
-        warnings.warn(f"Run {run_id} failed to load", stacklevel=1)
-        return None
+    return get_acts(run, batch_size=5, batches=n_batches, device=device)
 
 
 def cosine_sim_plot(acts_dict: ActsDict, out_file: Path | None = None):
-    fig, axs = plt.subplots(1, 3, figsize=(8, 3))
-
     def get_sims(acts: Acts):
         orig = acts.orig.flatten(0, 1)
         recon = acts.recon.flatten(0, 1)
         return F.cosine_similarity(orig, recon, dim=-1)
 
-    def plot_one(acts: Acts | None, ax: plt.Axes, label: str):
-        if acts is None:
-            return
-        sims = get_sims(acts)
-        ax.hist(sims.numpy(), label=label, range=(0, 1), bins=100, alpha=0.5, histtype="stepfilled")
+    fig = plt.figure(figsize=(8, 4), layout="constrained")
+    subfigs = fig.subfigures(1, 3, wspace=0.05)
 
-    for i, layer in enumerate([2, 6, 10]):
-        ax = axs[i]
-        plot_one(acts_dict[layer, "e2e"], ax, "e2e")
-        plot_one(acts_dict[layer, "local"], ax, "local")
-        plot_one(acts_dict[layer, "e2e-recon"], ax, "e2e-recon")
-        ax.set_title(f"Layer {layer}")
-        ax.set_xlim(0.5, 1)
-        ax.set_xlabel("Cosine Similarity")
-        ax.set_ylabel(None)
-        ax.set_yticks([])
-
-    # axs[0].set_ylabel("Density")
-    axs[0].legend(loc="upper left")
-    plt.tight_layout()
+    for subfig, layer in zip(subfigs, [2, 6, 10], strict=True):
+        sims = [get_sims(acts_dict[layer, run_type]) for run_type in ["local", "e2e", "downstream"]]
+        create_subplot_hists(
+            sim_list=sims,
+            titles=["Local", "End-to-end", "E2e + downstream"],
+            colors=list(COLOR_MAP.values()),
+            fig=subfig,
+            suptitle=f"Layer {layer}",
+        )
+        # subfigs[i].suptitle(f"Layer {layer_num}")
+    fig.suptitle("Input-Output Similarities", fontweight="bold")
     if out_file is not None:
         plt.savefig(out_file)
-        plt.savefig(Path(out_file).with_suffix(".svg"))
+        plt.savefig(out_file.with_suffix(".svg"))
+        logger.info(f"Saved plot to {out_file}")
 
 
 if __name__ == "__main__":
@@ -199,12 +181,12 @@ if __name__ == "__main__":
     norms = {
         layer: {
             run_type: get_norm_ratios(acts_dict[(layer, run_type)])
-            for run_type in ["e2e", "local", "e2e-recon"]
+            for run_type in ["local", "e2e", "downstream"]
         }
         for layer in [2, 6, 10]
     }
 
-    # with open(out_dir / "norm_ratios.json", "w") as f:
-    #     json.dump(norms, f)
+    with open(out_dir / "norm_ratios.json", "w") as f:
+        json.dump(norms, f)
 
     cosine_sim_plot(acts_dict, out_file=out_dir / "cosine_similarity.png")

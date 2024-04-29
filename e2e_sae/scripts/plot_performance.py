@@ -30,6 +30,12 @@ CONSTANT_CE_RUNS = {
     10: {"e2e": "8crnit9h", "local": "m2hntlav", "downstream": "cvj5um2h"},
 }
 
+STYLE_MAP = {
+    "local": {"marker": "^", "color": COLOR_MAP["local"], "label": "Local"},
+    "e2e": {"marker": "o", "color": COLOR_MAP["e2e"], "label": "End-to-end"},
+    "downstream": {"marker": "X", "color": COLOR_MAP["downstream"], "label": "E2e + downstream"},
+}
+
 
 def plot_scatter_or_line(
     df: pd.DataFrame,
@@ -218,11 +224,8 @@ def plot_per_layer_metric(
     }
     metric_name = metric_names.get(metric, metric)
 
-    sae_layers = list(CONSTANT_CE_RUNS.keys())
+    sae_layers = list(run_ids.keys())
     n_sae_layers = len(sae_layers)
-
-    color_e2e, color_lws, color_e2e_recon = sns.color_palette()[:3]
-    color_map = {"e2e": color_e2e, "local": color_lws, "downstream": color_e2e_recon}
 
     if horz_layout:
         assert sae_layers == [2, 6, 10]
@@ -231,20 +234,19 @@ def plot_per_layer_metric(
         )
         legend_label_cols_and_precision = None
     else:
-        fig, axs = plt.subplots(n_sae_layers, 1, figsize=(8, 4 * n_sae_layers))
+        fig, axs = plt.subplots(n_sae_layers, 1, figsize=(6, 4 * n_sae_layers))
         axs = np.atleast_1d(axs)
 
     def plot_metric(
         ax: plt.Axes,
         plot_df: pd.DataFrame,
-        marker: str,
         sae_layer: int,
         xs: NDArray[np.signedinteger[Any]],
     ) -> None:
         for _, row in plot_df.iterrows():
             run_type = row["run_type"]
             assert isinstance(run_type, str)
-            legend_label = run_type
+            legend_label = STYLE_MAP[run_type]["label"]
             if legend_label_cols_and_precision is not None:
                 assert all(
                     col in row for col, _ in legend_label_cols_and_precision
@@ -258,10 +260,7 @@ def plot_per_layer_metric(
             ax.plot(
                 xs,
                 ys,
-                label=legend_label,
-                color=color_map[run_type],
-                alpha=0.7,
-                marker=marker,
+                **STYLE_MAP[run_type],  # type: ignore[reportArgumentType]
             )
 
     for i, sae_layer in enumerate(sae_layers):
@@ -271,10 +270,7 @@ def plot_per_layer_metric(
 
         xs = np.arange(sae_layer, final_layer + 1)
         for run_type in run_types:
-            if run_type not in RUN_TYPE_MAP:
-                raise ValueError(f"Invalid run type: {run_type}")
-            label, marker = RUN_TYPE_MAP[run_type]
-            plot_metric(ax, layer_df.loc[layer_df["run_type"] == run_type], marker, sae_layer, xs)
+            plot_metric(ax, layer_df.loc[layer_df["run_type"] == run_type], sae_layer, xs)
 
         ax.set_title(f"SAE Layer {sae_layer}", fontweight="bold")
         ax.set_xlabel("Model Layer")
@@ -290,6 +286,7 @@ def plot_per_layer_metric(
         plt.savefig(out_file)
         # Save as svg also
         plt.savefig(Path(out_file).with_suffix(".svg"))
+        logger.info(f"Saved to {out_file}")
     plt.close()
 
 
@@ -339,6 +336,7 @@ def plot_two_axes_line_facet(
     ylim: Mapping[Any, tuple[float | None, float | None]] | None = None,
     styles: Mapping[Any, Mapping[str, Any]] | None = None,
     title: Mapping[Any, str] | None = None,
+    legend_title: str | None = None,
     out_file: str | Path | None = None,
 ) -> None:
     """Line plot with two x-axes and one y-axis between them. One line for each run type.
@@ -372,7 +370,10 @@ def plot_two_axes_line_facet(
     # Get all unique line values from the entire DataFrame
     all_line_vals = df[line_by].unique()
     # Sort the line values based on the type of the line_by column
-    sorted_line_vals = sorted(all_line_vals, key=str if df[line_by].dtype == object else float)
+    if line_by == "run_type":
+        sorted_line_vals = ["local", "e2e", "downstream"]
+    else:
+        sorted_line_vals = sorted(all_line_vals, key=str if df[line_by].dtype == object else float)
     # Get all unique line values from the entire DataFrame
     all_line_vals = df[line_by].unique()
     for subfig, facet_val in zip(subfigs, facet_vals, strict=False):
@@ -396,7 +397,7 @@ def plot_two_axes_line_facet(
                 axs[1].plot([], [], **line_style)
 
         if facet_val == facet_vals[-1]:
-            axs[0].legend(title=line_by, loc="lower left")
+            axs[0].legend(title=legend_title or line_by, loc="lower left")
 
         if xlim1 is not None:
             axs[0].set_xlim(xmin=xlim1[facet_val][0], xmax=xlim1[facet_val][1])
@@ -640,19 +641,17 @@ def plot_seed_comparison(
         assert run1["run_type"].nunique() == 1 and run2["run_type"].nunique() == 1
         run_type = run1["run_type"].iloc[0]
         assert run_type == run2["run_type"].iloc[0]
-        color = sns.color_palette()[list(RUN_TYPE_MAP.keys()).index(run_type)]
 
         ax.scatter(
             [run1["L0"].iloc[0], run2["L0"].iloc[0]],
             [run1["CELossIncrease"].iloc[0], run2["CELossIncrease"].iloc[0]],
-            color=color,
-            label=run_type,
+            **STYLE_MAP[run_type],  # type: ignore[reportArgumentType]
         )
 
         ax.plot(
             [run1["L0"].iloc[0], run2["L0"].iloc[0]],
             [run1["CELossIncrease"].iloc[0], run2["CELossIncrease"].iloc[0]],
-            color=color,
+            **STYLE_MAP[run_type],  # type: ignore[reportArgumentType]
         )
 
     ax.set_xlabel("L0")
@@ -911,21 +910,48 @@ def gpt2_plots():
     # xlims for plots with L0 on the x axis
     l0_diff_xlims = {2: (200.0, 0.0), 6: (600.0, 0.0), 10: (600.0, 0.0)}
 
-    # Plot two axes line plots with L0 and alive_dict_elements on the x-axis
-    plot_two_axes_line(
+    # Pareto curve plots (two axes line plots with L0 and alive_dict_elements on the x-axis)
+    # all layers
+    plot_two_axes_line_facet(
         performance_df,
         x1="L0",
         x2="alive_dict_elements",
         y="CELossIncrease",
+        facet_by="layer",
+        facet_vals=layers,
+        line_by="run_type",
         xlabel1="L0",
         xlabel2="Alive Dictionary Elements",
         ylabel="CE Loss Increase",
+        xlim1=l0_diff_xlims,
+        xlim2={layer: (0, 45_000) for layer in layers},
+        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+        ylim=loss_increase_lims,
+        title={layer: f"Layer {layer}" for layer in layers},
         out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss.png",
-        run_types=run_types,
+        styles=STYLE_MAP,
+        legend_title="Run Type",
+    )
+    # just layer 6
+    plot_two_axes_line_facet(
+        performance_df,
+        x1="L0",
+        x2="alive_dict_elements",
+        y="CELossIncrease",
+        facet_by="layer",
+        facet_vals=[6],
+        line_by="run_type",
+        xlabel1="L0",
+        xlabel2="Alive Dictionary Elements",
+        ylabel="CE Loss Increase",
+        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_layer_6.png",
         xlim1=l0_diff_xlims,
         xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
         ylim=loss_increase_lims,
+        styles=STYLE_MAP,
+        legend_title="Run Type",
     )
+
     # Calculate the summary metric for the CE ratio difference
     calc_summary_metric(
         df=performance_df,
@@ -997,9 +1023,18 @@ def gpt2_plots():
         final_layer=final_layer,
         out_file=out_dir / "recon_loss_per_layer.png",
         ylim=(0, None),
-        legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
         run_types=run_types,
         horz_layout=True,
+    )
+    plot_per_layer_metric(
+        performance_df,
+        run_ids={6: CONSTANT_CE_RUNS[6]},
+        metric="recon_loss",
+        final_layer=final_layer,
+        out_file=out_dir / "recon_loss_per_layer_layer_6.png",
+        ylim=(0, 25),
+        run_types=run_types,
+        horz_layout=False,
     )
 
 
@@ -1059,19 +1094,23 @@ def tinystories_1m_plots():
     # xlims for plots with alive_dict_elements on the x axis
     alive_dict_elements_xlims = {0: (None, None), 3: (1250, None), 6: (1000, None)}
 
-    plot_two_axes_line(
+    plot_two_axes_line_facet(
         df,
         x1="L0",
         x2="alive_dict_elements",
         y="CELossIncrease",
+        facet_by="layer",
+        line_by="run_type",
         xlabel1="L0",
         xlabel2="Alive Dictionary Elements",
         ylabel="CE Loss Increase",
-        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss.png",
-        run_types=run_types,
+        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_layer_6.png",
         xlim1=l0_diff_xlims,
         xlim2=alive_dict_elements_xlims,
+        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
         ylim=loss_increase_lims,
+        styles=STYLE_MAP,
+        legend_title="Run Type",
     )
 
 
