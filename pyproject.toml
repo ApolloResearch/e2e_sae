@@ -22,7 +22,7 @@ dependencies = [
     "eindex-callum@git+https://github.com/callummcdougall/eindex",
     # "sae_vis@git+https://github.com/callummcdougall/sae_vis.git@b28a0f7c7e936f4bea05528d952dfcd438533cce",
     "sae_lens@git+https://github.com/jbloomAus/SAELens.git@7c43c4caa84aea421ac81ae0e326d9c62bb17bec",
-    "neuron_explainer@git+https://github.com/hijohnnylin/automated-interpretability.git"
+    # "neuron_explainer@git+https://github.com/hijohnnylin/automated-interpretability.git"
 ]
 
 [project.urls]

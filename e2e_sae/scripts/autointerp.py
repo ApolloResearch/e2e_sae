@@ -1,9 +1,18 @@
+"""Run and analyze autointerp for SAEs.
+
+NOTE: Running this script currently requires installing ApolloResearch's fork of neuron-explainer.
+https://github.com/ApolloResearch/automated-interpretability
+
+This has been updated to work with gpt4-turbo-2024-04-09 and fixes an OPENAI_API_KEY issue.
+"""
+
 import asyncio
 import glob
 import json
 import os
 import random
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Literal, TypeVar
 
 import matplotlib.pyplot as plt
@@ -12,8 +21,6 @@ import pandas as pd
 import requests
 import seaborn as sns
 from dotenv import load_dotenv
-
-load_dotenv()  # Required before importing UncalibratedNeuronSimulator
 from neuron_explainer.activations.activation_records import calculate_max_activation
 from neuron_explainer.activations.activations import ActivationRecord
 from neuron_explainer.explanations.calibrated_simulator import UncalibratedNeuronSimulator
@@ -32,6 +39,7 @@ from neuron_explainer.explanations.simulator import (
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tqdm import tqdm
 
+load_dotenv()  # Required before importing UncalibratedNeuronSimulator
 NEURONPEDIA_DOMAIN = "https://neuronpedia.org"
 POSITIVE_INF_REPLACEMENT = 9999
 NEGATIVE_INF_REPLACEMENT = -9999
@@ -149,10 +157,10 @@ async def autointerp_neuronpedia_features(
     max_explanation_activation_records: int = 20,
     upload_to_neuronpedia: bool = True,
     autointerp_explainer_model_name: Literal[
-        "gpt-3.5-turbo", "gpt-4", "gpt-4-1106-preview"
+        "gpt-3.5-turbo", "gpt-4", "gpt-4-1106-preview", "gpt-4-turbo-2024-04-09"
     ] = "gpt-4-1106-preview",
     autointerp_scorer_model_name: Literal[
-        "gpt-3.5-turbo", "gpt-4", "gpt-4-1106-preview"
+        "gpt-3.5-turbo", "gpt-4", "gpt-4-1106-preview", "gpt-4-turbo-2024-04-09"
     ] = "gpt-3.5-turbo",
 ):
     """
@@ -375,8 +383,12 @@ def run_autointerp(
     n_random_features: int,
     dict_size: int,
     feature_model_id: str,
-    autointerp_explainer_model_name: Literal["gpt-3.5-turbo", "gpt-4", "gpt-4-1106-preview"],
-    autointerp_scorer_model_name: Literal["gpt-3.5-turbo", "gpt-4", "gpt-4-1106-preview"],
+    autointerp_explainer_model_name: Literal[
+        "gpt-3.5-turbo", "gpt-4", "gpt-4-1106-preview", "gpt-4-turbo-2024-04-09"
+    ],
+    autointerp_scorer_model_name: Literal[
+        "gpt-3.5-turbo", "gpt-4", "gpt-4-1106-preview", "gpt-4-turbo-2024-04-09"
+    ],
 ):
     """Explain and score random features across SAEs and upload to Neuronpedia.
 
@@ -431,7 +443,7 @@ def run_autointerp(
                         print(f"Your feature is at: {feature_url}")
 
 
-def compare_autointerp_results(output_dir: str):
+def compare_autointerp_results(out_dir: Path):
     """
     Compare autointerp results across SAEs.
 
@@ -441,7 +453,7 @@ def compare_autointerp_results(output_dir: str):
     Returns:
         None
     """
-    autointerp_files = glob.glob(f"{output_dir}/*_feature-*_score-*")
+    autointerp_files = glob.glob(f"{out_dir}/*_feature-*_score-*")
     stats = {
         "layer": [],
         "sae": [],
@@ -487,9 +499,11 @@ def compare_autointerp_results(output_dir: str):
     plt.title("Quality of auto-interpretability explanations across SAEs")
     plt.ylabel("Auto-interpretability score")
     plt.xlabel("SAE")
-    plt.savefig("Auto-interpretability_results.png", bbox_inches="tight")
-    plt.savefig("Auto-interpretability_results.pdf", bbox_inches="tight")
-    plt.show()
+    results_file = out_dir / "Auto-interpretability_results.png"
+    plt.savefig(results_file, bbox_inches="tight")
+    # plt.savefig("Auto-interpretability_results.pdf", bbox_inches="tight")
+    # plt.show()
+    print(f"Saved to {results_file}")
 
     sns.set_theme(rc={"figure.figsize": (6, 6)})
     b = sns.barplot(
@@ -506,25 +520,111 @@ def compare_autointerp_results(output_dir: str):
     plt.ylabel("Auto-interpretability score")
     plt.xlabel("SAE")
     plt.yticks(np.arange(0, 1, 0.1))
-    plt.savefig("Auto-interpretability_results_bar.png", bbox_inches="tight")
-    plt.savefig("Auto-interpretability_results_bar.pdf", bbox_inches="tight")
-    plt.show()
+    bar_file = out_dir / "Auto-interpretability_results_bar.png"
+    plt.savefig(bar_file, bbox_inches="tight")
+    # plt.savefig("Auto-interpretability_results_bar.pdf", bbox_inches="tight")
+    # plt.show()
+    print(f"Saved to {bar_file}")
+
+
+def compare_across_saes(out_dir: Path):
+    # Get data about the quality of the autointerp from the .jsonl files
+    autointerp_files = glob.glob(f"{out_dir}/*_feature-*_score-*")
+    stats = {
+        "layer": [],
+        "sae": [],
+        "feature": [],
+        "explanationScore": [],
+        "explanationModel": [],
+        "autointerpModel": [],
+        "explanation": [],
+    }
+    for autointerp_file in tqdm(autointerp_files, "constructing stats from json autointerp files"):
+        with open(autointerp_file) as f:
+            json_data = json.loads(json.load(f))
+        if "feature" in json_data:
+            json_data = json_data["feature"]
+        stats["layer"].append(int(json_data["layer"].split("-")[0]))
+        stats["sae"].append("-".join(json_data["layer"].split("-")[1:]))
+        stats["feature"].append(json_data["index"])
+        stats["explanationScore"].append(json_data["explanationScore"])
+        stats["autointerpModel"].append(json_data["autointerpModel"])
+        stats["explanationModel"].append("gpt-4-1106-preview")
+        stats["explanation"].append(json_data["explanation"])
+    df_stats = pd.DataFrame(stats)
+
+    # Plot the relative performance of the SAEs
+    sns.set_theme(style="whitegrid", palette="pastel")
+    g = sns.catplot(
+        data=df_stats,
+        x="sae",
+        y="explanationScore",
+        kind="box",
+        palette="pastel",
+        hue="layer",
+        showmeans=True,
+        meanprops={
+            "marker": "o",
+            "markerfacecolor": "white",
+            "markeredgecolor": "black",
+            "markersize": "10",
+        },
+    )
+    sns.swarmplot(
+        data=df_stats, x="sae", y="explanationScore", color="k", size=4, ax=g.ax, legend=False
+    )
+    # ax.set_title("Quality of auto-interpretability explanations across SAEs")
+    # ax.set_ylabel("Auto-interpretability score")
+    # ax.set_xlabel("SAE")
+    result_file = out_dir / "Auto-interpretability_results.png"
+    plt.savefig(result_file, bbox_inches="tight")
+    plt.close()
+    # plt.savefig("Auto-interpretability_results.pdf", bbox_inches="tight")
+    # plt.show()
+    print(result_file)
+
+    # Plot the relative performance of the SAEs
+    sns.set_theme(rc={"figure.figsize": (6, 6)})
+    b = sns.barplot(
+        df_stats,
+        x="sae",
+        y="explanationScore",
+        palette="pastel",
+        hue="layer",
+        capsize=0.3,
+        legend=False,
+    )
+    s = sns.swarmplot(data=df_stats, x="sae", y="explanationScore", color="k", alpha=0.25, size=6)
+    plt.title("Quality of auto-interpretability explanations across SAEs")
+    plt.ylabel("Auto-interpretability score")
+    plt.xlabel("SAE")
+    plt.yticks(np.arange(0, 1, 0.1))
+    bar_file = out_dir / "Auto-interpretability_results_bar.png"
+    plt.savefig(bar_file, bbox_inches="tight")
+    plt.close()
+    # plt.savefig("Auto-interpretability_results_bar.pdf", bbox_inches="tight")
+    # plt.show()
+    print(bar_file)
 
 
 if __name__ == "__main__":
+    out_dir = Path("neuronpedia_outputs/autointerp")
+    ## Running autointerp
+    # Compare similar CE e2e+Downstream with similar CE local and similar L0 local
     sae_sets = [
-        ["6-res_sll-ajt", "6-res_scl-ajt", "6-res_scefr-ajt"],
-        ["10-res_scefr-ajt", "10-res_scl-ajt", "10-res_sll-ajt"],
-        ["2-res_scefr-ajt", "2-res_scl-ajt"],
-        ["2-res_slefr-ajt", "2-res_sll-ajt"],
+        ["6-res_scefr-ajt", "6-res_sll-ajt", "6-res_scl-ajt"],
+        ["10-res_scefr-ajt", "10-res_sll-ajt", "10-res_scl-ajt"],
+        ["2-res_scefr-ajt", "2-res_sll-ajt", "2-res_scl-ajt"],
     ]
     run_autointerp(
         sae_sets=sae_sets,
-        n_random_features=2,
+        n_random_features=50,
         dict_size=768 * 60,
         feature_model_id="gpt2-small",
-        autointerp_explainer_model_name="gpt-4-1106-preview",
+        autointerp_explainer_model_name="gpt-4-turbo-2024-04-09",
         autointerp_scorer_model_name="gpt-3.5-turbo",
     )
 
-    compare_autointerp_results("neuronpedia_outputs/autointerp")
+    ## Analysis of autointerp results
+    compare_autointerp_results(out_dir)
+    compare_across_saes(out_dir)
