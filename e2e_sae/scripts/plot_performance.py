@@ -899,11 +899,13 @@ def gpt2_plots():
     performance_df = performance_df.loc[
         ~((performance_df["L0"] > 200) & (performance_df["layer"] == 2))
     ]
-    # Some runs with seed-comparison in the name are duplicates, ignore those
-    performance_df = performance_df.loc[~performance_df["name"].str.contains("seed-comparison")]
-
-    # Ignore runs with lr-comparison
-    performance_df = performance_df.loc[~performance_df["name"].str.contains("lr-comparison")]
+    # Some runs with seed-comparison in the name are duplicates, ignore those. Also ignore runs
+    # with lr-comparison or lower-downstream in the name
+    performance_df = performance_df.loc[
+        ~performance_df["name"].str.contains("seed-comparison")
+        & ~performance_df["name"].str.contains("lr-comparison")
+        & ~performance_df["name"].str.contains("lower-downstream")
+    ]
 
     # ylims for plots with ce_diff on the y axis
     loss_increase_lims = {2: (0.2, 0.0), 6: (0.4, 0.0), 10: (0.4, 0.0)}
