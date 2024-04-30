@@ -1,0 +1,57 @@
+wandb_project: attn-only-4l_e2e_play0
+wandb_run_name: null
+wandb_run_name_prefix: ""
+
+seed: 0
+tlens_model_name: attn-only-4l
+tlens_model_path: null
+
+n_samples: 80_000
+save_every_n_samples: null
+eval_every_n_samples: 40_000
+eval_n_samples: 500
+log_every_n_grad_steps: 20
+collect_act_frequency_every_n_samples: 40_000
+act_frequency_n_tokens: 500_000
+batch_size: 16
+#4-5h with batchsize 4
+#4h
+effective_batch_size: 16
+lr: 5e-4
+lr_schedule: cosine
+min_lr_factor: 0.1
+warmup_samples: 20_000
+max_grad_norm: 10.0
+
+loss:
+  sparsity:
+    p_norm: 1.0
+    coeff: 1.5
+  in_to_orig: null
+  out_to_orig: null
+  out_to_in:
+    coeff: 0.0
+  logits_kl:
+    coeff: 1.0
+train_data:
+  dataset_name: NeelNanda/c4-code-tokenized-2b
+  column_name: tokens
+  is_tokenized: true
+  tokenizer_name: gpt2
+  streaming: true
+  split: train
+  n_ctx: 1024
+eval_data:
+  dataset_name: NeelNanda/c4-code-tokenized-2b
+  column_name: tokens
+  is_tokenized: true
+  tokenizer_name: gpt2
+  streaming: true
+  split: train
+  n_ctx: 1024
+saes:
+  retrain_saes: false
+  pretrained_sae_paths: null
+  sae_positions:
+    - blocks.2.hook_resid_pre
+  dict_size_to_input_ratio: 60.0
