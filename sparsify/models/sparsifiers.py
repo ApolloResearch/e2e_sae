@@ -7,6 +7,32 @@ import torch.nn.functional as F
 from torch import nn
 
 
+class SoftFilterLU(nn.Module):
+    """Smooth approximation of the filter linear unit (FLU). FLU returns zero of x in [-eps, +eps],
+    and x otherwise. eps is a learnable parameter, initialized to 1/sqrt(in_features)."""
+
+    def __init__(self, in_features: int):
+        """Initialize the SoftFilterLU.
+
+        Args:
+            in_features: Number of features
+        """
+        super().__init__()
+        self.eps = nn.Parameter(
+            torch.ones(in_features) * torch.sqrt(torch.Tensor([1 / in_features]))
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: input tensor
+        """
+
+        return (F.tanh(10 * (x - self.eps)) + 1) / 2 * x + (
+            F.tanh(10 * (-x - self.eps)) + 1
+        ) / 2 * x
+
+
 class SAE(nn.Module):
     """
     Sparse AutoEncoder
@@ -27,7 +53,9 @@ class SAE(nn.Module):
         # self.encoder[0].weight has shape: (n_dict_components, input_size)
         # self.decoder.weight has shape:    (input_size, n_dict_components)
 
-        self.encoder = nn.Sequential(nn.Linear(input_size, n_dict_components, bias=True), nn.ReLU())
+        self.encoder = nn.Sequential(
+            nn.Linear(input_size, n_dict_components, bias=True), SoftFilterLU(n_dict_components)
+        )
         self.decoder = nn.Linear(n_dict_components, input_size, bias=True)
         self.n_dict_components = n_dict_components
         self.input_size = input_size
