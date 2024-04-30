@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 import requests
 import seaborn as sns
+import statsmodels.stats.api as sms
 from dotenv import load_dotenv
 from neuron_explainer.activations.activation_records import calculate_max_activation
 from neuron_explainer.activations.activations import ActivationRecord
@@ -458,6 +459,7 @@ def get_autointerp_results_df(out_dir: Path):
         "explanationModel": [],
         "autointerpModel": [],
         "explanation": [],
+        "sae_type": [],
     }
     for autointerp_file in tqdm(autointerp_files, "constructing stats from json autointerp files"):
         with open(autointerp_file) as f:
@@ -471,6 +473,9 @@ def get_autointerp_results_df(out_dir: Path):
         stats["autointerpModel"].append(json_data["autointerpModel"])
         stats["explanationModel"].append("gpt-4-1106-preview")
         stats["explanation"].append(json_data["explanation"])
+        stats["sae_type"].append(
+            {"e": "e2e", "l": "local", "r": "downstream"}[json_data["layer"].split("-")[1][-1]]
+        )
     df_stats = pd.DataFrame(stats)
     assert not df_stats.empty
     df_stats.dropna(inplace=True)
@@ -552,7 +557,7 @@ def compare_across_saes(df_stats: pd.DataFrame):
             "marker": "o",
             "markerfacecolor": "white",
             "markeredgecolor": "black",
-            "markersize": "10",
+            "markersize": "5",
         },
     )
     sns.swarmplot(
@@ -626,6 +631,60 @@ def bootstrapped_bar(df_stats: pd.DataFrame):
     plt.close()
 
 
+def pair_violin_plot(df_stats: pd.DataFrame, pairs: dict[int, dict[str, str]]):
+    fig, axs = plt.subplots(1, 3, sharey=True, figsize=(7, 3.5))
+
+    for ax, layer in zip(axs, pairs.keys(), strict=True):
+        sae_ids = [pairs[layer]["local"], pairs[layer]["downstream"]]
+        layer_data = df_stats[df_stats["layer"] == layer]
+        grouped_scores = layer_data.groupby("sae")["explanationScore"]
+        mean_explanationScores = [grouped_scores.get_group(sae_id).mean() for sae_id in sae_ids]
+        confidence_intervals = [
+            sms.DescrStatsW(grouped_scores.get_group(sae_id)).tconfint_mean() for sae_id in sae_ids
+        ]
+
+        data = layer_data.loc[layer_data.sae.isin(sae_ids)]
+        colors = {
+            "local": "#f0a70a",
+            "e2e": "#518c31",
+            "downstream": plt.get_cmap("tab20b").colors[2],  # type: ignore[reportAttributeAccessIssue]
+        }
+        l = sns.violinplot(
+            data=data,
+            hue="sae_type",
+            x=[1 if sae_type == "downstream" else 0 for sae_type in data.sae_type],
+            y="explanationScore",
+            palette=colors,
+            native_scale=True,
+            orient="v",
+            ax=ax,
+            inner=None,
+            cut=0,
+            bw_adjust=0.7,
+            hue_order=["local", "downstream"],
+            alpha=0.8,
+            legend=False,
+        )
+        ax.set_xticks([0, 1], ["Local", "Downstream"])
+        ax.errorbar(
+            x=(0, 1),
+            y=mean_explanationScores,
+            yerr=[(c[1] - c[0]) / 2 for c in confidence_intervals],
+            fmt="o",
+            color="black",
+            capsize=5,
+        )
+        ax.set_ylim((None, 1))
+        ax.set_title(label=f"Layer {layer}")
+
+    axs[0].set_ylabel("Auto-intepretability score")
+
+    plt.tight_layout()
+    out_file = Path(__file__).parent / "out/autointerp" / "autointerp_same_l0.png"
+    plt.savefig(out_file, bbox_inches="tight")
+    print(f"Saved to {out_file}")
+
+
 def bootstrap_p_value(sample_a: ArrayLike, sample_b: ArrayLike) -> float:
     """
     Computes 2 sided p-value, for null hypothesis that means are the same
@@ -645,19 +704,34 @@ def bootstrap_p_value(sample_a: ArrayLike, sample_b: ArrayLike) -> float:
     return p_value
 
 
-def compute_p_values(df: pd.DataFrame):
-    ref_sae = "res_scefr-ajt"
-    for layer in [6, 10]:
-        for name, sae in [("CE Local", "res_sll-ajt"), ("L0 Local", "res_scl-ajt")]:
-            pval = bootstrap_p_value(
-                df.loc[(df.layer == layer) & (df.sae == sae)].explanationScore.to_numpy(),
-                df.loc[(df.layer == layer) & (df.sae == ref_sae)].explanationScore.to_numpy(),
-            )
-            print(f"L{layer}, Downstream vs {name}: p={pval}")
+def bootstrap_mean_diff(sample_a: ArrayLike, sample_b: ArrayLike):
+    def mean_diff(resample_a, resample_b):  # type: ignore
+        return np.mean(resample_a) - np.mean(resample_b)
+
+    result = bootstrap((sample_a, sample_b), n_resamples=100_000, statistic=mean_diff)
+    diff = np.mean(sample_a) - np.mean(sample_b)  # type: ignore
+    low, high = result.confidence_interval
+    print(f"Diff {diff:.2f}, [{low:.2f},{high:.2f}]")
+
+
+def compute_p_values(df: pd.DataFrame, pairs: dict[int, dict[str, str]]):
+    score_groups = df.groupby(["layer", "sae"]).explanationScore
+    for layer, sae_dict in pairs.items():
+        sae_local, sae_downstream = sae_dict["local"], sae_dict["downstream"]
+        pval = bootstrap_p_value(
+            score_groups.get_group((layer, sae_downstream)).to_numpy(),
+            score_groups.get_group((layer, sae_local)).to_numpy(),
+        )
+        print(f"L{layer}, {sae_downstream} vs {sae_local}: p={pval}")
+        bootstrap_mean_diff(
+            score_groups.get_group((layer, sae_downstream)).to_numpy(),
+            score_groups.get_group((layer, sae_local)).to_numpy(),
+        )
 
 
 if __name__ == "__main__":
-    out_dir = Path(__file__).parent / "out/autointerp"
+    out_dir = Path(__file__).parent / "out/autointerp/"
+    input_dir = out_dir  # Path("/data/apollo/autointerp")
     ## Running autointerp
     # Get runs for similar CE and similar L0 for e2e+Downstream and local
     # Note that "10-res_slefr-ajt" does not exist, we use 10-res_scefr-ajt for similar l0 too
@@ -666,18 +740,27 @@ if __name__ == "__main__":
         ["10-res_scefr-ajt", "10-res_sll-ajt", "10-res_scl-ajt"],
         ["2-res_scefr-ajt", "2-res_slefr-ajt", "2-res_sll-ajt", "2-res_scl-ajt"],
     ]
-    run_autointerp(
-        sae_sets=sae_sets,
-        n_random_features=50,
-        dict_size=768 * 60,
-        feature_model_id="gpt2-small",
-        autointerp_explainer_model_name="gpt-4-turbo-2024-04-09",
-        autointerp_scorer_model_name="gpt-3.5-turbo",
-    )
+    # run_autointerp(
+    #     sae_sets=sae_sets,
+    #     n_random_features=50,
+    #     dict_size=768 * 60,
+    #     feature_model_id="gpt2-small",
+    #     autointerp_explainer_model_name="gpt-4-turbo-2024-04-09",
+    #     autointerp_scorer_model_name="gpt-3.5-turbo",
+    # )
 
-    df = get_autointerp_results_df(out_dir)
+    # TO UPDATE
+    const_l0_pairs = {
+        2: {"local": "res_sll-ajt", "downstream": "res_slefr-ajt"},
+        6: {"local": "res_sll-ajt", "downstream": "res_scefr-ajt"},
+        10: {"local": "res_sll-ajt", "downstream": "res_scefr-ajt"},
+    }
+
+    df = get_autointerp_results_df(input_dir)
+    print(df.autointerpModel.unique(), df.explanationModel.unique())
     ## Analysis of autointerp results
     compare_autointerp_results(df)
     compare_across_saes(df)
     bootstrapped_bar(df)
-    compute_p_values(df)
+    pair_violin_plot(df, const_l0_pairs)
+    compute_p_values(df, const_l0_pairs)
