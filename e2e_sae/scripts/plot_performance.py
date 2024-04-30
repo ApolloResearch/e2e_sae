@@ -1095,7 +1095,6 @@ def tinystories_1m_plots():
     # xlims for plots with L0 on the x axis
     l0_diff_xlims = {0: (40, 0), 3: (64, 0), 6: (64, 0)}
     # xlims for plots with alive_dict_elements on the x axis
-    alive_dict_elements_xlims = {0: (None, None), 3: (1250, None), 6: (1000, None)}
 
     plot_two_axes_line_facet(
         df,
@@ -1103,15 +1102,15 @@ def tinystories_1m_plots():
         x2="alive_dict_elements",
         y="CELossIncrease",
         facet_by="layer",
+        facet_vals=[3],
         line_by="run_type",
         xlabel1="L0",
         xlabel2="Alive Dictionary Elements",
         ylabel="CE Loss Increase",
-        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_layer_6.png",
+        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_layer_3.png",
         xlim1=l0_diff_xlims,
-        xlim2=alive_dict_elements_xlims,
-        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
-        ylim=loss_increase_lims,
+        xlim2={3: (0, None)},
+        ylim={3: (0.6, 0)},
         styles=STYLE_MAP,
         legend_title="Run Type",
     )

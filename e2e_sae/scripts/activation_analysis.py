@@ -118,7 +118,7 @@ def norm_scatterplot(
     plt.ylabel("Norm of Reconstructed Acts, $||\\hat{a}(x)||_2$")
 
     if out_file is not None:
-        plt.savefig(out_file)
+        plt.savefig(out_file, bbox_inches="tight")
         plt.savefig(Path(out_file).with_suffix(".svg"))
 
 
@@ -163,6 +163,19 @@ def cosine_sim_plot(acts_dict: ActsDict, out_file: Path | None = None):
         logger.info(f"Saved plot to {out_file}")
 
 
+def create_latex_table(data: dict[int, dict[str, tuple[float, float]]]):
+    """Formats norms into the appropriate latex table body"""
+    layers = ["local", "e2e", "downstream"]
+    body = ""
+    for layer in layers:
+        row = [layer]
+        for pos in range(2):
+            for key in sorted(data.keys(), key=int):
+                row.append(f"{data[key][layer][pos]:.3f}")
+        body += " & ".join(row) + " \\\\\n"
+    return body
+
+
 if __name__ == "__main__":
     out_dir = Path(__file__).parent / "out" / "activation_analysis"
 
@@ -185,6 +198,11 @@ if __name__ == "__main__":
         }
         for layer in [2, 6, 10]
     }
+
+    print(norms)
+
+    # Generate LaTeX table
+    print(create_latex_table(norms))
 
     with open(out_dir / "norm_ratios.json", "w") as f:
         json.dump(norms, f)

@@ -744,7 +744,7 @@ def create_subplot_hists(
     xlabel: str = "Cosine Similarity",
     suptitle: str | None = None,
     out_file: Path | None = None,
-    alpha=1,
+    alpha=0.8,
 ):
     fig = fig or plt.figure(figsize=figsize, layout="constrained")
     axs = fig.subplots(len(sim_list), 1, sharex=True, gridspec_kw={"hspace": 0.1})
@@ -787,7 +787,7 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
         for i, (layer_num, layer_similarities) in enumerate(pairwise_similarities.items()):
             create_subplot_hists(
                 sim_list=list(layer_similarities.values()),
-                titles=["local", "e2e", "e2e + downstream"],
+                titles=["local", "end-to-end", "e2e + downstream"],
                 colors=[COLOR_MAP[run_type] for run_type in layer_similarities],
                 fig=subfigs[i],
                 suptitle=f"Layer {layer_num}",
@@ -805,11 +805,18 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
             # Just layer 6
             fig = create_subplot_hists(
                 sim_list=list(pairwise_similarities[6].values()),
-                titles=["local", "e2e", "e2e + downstream"],
+                titles=["local", "end-to-end", "e2e + downstream"],
                 colors=[COLOR_MAP[run_type] for run_type in pairwise_similarities[6]],
                 figsize=(4, 4),
                 out_file=out_dir / "within_sae_similarities_CE_layer_6.png",
-                suptitle="Within SAE Similarities",
+            )
+
+            logger.info(
+                "Mean self-similarities: "
+                + ", ".join(
+                    f"{run_type}: {sims.mean().item():.2f}"
+                    for run_type, sims in pairwise_similarities[6].items()
+                )
             )
 
 
@@ -884,7 +891,7 @@ def create_cross_type_similarity_plots(
             fig=subfigs[i],
             suptitle=f"Layer {layer_num}",
             colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"]],
-            titles=["e2e → local", "downstream → local"],
+            titles=["end-to-end → local", "e2e + downstream → local"],
         )
     fig.suptitle(f"Cross Type Similarities (Constant {constant_val.upper()})", fontweight="bold")
     out_file = out_dir / "cross_type_similarities_all_layers.png"
@@ -896,9 +903,8 @@ def create_cross_type_similarity_plots(
     fig = create_subplot_hists(
         sim_list=list(cross_max_similarity[6].values()),
         figsize=(4, 3),
-        suptitle="Cross Type Similarities",
         colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"]],
-        titles=["e2e → local", "downstream → local"],
+        titles=["end-to-end → local", "e2e + downstream → local"],
         out_file=out_dir / "cross_type_similarities_layer_6.png",
     )
 
@@ -922,9 +928,8 @@ def create_cross_seed_similarity_plot(
 
     create_subplot_hists(
         sim_list=list(sim_dict.values()),
-        titles=list(sim_dict.keys()),
+        titles=["local", "end-to-end", "e2e + downstream"],
         colors=[COLOR_MAP[run_type] for run_type in sim_dict],
-        suptitle="Cross Seed Similarity",
         out_file=out_dir / "cross_seed_all_types.png",
         figsize=(4, 4),
     )
@@ -964,14 +969,17 @@ if __name__ == "__main__":
         6: {"x": (4.0, None), "y": (None, None)},
         10: {"x": (None, None), "y": (None, None)},
     }
-    create_umap_plots(
-        api,
-        project,
-        run_types=("e2e", "local"),
-        compute_umaps=False,
-        constant_val="CE",
-        lims=e2e_local_ce_lims,
-    )
+    try:
+        create_umap_plots(
+            api,
+            project,
+            run_types=("e2e", "local"),
+            compute_umaps=False,
+            constant_val="CE",
+            lims=e2e_local_ce_lims,
+        )
+    except FileNotFoundError:
+        logger.warning("Could not create e2e-local UMAP plot")
 
     downstream_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
         2: {"x": (4, None), "y": (None, None)},
