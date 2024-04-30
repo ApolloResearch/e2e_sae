@@ -69,7 +69,10 @@ def get_neuronpedia_feature(
     """Fetch a feature from Neuronpedia API."""
     url = f"{NEURONPEDIA_DOMAIN}/api/feature/{model}/{layer}-{dataset}/{feature}"
     result = requests.get(url).json()
-    result["index"] = int(result["index"])
+    if "index" in result:
+        result["index"] = int(result["index"])
+    else:
+        raise Exception(f"Feature {model}@{layer}-{dataset}:{feature} does not exist.")
     return result
 
 
@@ -656,11 +659,12 @@ def compute_p_values(df: pd.DataFrame):
 if __name__ == "__main__":
     out_dir = Path(__file__).parent / "out/autointerp"
     ## Running autointerp
-    # Compare similar CE e2e+Downstream with similar CE local and similar L0 local
+    # Get runs for similar CE and similar L0 for e2e+Downstream and local
+    # Note that "10-res_slefr-ajt" does not exist, we use 10-res_scefr-ajt for similar l0 too
     sae_sets = [
-        ["6-res_scefr-ajt", "6-res_sll-ajt", "6-res_scl-ajt"],
+        ["6-res_scefr-ajt", "6-res_slefr-ajt", "6-res_sll-ajt", "6-res_scl-ajt"],
         ["10-res_scefr-ajt", "10-res_sll-ajt", "10-res_scl-ajt"],
-        ["2-res_scefr-ajt", "2-res_sll-ajt", "2-res_scl-ajt"],
+        ["2-res_scefr-ajt", "2-res_slefr-ajt", "2-res_sll-ajt", "2-res_scl-ajt"],
     ]
     run_autointerp(
         sae_sets=sae_sets,
