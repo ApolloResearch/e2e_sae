@@ -496,7 +496,7 @@ def train(
         if is_log_step:
             tqdm.write(
                 f"Samples {total_samples} Batch_idx {batch_idx} GradUpdates {grad_updates} "
-                f"Loss {loss.item():.5f}"
+                f"Loss {loss.item():.5f} loss_dict {loss_dict}"
             )
             if config.wandb_project:
                 log_info = {
@@ -526,6 +526,17 @@ def train(
                     )
                     total_samples_at_last_eval = total_samples
                     log_info.update(eval_metrics)
+
+                eps = 0
+                for key in model.saes:
+                    log_info["eps_mean"] = model.saes[key].encoder[1].eps.mean().item()
+                    eps = model.saes[key].encoder[1].eps
+                    break
+                log_info["l0_eps"] = new_acts
+                for name, new_act in new_acts.items():
+                    if isinstance(new_act, SAEActs):
+                        l_0_norm = (new_act.c.abs() < eps).sum(dim=-1).float().mean().item()
+                        log_info[f"l0_eps_{name}"] = l_0_norm
 
                 wandb.log(log_info, step=total_samples)
 
