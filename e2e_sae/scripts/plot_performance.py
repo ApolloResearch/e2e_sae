@@ -30,6 +30,7 @@ CONSTANT_CE_RUNS = {
     10: {"e2e": "8crnit9h", "local": "m2hntlav", "downstream": "cvj5um2h"},
 }
 
+
 STYLE_MAP = {
     "local": {"marker": "^", "color": COLOR_MAP["local"], "label": "Local"},
     "e2e": {"marker": "o", "color": COLOR_MAP["e2e"], "label": "End-to-end"},
@@ -961,7 +962,7 @@ def gpt2_plots():
         x2="alive_dict_elements",
         out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_summary.json",
         interpolate_layer=6,
-        x1_interpolation_range=(500, 50),
+        x1_interpolation_range=(300, 50),
         x2_interpolation_range=(23000, 35000),
     )
     plot_scatter_or_line(
