@@ -42,6 +42,7 @@ COLOR_MAP = {
 
 
 class RegionCoords(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     xmin: float
     xmax: float
     ymin: float
@@ -49,11 +50,14 @@ class RegionCoords(BaseModel):
 
 
 class Region(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     coords: RegionCoords
     description: str
+    letter: str | None = None
 
 
 class LayerRegions(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
     filename: str
     regions: list[Region]
 
@@ -166,30 +170,37 @@ REGIONS: dict[str, dict[int, LayerRegions]] = {
                 Region(
                     coords=RegionCoords(xmin=-0.5, xmax=0, ymin=-0.5, ymax=-0.1),
                     description="Mostly-local line at bottom",
+                    letter="A",
                 ),
                 Region(
                     coords=RegionCoords(xmin=7.8, xmax=8.5, ymin=1, ymax=1.5),
                     description="downstream outlier bottom right",
+                    letter="B",
                 ),
                 Region(
                     coords=RegionCoords(xmin=-5.5, xmax=-5, ymin=6.2, ymax=6.5),
                     description="Mostly-local cluster on left",
+                    letter="C",
                 ),
                 Region(
                     coords=RegionCoords(xmin=5.5, xmax=6, ymin=8.5, ymax=8.8),
                     description="Mixed cluster on right",
+                    letter="D",
                 ),
                 Region(
                     coords=RegionCoords(xmin=0.0, xmax=0.5, ymin=2.45, ymax=2.7),
                     description="Local cluster above bottom line touching downstream cluster",
+                    letter="E",
                 ),
                 Region(
                     coords=RegionCoords(xmin=0.0, xmax=0.5, ymin=2.2, ymax=2.45),
                     description="downstream cluster above bottome line touching local cluster",
+                    letter="F",
                 ),
                 Region(
                     coords=RegionCoords(xmin=-1, xmax=-0.5, ymin=8.5, ymax=8.7),
                     description="Mixed in middle",
+                    letter="G",
                 ),
             ],
         ),
@@ -529,6 +540,17 @@ def plot_umap(
             )
             plt.gca().add_patch(rect)  # type: ignore
 
+            # Add the letter to the left of the box
+            if region.letter is not None:
+                plt.text(
+                    xmin - 0.3,
+                    (ymin + ymax) / 2,
+                    region.letter,
+                    color="r",
+                    fontsize=12,
+                    fontweight="bold",
+                    va="center",
+                )
     plt.tight_layout()
     plt.savefig(out_file, dpi=300, bbox_inches="tight")
     plt.savefig(out_file.with_suffix(".svg"), bbox_inches="tight")
@@ -753,7 +775,7 @@ def create_subplot_hists(
     for ax, sims, title, color in zip(axs, sim_list, titles, colors, strict=True):
         ax.hist(sims.flatten().detach().numpy(), bins=bins, color=color, alpha=alpha)
         ax.set_title(title, pad=2)
-        ax.set_yticks([])
+        # ax.set_yticks([])
 
     axs[-1].set_xlim(xlim)
     axs[-1].set_xlabel(xlabel)
@@ -939,9 +961,9 @@ if __name__ == "__main__":
     project = "gpt2"
     api = wandb.Api()
 
-    create_within_sae_similarity_plots(api, project)
+    # create_within_sae_similarity_plots(api, project)
 
-    create_cross_type_similarity_plots(api, project, constant_val="CE")
+    # create_cross_type_similarity_plots(api, project, constant_val="CE")
 
     # # These three are also relevent but not in the paper
     # # Sparsity coeff 1.5
@@ -956,12 +978,12 @@ if __name__ == "__main__":
     #     api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
     # )
 
-    run_ids: dict[str, tuple[str, str]] = {
-        "local": ("1jy3m5j0", "uqfp43ti"),
-        "e2e": ("pzelh1s8", "ir00gg9g"),
-        "downstream": ("y8sca507", "hqo5azo2"),
-    }
-    create_cross_seed_similarity_plot(api, project, run_ids)
+    # run_ids: dict[str, tuple[str, str]] = {
+    #     "local": ("1jy3m5j0", "uqfp43ti"),
+    #     "e2e": ("pzelh1s8", "ir00gg9g"),
+    #     "downstream": ("y8sca507", "hqo5azo2"),
+    # }
+    # create_cross_seed_similarity_plot(api, project, run_ids)
 
     # Post-hoc ignore the identified outliers in e2e-local umap
     e2e_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {

@@ -31,7 +31,7 @@ repository = "https://github.com/ApolloResearch/e2e_sae"
 [project.optional-dependencies]
 dev = [
     "ruff~=0.1.14",
-    "pyright~=1.1.357",
+    "pyright~=1.1.360",
     "pre-commit~=3.6.0",
 ]
 
