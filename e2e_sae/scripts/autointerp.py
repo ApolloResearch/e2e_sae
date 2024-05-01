@@ -5,7 +5,6 @@ https://github.com/ApolloResearch/automated-interpretability
 
 This has been updated to work with gpt4-turbo-2024-04-09 and fixes an OPENAI_API_KEY issue.
 """
-
 import asyncio
 import glob
 import json
@@ -385,7 +384,7 @@ async def autointerp_neuronpedia_features(
 
 
 def run_autointerp(
-    sae_sets: list[list[str]],
+    saes: list[str],
     n_random_features: int,
     dict_size: int,
     feature_model_id: str,
@@ -395,6 +394,7 @@ def run_autointerp(
     autointerp_scorer_model_name: Literal[
         "gpt-3.5-turbo", "gpt-4", "gpt-4-1106-preview", "gpt-4-turbo-2024-04-09"
     ],
+    out_dir: str | Path = "neuronpedia_outputs/autointerp",
 ):
     """Explain and score random features across SAEs and upload to Neuronpedia.
 
@@ -406,47 +406,49 @@ def run_autointerp(
         autointerp_explainer_model_name: Model name for autointerp explainer.
         autointerp_scorer_model_name: Model name for autointerp scorer (much more expensive).
     """
-    for sae_set in tqdm(sae_sets, desc="sae sets"):
-        for i in tqdm(range(n_random_features), desc="random features"):
-            for sae in tqdm(sae_set, desc="sae"):
-                layer = int(sae.split("-")[0])
-                dataset = "-".join(sae.split("-")[1:])
-                feature_exists = False
-                while not feature_exists:
-                    feature = random.randint(0, dict_size)
-                    feature_data = get_neuronpedia_feature(
-                        feature=feature,
-                        layer=layer,
-                        model=feature_model_id,
-                        dataset=dataset,
-                    )
-                    if "activations" in feature_data and len(feature_data["activations"]) >= 20:
-                        feature_exists = True
-                        print(f"sae: {sae}, feature: {feature}")
+    for i in tqdm(range(n_random_features), desc="random features", total=n_random_features):
+        for sae in tqdm(saes, desc="sae", total=len(saes)):
+            layer = int(sae.split("-")[0])
+            dataset = "-".join(sae.split("-")[1:])
+            feature_exists = False
+            while not feature_exists:
+                feature = random.randint(0, dict_size)
+                feature_data = get_neuronpedia_feature(
+                    feature=feature,
+                    layer=layer,
+                    model=feature_model_id,
+                    dataset=dataset,
+                )
+                if "activations" in feature_data and len(feature_data["activations"]) >= 20:
+                    feature_exists = True
+                    print(f"sae: {sae}, feature: {feature}")
 
-                        features = [
-                            NeuronpediaFeature(
-                                modelId=feature_model_id,
-                                layer=layer,
-                                dataset=dataset,
-                                feature=feature,
-                            ),
-                        ]
+                    features = [
+                        NeuronpediaFeature(
+                            modelId=feature_model_id,
+                            layer=layer,
+                            dataset=dataset,
+                            feature=feature,
+                        ),
+                    ]
 
-                        asyncio.run(
-                            autointerp_neuronpedia_features(
-                                features=features,
-                                openai_api_key=os.getenv("OPENAI_API_KEY", ""),
-                                neuronpedia_api_key=os.getenv("NEURONPEDIA_API_KEY", ""),
-                                autointerp_explainer_model_name=autointerp_explainer_model_name,
-                                autointerp_scorer_model_name=autointerp_scorer_model_name,
-                                num_activations_to_use=20,
-                                max_explanation_activation_records=5,
-                            )
+                    asyncio.run(
+                        autointerp_neuronpedia_features(
+                            features=features,
+                            openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+                            neuronpedia_api_key=os.getenv("NEURONPEDIA_API_KEY", ""),
+                            autointerp_explainer_model_name=autointerp_explainer_model_name,
+                            autointerp_scorer_model_name=autointerp_scorer_model_name,
+                            num_activations_to_use=20,
+                            max_explanation_activation_records=5,
+                            output_dir=str(out_dir),
                         )
+                    )
 
-                        feature_url = f"https://neuronpedia.org/{feature_model_id}/{layer}-{dataset}/{feature}"
-                        print(f"Your feature is at: {feature_url}")
+                    feature_url = (
+                        f"https://neuronpedia.org/{feature_model_id}/{layer}-{dataset}/{feature}"
+                    )
+                    print(f"Your feature is at: {feature_url}")
 
 
 def get_autointerp_results_df(out_dir: Path):
@@ -730,24 +732,34 @@ def compute_p_values(df: pd.DataFrame, pairs: dict[int, dict[str, str]]):
 
 
 if __name__ == "__main__":
-    out_dir = Path(__file__).parent / "out/autointerp/"
-    input_dir = out_dir  # Path("/data/apollo/autointerp")
+    # out_dir = Path(__file__).parent / "out/autointerp/"
+    # input_dir = out_dir  # Path("/data/apollo/autointerp")
+    out_dir = Path("/data/apollo/autointerp/")
     ## Running autointerp
     # Get runs for similar CE and similar L0 for e2e+Downstream and local
     # Note that "10-res_slefr-ajt" does not exist, we use 10-res_scefr-ajt for similar l0 too
-    sae_sets = [
-        ["6-res_scefr-ajt", "6-res_slefr-ajt", "6-res_sll-ajt", "6-res_scl-ajt"],
-        ["10-res_scefr-ajt", "10-res_sll-ajt", "10-res_scl-ajt"],
-        ["2-res_scefr-ajt", "2-res_slefr-ajt", "2-res_sll-ajt", "2-res_scl-ajt"],
+    saes = [
+        "2-res_scefr-ajt",
+        "2-res_slefr-ajt",
+        "2-res_sll-ajt",
+        "2-res_scl-ajt",
+        "6-res_scefr-ajt",
+        "6-res_slefr-ajt",
+        "6-res_sll-ajt",
+        "6-res_scl-ajt",
+        "10-res_scefr-ajt",
+        "10-res_sll-ajt",
+        "10-res_scl-ajt",
     ]
-    # run_autointerp(
-    #     sae_sets=sae_sets,
-    #     n_random_features=50,
-    #     dict_size=768 * 60,
-    #     feature_model_id="gpt2-small",
-    #     autointerp_explainer_model_name="gpt-4-turbo-2024-04-09",
-    #     autointerp_scorer_model_name="gpt-3.5-turbo",
-    # )
+    run_autointerp(
+        saes=saes,
+        n_random_features=150,
+        dict_size=768 * 60,
+        feature_model_id="gpt2-small",
+        autointerp_explainer_model_name="gpt-4-turbo-2024-04-09",
+        autointerp_scorer_model_name="gpt-3.5-turbo",
+        out_dir=out_dir,
+    )
 
     # TO UPDATE
     const_l0_pairs = {
@@ -756,7 +768,7 @@ if __name__ == "__main__":
         10: {"local": "res_sll-ajt", "downstream": "res_scefr-ajt"},
     }
 
-    df = get_autointerp_results_df(input_dir)
+    df = get_autointerp_results_df(out_dir)
     print(df.autointerpModel.unique(), df.explanationModel.unique())
     ## Analysis of autointerp results
     compare_autointerp_results(df)
