@@ -1,0 +1,57 @@
+wandb_project: gpt2-e2e_play
+wandb_run_name: null # If not set, will use a name based on important config values
+wandb_run_name_prefix: ""
+
+seed: 0
+tlens_model_name: gpt2-small
+tlens_model_path: null
+
+n_samples: 400_000
+save_every_n_samples: null
+eval_every_n_samples: 40_000
+eval_n_samples: 500
+log_every_n_grad_steps: 20
+collect_act_frequency_every_n_samples: 40_000
+act_frequency_n_tokens: 500_000
+batch_size: 8
+effective_batch_size: 16  # Number of samples before each optimizer step
+lr: 5e-4
+lr_schedule: cosine
+min_lr_factor: 0.1  # Minimum learning rate as a fraction of the initial learning rate
+warmup_samples: 20_000  # Linear warmup over this many samples
+max_grad_norm: 10.0  # Gradient norms get clipped to this value before optimizer steps
+
+loss:
+  # Note that "original acts" below refers to the activations in a model without SAEs
+  sparsity:
+    p_norm: 1.0  # p value in Lp norm
+    coeff: 1.5  # Multiplies the Lp norm in the loss (sparsity coefficient)
+  in_to_orig: null  # Used for e2e+future recon. MSE between the input to the SAE and original acts
+  out_to_orig: null  # Not commonly used. MSE between the output of the SAE and original acts
+  out_to_in:
+    # Multiplies the MSE between the output and input of the SAE. Setting to 0 lets us track this
+    # loss during training without optimizing it
+    coeff: 0.1
+  logits_kl:
+    coeff: 1.0  # Multiplies the KL divergence between the logits of the SAE model and original model
+train_data:
+  # See https://huggingface.co/apollo-research for other pre-tokenized datasets
+  dataset_name: apollo-research/Skylion007-openwebtext-tokenizer-gpt2
+  is_tokenized: true
+  tokenizer_name: gpt2
+  streaming: true
+  split: train
+  n_ctx: 1024
+eval_data:  # By default this will use a different seed to the training data, but can be set with `seed`
+  dataset_name: apollo-research/Skylion007-openwebtext-tokenizer-gpt2
+  is_tokenized: true
+  tokenizer_name: gpt2
+  streaming: true
+  split: train
+  n_ctx: 1024
+saes:
+  retrain_saes: false  # Determines whether to continue training the SAEs in pretrained_sae_paths
+  pretrained_sae_paths: null  # Path or paths to pretrained SAEs
+  sae_positions:  # Position or positions to place SAEs in the model
+    - blocks.6.hook_resid_pre
+  dict_size_to_input_ratio: 60.0  # Size of the dictionary relative to the activations at the SAE positions
