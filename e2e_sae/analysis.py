@@ -170,6 +170,7 @@ def create_run_df(
                 "alive_dict_elements": run.summary_metrics[
                     f"sparsity/alive_dict_elements/{sae_pos}"
                 ],
+                "grad_norm": run.summary_metrics["grad_norm"],
                 **explained_var_layers,
                 **explained_var_ln_layers,
                 **recon_loss_layers,

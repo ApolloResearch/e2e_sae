@@ -913,6 +913,21 @@ def gpt2_plots():
     # xlims for plots with L0 on the x axis
     l0_diff_xlims = {2: (200.0, 0.0), 6: (600.0, 0.0), 10: (600.0, 0.0)}
 
+    # With performance_df, make a simple scatter plot of grad_norm vs alive_dict_elements
+    plot_scatter_or_line(
+        performance_df,
+        x="grad_norm",
+        y="alive_dict_elements",
+        ylim={layer: (0, 45_000) for layer in layers},
+        title="Grad Norm vs Alive Dictionary Elements",
+        xlabel="Grad Norm",
+        ylabel="Alive Dictionary Elements",
+        out_file=out_dir / "grad_norm_vs_alive_dict_elements.png",
+        sparsity_label=False,
+        run_types=run_types,
+        plot_type="scatter",
+    )
+
     # Pareto curve plots (two axes line plots with L0 and alive_dict_elements on the x-axis)
     # all layers
     plot_two_axes_line_facet(
