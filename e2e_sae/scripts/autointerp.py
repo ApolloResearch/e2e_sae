@@ -633,7 +633,7 @@ def bootstrapped_bar(df_stats: pd.DataFrame):
     plt.close()
 
 
-def pair_violin_plot(df_stats: pd.DataFrame, pairs: dict[int, dict[str, str]]):
+def pair_violin_plot(df_stats: pd.DataFrame, pairs: dict[int, dict[str, str]], out_file: Path):
     fig, axs = plt.subplots(1, 3, sharey=True, figsize=(7, 3.5))
 
     for ax, layer in zip(axs, pairs.keys(), strict=True):
@@ -682,7 +682,6 @@ def pair_violin_plot(df_stats: pd.DataFrame, pairs: dict[int, dict[str, str]]):
     axs[0].set_ylabel("Auto-intepretability score")
 
     plt.tight_layout()
-    out_file = Path(__file__).parent / "out/autointerp" / "autointerp_same_l0.png"
     plt.savefig(out_file, bbox_inches="tight")
     print(f"Saved to {out_file}")
 
@@ -761,18 +760,28 @@ if __name__ == "__main__":
         out_dir=out_dir,
     )
 
-    # TO UPDATE
+    df = get_autointerp_results_df(out_dir)
+
+    ## Analysis of autointerp results
+
     const_l0_pairs = {
         2: {"local": "res_sll-ajt", "downstream": "res_slefr-ajt"},
-        6: {"local": "res_sll-ajt", "downstream": "res_scefr-ajt"},
+        6: {"local": "res_sll-ajt", "downstream": "res_slefr-ajt"},
         10: {"local": "res_sll-ajt", "downstream": "res_scefr-ajt"},
     }
 
-    df = get_autointerp_results_df(out_dir)
-    print(df.autointerpModel.unique(), df.explanationModel.unique())
-    ## Analysis of autointerp results
-    compare_autointerp_results(df)
-    compare_across_saes(df)
+    const_ce_pairs = {
+        2: {"local": "res_scl-ajt", "downstream": "res_scefr-ajt"},
+        6: {"local": "res_scl-ajt", "downstream": "res_scefr-ajt"},
+        10: {"local": "res_scl-ajt", "downstream": "res_scefr-ajt"},
+    }
+
+    # compare_autointerp_results(df)
+    # compare_across_saes(df)
     bootstrapped_bar(df)
-    pair_violin_plot(df, const_l0_pairs)
+    pair_violin_plot(df, const_l0_pairs, out_dir / "l0_violin.png")
+    pair_violin_plot(df, const_ce_pairs, out_dir / "ce_violin.png")
+    print("SAME L0")
     compute_p_values(df, const_l0_pairs)
+    print("\nSAME CE")
+    compute_p_values(df, const_ce_pairs)
