@@ -24,10 +24,15 @@ RUN_TYPE_MAP = {
 }
 
 # Runs with constant CE loss increase for each layer. Values represent wandb run IDs.
-CONSTANT_CE_RUNS = {
-    2: {"e2e": "ovhfts9n", "local": "ue3lz0n7", "downstream": "visi12en"},
-    6: {"e2e": "zgdpkafo", "local": "1jy3m5j0", "downstream": "2lzle2f0"},
-    10: {"e2e": "8crnit9h", "local": "m2hntlav", "downstream": "cvj5um2h"},
+SIMILAR_CE_RUNS = {
+    2: {"local": "ue3lz0n7", "e2e": "ovhfts9n", "downstream": "visi12en"},
+    6: {"local": "1jy3m5j0", "e2e": "zgdpkafo", "downstream": "2lzle2f0"},
+    10: {"local": "m2hntlav", "e2e": "8crnit9h", "downstream": "cvj5um2h"},
+}
+SIMILAR_L0_RUNS = {
+    2: {"local": "6vtk4k51", "e2e": "bst0prdd", "downstream": "e26jflpq"},
+    6: {"local": "jup3glm9", "e2e": "tvj2owza", "downstream": "2lzle2f0"},
+    10: {"local": "5vmpdgaz", "e2e": "8crnit9h", "downstream": "cvj5um2h"},
 }
 
 
@@ -188,6 +193,7 @@ def plot_scatter_or_line(
         plt.savefig(out_file)
         plt.savefig(Path(out_file).with_suffix(".svg"))
     plt.close(fig)
+    logger.info(f"Saved to {out_file}")
 
 
 def plot_per_layer_metric(
@@ -291,30 +297,43 @@ def plot_per_layer_metric(
     plt.close()
 
 
-def _format_two_axes(axs: Sequence[plt.Axes]) -> None:
+def _format_two_axes(axs: Sequence[plt.Axes], better_labels: bool) -> None:
     """Adds better arrows, and moves the y-axis to the right of the second subplot."""
     # move y-axis to right of second subplot
     axs[1].yaxis.set_label_position("right")
     axs[1].yaxis.set_ticks_position("right")
     axs[1].yaxis.set_tick_params(color="white")
 
-    # add "Better" text annotations
-    axs[0].text(
-        s="Better →", x=1, y=1.02, ha="right", va="bottom", fontsize=10, transform=axs[0].transAxes
-    )
-    axs[1].text(
-        s="← Better", x=0, y=1.02, ha="left", va="bottom", fontsize=10, transform=axs[1].transAxes
-    )
-    axs[0].text(
-        s="Better →",
-        x=1.075,
-        y=1,
-        ha="center",
-        va="top",
-        fontsize=10,
-        transform=axs[0].transAxes,
-        rotation=90,
-    )
+    if better_labels:
+        # add "Better" text annotations
+        axs[0].text(
+            s="Better →",
+            x=1,
+            y=1.02,
+            ha="right",
+            va="bottom",
+            fontsize=10,
+            transform=axs[0].transAxes,
+        )
+        axs[1].text(
+            s="← Better",
+            x=0,
+            y=1.02,
+            ha="left",
+            va="bottom",
+            fontsize=10,
+            transform=axs[1].transAxes,
+        )
+        axs[0].text(
+            s="Better →",
+            x=1.075,
+            y=1,
+            ha="center",
+            va="top",
+            fontsize=10,
+            transform=axs[0].transAxes,
+            rotation=90,
+        )
 
 
 # TODO: replace calls with plot_two_axes_line_facet (which is a bit more general)
@@ -325,6 +344,7 @@ def plot_two_axes_line_facet(
     y: str,
     facet_by: str,
     line_by: str,
+    sort_by: str | None = None,
     xlabel1: str | None = None,
     xlabel2: str | None = None,
     ylabel: str | None = None,
@@ -334,10 +354,12 @@ def plot_two_axes_line_facet(
     xlim2: Mapping[Any, tuple[float | None, float | None]] | None = None,
     xticks1: tuple[list[float], list[str]] | None = None,
     xticks2: tuple[list[float], list[str]] | None = None,
+    yticks: tuple[list[float], list[str]] | None = None,
     ylim: Mapping[Any, tuple[float | None, float | None]] | None = None,
     styles: Mapping[Any, Mapping[str, Any]] | None = None,
     title: Mapping[Any, str] | None = None,
     legend_title: str | None = None,
+    better_labels: bool = True,
     out_file: str | Path | None = None,
 ) -> None:
     """Line plot with two x-axes and one y-axis between them. One line for each run type.
@@ -347,6 +369,10 @@ def plot_two_axes_line_facet(
         x1: The variable to plot on the first x-axis.
         x2: The variable to plot on the second x-axis.
         y: The variable to plot on the y-axis.
+        facet_by: The variable to facet the plot by.
+        line_by: The variable to draw lines for.
+        sort_by: The variable governing how lines are drawn between points. If None, lines will be
+            drawn based on the y value.
         title: The title of the plot.
         xlabel1: The label for the first x-axis.
         xlabel2: The label for the second x-axis.
@@ -357,11 +383,18 @@ def plot_two_axes_line_facet(
         xlim2: The x-axis limits for the second x-axis for each layer.
         xticks1: The x-ticks for the first x-axis.
         xticks2: The x-ticks for the second x-axis.
+        yticks: The y-ticks for the y-axis.
         ylim: The y-axis limits for each layer.
-        layers: The layers to include in the plot. If None, all layers in the df will be included.
+        styles: The styles to use for each line. If None, default styles will be used.
+        title: The title for each row of the plot.
+        legend_title: The title for the legend.
+        better_labels: Whether to add "Better" text annotations.
+        out_file: The filename which the plot will be saved as.
     """
     if facet_vals is None:
         facet_vals = sorted(df[facet_by].unique())
+    if sort_by is None:
+        sort_by = y
 
     sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
     fig = plt.figure(figsize=(8, 4 * len(facet_vals)), constrained_layout=True)
@@ -389,7 +422,7 @@ def plot_two_axes_line_facet(
             )  # specific overrides
             if not data.empty:
                 # draw the lines between points based on the y value
-                data = data.sort_values(y)
+                data = data.sort_values(sort_by)
                 axs[0].plot(data[x1], data[y], **line_style)
                 axs[1].plot(data[x2], data[y], **line_style)
             else:
@@ -420,9 +453,12 @@ def plot_two_axes_line_facet(
             axs[0].set_xticks(xticks1[0], xticks1[1])
         if xticks2 is not None:
             axs[1].set_xticks(xticks2[0], xticks2[1])
+        if yticks is not None:
+            axs[0].set_yticks(yticks[0], yticks[1])
+            axs[1].set_yticks(yticks[0], yticks[1])
 
         # add better labels and move right axis
-        _format_two_axes(axs)
+        _format_two_axes(axs, better_labels)
 
     if suptitle is not None:
         fig.suptitle(suptitle)
@@ -433,117 +469,6 @@ def plot_two_axes_line_facet(
         logger.info(f"Saved to {out_file}")
 
     plt.close(fig)
-
-
-def plot_two_axes_line(
-    df: pd.DataFrame,
-    x1: str,
-    x2: str,
-    y: str,
-    xlabel1: str,
-    xlabel2: str,
-    ylabel: str,
-    out_file: str | Path,
-    title: str | None = None,
-    run_types: Sequence[str] = ("local", "e2e", "downstream"),
-    xlim1: Mapping[int, tuple[float | None, float | None]] | None = None,
-    xlim2: Mapping[int, tuple[float | None, float | None]] | None = None,
-    xticks1: tuple[list[float], list[str]] | None = None,
-    xticks2: tuple[list[float], list[str]] | None = None,
-    ylim: Mapping[int, tuple[float | None, float | None]] | None = None,
-    layers: Sequence[int] | None = None,
-    color_map: Mapping[str, Any] | None = None,
-) -> None:
-    """Line plot with two x-axes and one y-axis between them. One line for each run type.
-
-    Args:
-        df: DataFrame containing the data.
-        x1: The variable to plot on the first x-axis.
-        x2: The variable to plot on the second x-axis.
-        y: The variable to plot on the y-axis.
-        title: The title of the plot.
-        xlabel1: The label for the first x-axis.
-        xlabel2: The label for the second x-axis.
-        ylabel: The label for the y-axis.
-        out_file: The filename which the plot will be saved as.
-        title: The title of the plot.
-        run_types: The run types to include in the plot.
-        xlim1: The x-axis limits for the first x-axis for each layer.
-        xlim2: The x-axis limits for the second x-axis for each layer.
-        xticks1: The x-ticks for the first x-axis.
-        xticks2: The x-ticks for the second x-axis.
-        ylim: The y-axis limits for each layer.
-        layers: The layers to include in the plot. If None, all layers in the df will be included.
-    """
-    if layers is None:
-        layers = sorted(df["layer"].unique())
-    n_layers = len(layers)
-
-    if xlim1 is None:
-        xlim1 = {layer: (None, None) for layer in layers}
-    if xlim2 is None:
-        xlim2 = {layer: (None, None) for layer in layers}
-    if ylim is None:
-        ylim = {layer: (None, None) for layer in layers}
-
-    sns.set_theme(style="darkgrid", rc={"axes.facecolor": "#f5f6fc"})
-    fig = plt.figure(figsize=(8, 4 * n_layers), constrained_layout=True)
-    subfigs = fig.subfigures(n_layers)
-    subfigs = np.atleast_1d(subfigs)
-
-    for subfig, layer in zip(subfigs, layers, strict=False):
-        layer_df = df.loc[df["layer"] == layer]
-        axs = subfig.subplots(1, 2)
-        for run_type in run_types:
-            if run_type not in RUN_TYPE_MAP:
-                raise ValueError(f"Invalid run type: {run_type}")
-            label, marker = RUN_TYPE_MAP[run_type]
-            color = COLOR_MAP[run_type] if color_map is None else color_map[run_type]
-            data = layer_df.loc[layer_df["run_type"] == run_type]
-            if not data.empty:
-                # draw the lines between points based on the y value
-                data = data.sort_values(y)
-                for i, (ax, x) in enumerate(zip(axs, [x1, x2], strict=False)):
-                    ax.plot(
-                        data[x],
-                        data[y],
-                        marker=marker,
-                        linewidth=1.1,
-                        alpha=1,
-                        label=label if i == 0 else None,
-                        color=color,
-                        markersize=5,
-                    )
-
-        axs[0].legend(loc="best")
-
-        axs[0].set_xlim(xmin=xlim1[layer][0], xmax=xlim1[layer][1])
-        axs[1].set_xlim(xmin=xlim2[layer][0], xmax=xlim2[layer][1])
-        axs[0].set_ylim(ymin=ylim[layer][0], ymax=ylim[layer][1])
-        axs[1].set_ylim(ymin=ylim[layer][0], ymax=ylim[layer][1])
-
-        # Set a title above axs[0] and axs[1] to show the layer number
-        subfig.suptitle(f"SAE Layer {layer}", fontweight="bold")
-        axs[0].set_xlabel(xlabel1)
-        axs[1].set_xlabel(xlabel2)
-        axs[0].set_ylabel(ylabel)
-        axs[1].set_ylabel(ylabel)
-
-        if xticks1 is not None:
-            axs[0].set_xticks(xticks1[0], xticks1[1])
-        if xticks2 is not None:
-            axs[1].set_xticks(xticks2[0], xticks2[1])
-
-        # add better labels and move right axis
-        _format_two_axes(axs)
-
-    if title is not None:
-        fig.suptitle(title)
-
-    plt.savefig(out_file)
-    plt.savefig(Path(out_file).with_suffix(".svg"))
-    plt.close(fig)
-    logger.info(f"Saved to {out_file}")
 
 
 def calc_summary_metric(
@@ -804,6 +729,86 @@ def plot_n_samples_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequen
     )
 
 
+def create_summary_latex_tables(df: pd.DataFrame, out_dir: Path) -> None:
+    """Create summary for similar CE and similar L0 runs and print as latex tables.
+
+    Args:
+        df: DataFrame containing the data.
+        out_dir: The directory to save the tables to.
+    """
+    col_map = {
+        "layer": "Layer",
+        "run_type": "Run Type",
+        "sparsity_coeff": "$\\lambda$ (Sparsity Coeff)",
+        "L0": "$L_0$",
+        "alive_dict_elements": "Alive Elements",
+        "CELossIncrease": "CE Loss Increase",
+    }
+    for run_group_name, run_group in [
+        ("constant_CE", SIMILAR_CE_RUNS),
+        ("constant_l0", SIMILAR_L0_RUNS),
+    ]:
+        layer_dfs = {}
+        run_types: list[str] | None = None
+        for layer, run_info in run_group.items():
+            if run_types is None:
+                run_types = list(run_info.keys())
+            layer_df = df.loc[df["layer"] == layer]
+            layer_df = layer_df.loc[layer_df["id"].isin(run_info.values()), col_map.keys()]
+            layer_dfs[layer] = layer_df
+        run_group_df = pd.concat(layer_dfs.values())
+
+        # Sort by layer and run_type. Layer should be in numerical order.
+        # Run type should be in the order "local", "e2e", "downstream"
+        layer_order = {layer: i for i, layer in enumerate(SIMILAR_CE_RUNS.keys())}
+        assert run_types is not None
+        run_type_order = {run_type: len(layer_order) + i for i, run_type in enumerate(run_types)}
+        order = {**layer_order, **run_type_order}
+        run_group_df = run_group_df.sort_values(["layer", "run_type"], key=lambda x: x.map(order))
+
+        run_group_df = run_group_df.rename(columns=col_map)
+
+        # Format the values in the DataFrame
+        run_group_df["$\\lambda$ (Sparsity Coeff)"] = run_group_df[
+            "$\\lambda$ (Sparsity Coeff)"
+        ].apply(lambda x: f"{x:.2f}")
+        run_group_df["$L_0$"] = run_group_df["$L_0$"].apply(lambda x: f"{x:.1f}")
+        run_group_df["Alive Elements"] = run_group_df["Alive Elements"].apply(
+            lambda x: f"{x // 1000}k"
+        )
+        run_group_df["CE Loss Increase"] = run_group_df["CE Loss Increase"].apply(
+            lambda x: f"{x:.3f}"
+        )
+
+        # Create the LaTeX table
+        latex_str = "\\begin{table}[h]\n\\centering\n"
+        # The grey column will be L0 if run_group_name is constant_l0, and CE Loss otherwise
+        if run_group_name == "constant_l0":
+            latex_str += "\\begin{tabular}{|c|c|c|>{\\columncolor[gray]{0.9}}c|c|c|}\n\\hline\n"
+        else:
+            latex_str += "\\begin{tabular}{|c|c|c|c|c|>{\\columncolor[gray]{0.9}}c|}\n\\hline\n"
+        # Same as above but have the c's depend on the number of columns
+        latex_str += " & ".join(run_group_df.columns) + " \\\\\n\\hline\n"
+
+        for layer, layer_df in run_group_df.groupby("Layer"):
+            for _, row in layer_df.iterrows():
+                latex_str += (
+                    " & ".join(["" if pd.isna(val) else str(val) for val in row.values]) + " \\\\\n"
+                )
+            latex_str += "\\hline\n"
+
+        latex_str += "\\end{tabular}\n"
+        latex_str += f"\\caption{{Comparison of runs with similar {'$L_0$' if run_group_name == 'constant_l0' else 'CE Loss'} for each block}}\n"
+        latex_str += f"\\label{{tab:{run_group_name}}}\n"
+        latex_str += "\\end{table}\n"
+
+        out_file = out_dir / run_group_name / f"{run_group_name}_summary.tex"
+        out_file.parent.mkdir(exist_ok=True, parents=True)
+        with open(out_file, "w") as f:
+            f.write(latex_str)
+        logger.info(f"Saved to {out_file}")
+
+
 def get_df_gpt2() -> pd.DataFrame:
     api = wandb.Api()
     project = "sparsify/gpt2"
@@ -900,34 +905,42 @@ def gpt2_plots():
     performance_df = performance_df.loc[
         ~((performance_df["L0"] > 200) & (performance_df["layer"] == 2))
     ]
-    # Some runs with seed-comparison in the name are duplicates, ignore those. Also ignore runs
-    # with lr-comparison or lower-downstream in the name
+    # Ignore specialised runs
     performance_df = performance_df.loc[
         ~performance_df["name"].str.contains("seed-comparison")
         & ~performance_df["name"].str.contains("lr-comparison")
         & ~performance_df["name"].str.contains("lower-downstream")
+        & -performance_df["name"].str.contains("e2e-local")
+        & ~performance_df["name"].str.contains("recon-all")
     ]
+
+    create_summary_latex_tables(df=performance_df, out_dir=Path(__file__).resolve().parent / "out")
 
     # ylims for plots with ce_diff on the y axis
     loss_increase_lims = {2: (0.2, 0.0), 6: (0.4, 0.0), 10: (0.4, 0.0)}
     # xlims for plots with L0 on the x axis
     l0_diff_xlims = {2: (200.0, 0.0), 6: (600.0, 0.0), 10: (600.0, 0.0)}
 
-    # With performance_df, make a simple scatter plot of grad_norm vs alive_dict_elements
-    plot_scatter_or_line(
+    plot_two_axes_line_facet(
         performance_df,
-        x="grad_norm",
+        x1="mean_grad_norm",
+        x2="CELossIncrease",
         y="alive_dict_elements",
-        ylim={layer: (0, 45_000) for layer in layers},
-        title="Grad Norm vs Alive Dictionary Elements",
-        xlabel="Grad Norm",
+        facet_by="layer",
+        facet_vals=layers,
+        line_by="run_type",
+        sort_by="CELossIncrease",
+        xlabel1="Mean Grad Norm",
+        xlabel2="CE Loss Increase",
         ylabel="Alive Dictionary Elements",
-        out_file=out_dir / "grad_norm_vs_alive_dict_elements.png",
-        sparsity_label=False,
-        run_types=run_types,
-        plot_type="scatter",
+        xlim2={2: (0.0, 0.2), 6: (0.0, 0.4), 10: (0.0, 0.4)},
+        yticks=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+        title={layer: f"Layer {layer}" for layer in layers},
+        out_file=out_dir / "grad_norm_vs_ce_loss_vs_alive_dict_elements.png",
+        styles=STYLE_MAP,
+        better_labels=False,
+        legend_title="Run Type",
     )
-
     # Pareto curve plots (two axes line plots with L0 and alive_dict_elements on the x-axis)
     # all layers
     plot_two_axes_line_facet(
@@ -1025,7 +1038,7 @@ def gpt2_plots():
     final_layer = n_layers - 1
     plot_per_layer_metric(
         performance_df,
-        run_ids=CONSTANT_CE_RUNS,
+        run_ids=SIMILAR_CE_RUNS,
         metric="explained_var_ln",
         final_layer=final_layer,
         out_file=out_dir / "explained_var_ln_per_layer.png",
@@ -1036,7 +1049,7 @@ def gpt2_plots():
     )
     plot_per_layer_metric(
         performance_df,
-        run_ids=CONSTANT_CE_RUNS,
+        run_ids=SIMILAR_CE_RUNS,
         metric="recon_loss",
         final_layer=final_layer,
         out_file=out_dir / "recon_loss_per_layer.png",
@@ -1046,7 +1059,7 @@ def gpt2_plots():
     )
     plot_per_layer_metric(
         performance_df,
-        run_ids={6: CONSTANT_CE_RUNS[6]},
+        run_ids={6: SIMILAR_CE_RUNS[6]},
         metric="recon_loss",
         final_layer=final_layer,
         out_file=out_dir / "recon_loss_per_layer_layer_6.png",
@@ -1063,7 +1076,7 @@ def get_tinystories_1m_df() -> pd.DataFrame:
 
     d_resid = 64
 
-    df = create_run_df(runs, per_layer_metrics=False, use_run_name=True)
+    df = create_run_df(runs, per_layer_metrics=False, use_run_name=True, grad_norm=False)
 
     assert df["model_name"].nunique() == 1
 

@@ -1,4 +1,5 @@
 import pandas as pd
+import tqdm
 from wandb.apis.public import Run
 from wandb.apis.public.runs import Runs
 
@@ -64,10 +65,10 @@ def _extract_per_layer_metrics(
 
 
 def create_run_df(
-    runs: Runs, per_layer_metrics: bool = True, use_run_name: bool = False
+    runs: Runs, per_layer_metrics: bool = True, use_run_name: bool = False, grad_norm: bool = True
 ) -> pd.DataFrame:
     run_info = []
-    for run in runs:
+    for run in tqdm.tqdm(runs, total=len(runs), desc="Processing runs"):
         if run.state != "finished":
             print(f"Run {run.name} is not finished, skipping")
             continue
@@ -146,6 +147,22 @@ def create_run_df(
             kl = run.summary_metrics["loss/eval/logits_kl"]
         except KeyError:
             kl = None
+
+        mean_grad_norm = None
+        if grad_norm:
+            # Check if "mean_grad_norm" is in the run summary, if not, we need to calculate it
+            if "mean_grad_norm" in run.summary:
+                mean_grad_norm = run.summary["mean_grad_norm"]
+            else:
+                grad_norm_history = run.history(keys=["grad_norm"], samples=2000)
+                # Get the mean of grad norms after the first 10000 steps
+                mean_grad_norm = grad_norm_history.loc[
+                    grad_norm_history["_step"] > 10000, "grad_norm"
+                ].mean()
+
+                run.summary["mean_grad_norm"] = mean_grad_norm
+                run.summary.update()
+
         run_info.append(
             {
                 "name": run.name,
@@ -170,7 +187,7 @@ def create_run_df(
                 "alive_dict_elements": run.summary_metrics[
                     f"sparsity/alive_dict_elements/{sae_pos}"
                 ],
-                "grad_norm": run.summary_metrics["grad_norm"],
+                "mean_grad_norm": mean_grad_norm,
                 **explained_var_layers,
                 **explained_var_ln_layers,
                 **recon_loss_layers,
