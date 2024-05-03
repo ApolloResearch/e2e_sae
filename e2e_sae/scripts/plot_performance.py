@@ -909,6 +909,7 @@ def gpt2_plots():
         & ~performance_df["name"].str.contains("lower-downstream")
         & -performance_df["name"].str.contains("e2e-local")
         & ~performance_df["name"].str.contains("recon-all")
+        & ~performance_df["name"].str.contains("misc_")
     ]
 
     create_summary_latex_tables(df=performance_df, out_dir=Path(__file__).resolve().parent / "out")
