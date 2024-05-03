@@ -1,4 +1,3 @@
-import json
 import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -20,17 +19,30 @@ from torch import Tensor
 from wandb.apis.public import Run
 
 from e2e_sae.log import logger
-from e2e_sae.settings import REPO_ROOT
 
+# CONSTANT_CE_RUNS = {
+#     # 2: {"local": "ue3lz0n7", "e2e": "ovhfts9n", "downstream": "visi12en"},
+#     6: {"local": "1jy3m5j0", "e2e": "zgdpkafo", "downstream": "2lzle2f0"},
+#     # 10: {"local": "m2hntlav", "e2e": "8crnit9h", "downstream": "cvj5um2h"},
+# }
 CONSTANT_CE_RUNS = {
-    2: {"local": "ue3lz0n7", "e2e": "ovhfts9n", "downstream": "visi12en"},
-    6: {"local": "1jy3m5j0", "e2e": "zgdpkafo", "downstream": "2lzle2f0"},
-    10: {"local": "m2hntlav", "e2e": "8crnit9h", "downstream": "cvj5um2h"},
+    # 2: {"local": "ue3lz0n7", "e2e": "ovhfts9n", "downstream": "visi12en"},
+    6: {"local": "2wvu1zs5", "e2e_local": "7prgy8pa"}
+    # 10: {"local": "m2hntlav", "e2e": "8crnit9h", "downstream": "cvj5um2h"},
 }
+# e2e_local = "7prgy8pa"
+# local_similar_ce_as_e2e_local = "2wvu1zs5"
+# local_similar_l0_as_e2e_local = "1jy3m5j0"
+# e2e_similar_ce_as_e2e_local = "1bubkmps"
+# e2e_similar_l0_as_e2e_local = "1bubkmps"
+# recon_similar_ce_as_e2e_local = "p9zmh62k"  # Slightly better CE
+# recon_similar_ce_as_e2e_local = "rb8q8czb"  # Slightly worse CE. Most similar in L0 to localL0
+# recon_similar_l0_as_e2e_local = "p9zmh62k"
+# recon_similar_l0_as_local_1jy3m5j0 = "rb8q8czb"
 CONSTANT_L0_RUNS = {
-    2: {"local": "6vtk4k51", "e2e": "bst0prdd", "downstream": "e26jflpq"},
+    # 2: {"local": "6vtk4k51", "e2e": "bst0prdd", "downstream": "e26jflpq"},
     6: {"local": "jup3glm9", "e2e": "tvj2owza", "downstream": "2lzle2f0"},
-    10: {"local": "5vmpdgaz", "e2e": "8crnit9h", "downstream": "cvj5um2h"},
+    # 10: {"local": "5vmpdgaz", "e2e": "8crnit9h", "downstream": "cvj5um2h"},
 }
 
 
@@ -38,6 +50,7 @@ COLOR_MAP = {
     "local": "#f0a70a",
     "e2e": "#518c31",
     "downstream": plt.get_cmap("tab20b").colors[2],  # type: ignore[reportAttributeAccessIssue]
+    "e2e_local": plt.get_cmap("tab20b").colors[0],  # type: ignore[reportAttributeAccessIssue]
 }
 
 
@@ -509,7 +522,6 @@ def plot_umap(
         for label, color in zip(labels, colors, strict=False)
     ]
     plt.legend(handles=legend_elements, loc="lower right", title=legend_title)
-    # run_type_str = " and ".join(run_types)
     # plt.title(f"UMAP of alive dictionary elements in {sae_pos}: {run_type_str}")
 
     if grid:
@@ -622,7 +634,7 @@ def create_umap_plots(
 ):
     run_types_str = "_".join(run_types)
     run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS  # type: ignore
-    out_dir = Path(__file__).parent / "out" / "umap" / f"constant_{constant_val}"
+    out_dir = Path(__file__).parent / "out" / "umap" / f"constant_{constant_val}_e2e-local"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if lims is None:
@@ -631,10 +643,12 @@ def create_umap_plots(
             6: {"x": (None, None), "y": (None, None)},
             10: {"x": (None, None), "y": (None, None)},
         }
-    for layer_num in [2, 6, 10]:
+    # for layer_num in [2, 6, 10]:
+    for layer_num in [6]:
         run_ids = run_dict[layer_num]
 
-        embed_file = out_dir / REGIONS[run_types_str][layer_num].filename
+        # embed_file = out_dir / REGIONS[run_types_str][layer_num].filename
+        embed_file = out_dir / f"umap_blocks.{layer_num}.hook_resid_pre.pt"
 
         if compute_umaps:
             all_alive_elements = []
@@ -681,29 +695,29 @@ def create_umap_plots(
             out_file=umap_file,
             lims=lims[layer_num],
             grid=grid,
-            regions=REGIONS[run_types_str][layer_num].regions,
+            # regions=REGIONS[run_types_str][layer_num].regions,
             legend_title=f"Layer {layer_num}",
         )
-        for i, region in enumerate(REGIONS[run_types_str][layer_num].regions):
-            region_dict_1_indices, region_dict_2_indices = get_dict_indices_for_embedding_range(
-                embed_info, **region.coords.model_dump()
-            )
+        # for i, region in enumerate(REGIONS[run_types_str][layer_num].regions):
+        #     region_dict_1_indices, region_dict_2_indices = get_dict_indices_for_embedding_range(
+        #         embed_info, **region.coords.model_dump()
+        #     )
 
-            region_filename = REGIONS[run_types_str][layer_num].filename
-            path_from_repo_root = (out_dir / region_filename).relative_to(REPO_ROOT)
-            with open(f"{embed_file}_region_{i}.json", "w") as f:
-                json.dump(
-                    {
-                        "embedding_file": str(path_from_repo_root),
-                        "run_labels": labels,
-                        "description": region.description,
-                        "coords": region.coords.model_dump(),
-                        run_types[0]: region_dict_1_indices,
-                        run_types[1]: region_dict_2_indices,
-                    },
-                    f,
-                    indent=2,
-                )
+        #     region_filename = REGIONS[run_types_str][layer_num].filename
+        #     path_from_repo_root = (out_dir / region_filename).relative_to(REPO_ROOT)
+        #     with open(f"{embed_file}_region_{i}.json", "w") as f:
+        #         json.dump(
+        #             {
+        #                 "embedding_file": str(path_from_repo_root),
+        #                 "run_labels": labels,
+        #                 "description": region.description,
+        #                 "coords": region.coords.model_dump(),
+        #                 run_types[0]: region_dict_1_indices,
+        #                 run_types[1]: region_dict_2_indices,
+        #             },
+        #             f,
+        #             indent=2,
+        #         )
 
 
 # First-level keys are layer numbers, second-level keys are run types
@@ -733,7 +747,7 @@ def get_max_pairwise_similarities(
         A dictionary mapping layer numbers to dictionaries of max pairwise cosine similarities,
         where the inner dictionary is keyed by run type.
     """
-    if from_file:
+    if from_file and out_file.exists():
         return torch.load(out_file, map_location="cpu")
 
     max_pairwise_similarities: MaxPairwiseSimilarities = {}
@@ -767,6 +781,7 @@ def create_subplot_hists(
     suptitle: str | None = None,
     out_file: Path | None = None,
     alpha=0.8,
+    share_ylims: bool = False,
 ):
     fig = fig or plt.figure(figsize=figsize, layout="constrained")
     axs = fig.subplots(len(sim_list), 1, sharex=True, gridspec_kw={"hspace": 0.1})
@@ -779,6 +794,14 @@ def create_subplot_hists(
 
     axs[-1].set_xlim(xlim)
     axs[-1].set_xlabel(xlabel)
+    if share_ylims:
+        # Make the ylim min and max consistent across subplots
+        ylims = [ax.get_ylim() for ax in axs]
+        min_ylim = min(ylim[0] for ylim in ylims)
+        max_ylim = max(ylim[1] for ylim in ylims)
+        for ax in axs:
+            ax.set_ylim(min_ylim, max_ylim)
+
     # plt.tight_layout()
     if suptitle is not None:
         fig.suptitle(suptitle, fontweight="bold")
@@ -788,28 +811,36 @@ def create_subplot_hists(
         logger.info(f"Saved plot to {out_file}")
 
 
-def create_within_sae_similarity_plots(api: wandb.Api, project: str):
-    for constant_val in ["CE", "l0"]:
-        run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS
-        out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}"
+def create_within_sae_similarity_plots(
+    api: wandb.Api, project: str, run_dict: dict[int, dict[str, str]] | None = None
+):
+    # for constant_val in ["CE", "l0"]:
+    for constant_val in ["l0"]:
+        run_dict = run_dict or (CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS)
+        # out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}"
+        out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}_e2e-local"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_file = out_dir / f"max_pairwise_similarities_constant_{constant_val}.pt"
         pairwise_similarities = get_max_pairwise_similarities(
             api=api,
             project=project,
             run_dict=run_dict,
-            run_types=("local", "e2e", "downstream"),
+            run_types=("local", "e2e", "downstream", "e2e_local"),
+            # run_types=("local", "e2e", "e2e_local"),
             out_file=out_file,
-            from_file=True,
+            from_file=False,
         )
 
         # plot all layers
         fig = plt.figure(figsize=(8, 4), layout="constrained")
         subfigs = fig.subfigures(1, len(pairwise_similarities), wspace=0.05)
+        subfigs = np.atleast_1d(subfigs)
         for i, (layer_num, layer_similarities) in enumerate(pairwise_similarities.items()):
             create_subplot_hists(
                 sim_list=list(layer_similarities.values()),
-                titles=["local", "end-to-end", "e2e + downstream"],
+                # titles=["local", "end-to-end", "e2e + downstream"],
+                titles=["local", "end-to-end", "e2e + downstream", "e2e + local"],
+                # titles=["local", "end-to-end", "e2e + local"],
                 colors=[COLOR_MAP[run_type] for run_type in layer_similarities],
                 fig=subfigs[i],
                 suptitle=f"Layer {layer_num}",
@@ -818,16 +849,17 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
         fig.suptitle(
             f"Within SAE Similarities (Constant {constant_val.upper()})", fontweight="bold"
         )
-        out_file = out_dir / f"within_sae_similarities_{constant_val}_all_layers.png"
+        out_file = out_dir / f"within_sae_similarities_{constant_val}_all_layers_2.png"
         plt.savefig(out_file)
         plt.savefig(out_file.with_suffix(".svg"))
         logger.info(f"Saved plot to {out_file}")
-
+        return
         if constant_val == "CE":
             # Just layer 6
             fig = create_subplot_hists(
                 sim_list=list(pairwise_similarities[6].values()),
                 titles=["local", "end-to-end", "e2e + downstream"],
+                # titles=["local", "end-to-end", "e2e + local"],
                 colors=[COLOR_MAP[run_type] for run_type in pairwise_similarities[6]],
                 figsize=(4, 4),
                 out_file=out_dir / "within_sae_similarities_CE_layer_6.png",
@@ -880,12 +912,13 @@ CrossMaxSimilarity = dict[int, dict[str, Float[Tensor, "n_dict_1"]]]  # noqa: F8
 def create_cross_type_similarity_plots(
     api: wandb.Api,
     project: str,
-    constant_val: str = "CE",
+    constant_val: str,
     from_file: bool = False,
+    run_dict: dict[int, dict[str, str]] | None = None,
 ):
     """Create plots comparing the max similarities between different run types."""
-    run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS
-    out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}"
+    run_dict = run_dict or (CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS)
+    out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}_e2e-local"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Get pairwise similarities between the two runtypes for each layer
@@ -896,7 +929,8 @@ def create_cross_type_similarity_plots(
         cross_max_similarity: CrossMaxSimilarity = {}
         for layer_num in run_dict:
             cross_max_similarity[layer_num] = {}
-            for comparison_type in ["e2e", "downstream"]:
+            # for comparison_type in ["e2e", "downstream"]:
+            for comparison_type in ["e2e", "downstream", "e2e_local"]:
                 cross_max_similarity[layer_num][comparison_type] = get_cross_max_similarities(
                     api=api,
                     project_name=project,
@@ -907,13 +941,16 @@ def create_cross_type_similarity_plots(
     # All layers
     fig = plt.figure(figsize=(8, 3), layout="constrained")
     subfigs = fig.subfigures(1, len(cross_max_similarity), wspace=0.05)
+    subfigs = np.atleast_1d(subfigs)
     for i, (layer_num, max_sim) in enumerate(cross_max_similarity.items()):
         create_subplot_hists(
             sim_list=list(max_sim.values()),
             fig=subfigs[i],
             suptitle=f"Layer {layer_num}",
-            colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"]],
-            titles=["end-to-end → local", "e2e + downstream → local"],
+            # colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"]],
+            # titles=["end-to-end → local", "e2e + downstream → local"],
+            colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"], COLOR_MAP["e2e_local"]],
+            titles=["end-to-end → local", "e2e + downstream → local", "e2e + local -> local"],
         )
     fig.suptitle(f"Cross Type Similarities (Constant {constant_val.upper()})", fontweight="bold")
     out_file = out_dir / "cross_type_similarities_all_layers.png"
@@ -925,9 +962,12 @@ def create_cross_type_similarity_plots(
     fig = create_subplot_hists(
         sim_list=list(cross_max_similarity[6].values()),
         figsize=(4, 3),
-        colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"]],
-        titles=["end-to-end → local", "e2e + downstream → local"],
+        # colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"]],
+        # titles=["end-to-end → local", "e2e + downstream → local"],
+        colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"], COLOR_MAP["e2e_local"]],
+        titles=["end-to-end → local", "e2e + downstream → local", "e2e + local -> local"],
         out_file=out_dir / "cross_type_similarities_layer_6.png",
+        share_ylims=True,
     )
 
 
@@ -961,9 +1001,51 @@ if __name__ == "__main__":
     project = "gpt2"
     api = wandb.Api()
 
-    # create_within_sae_similarity_plots(api, project)
+    # e2e_local = "7prgy8pa"
+    # local_similar_ce_as_e2e_local = "2wvu1zs5"
+    # local_similar_l0_as_e2e_local = "1jy3m5j0"
+    # e2e_similar_ce_as_e2e_local = "1bubkmps"
+    # e2e_similar_l0_as_e2e_local = "1bubkmps"
+    # recon_similar_ce_as_e2e_local = "p9zmh62k"  # Slightly better CE
+    # recon_similar_ce_as_e2e_local = "rb8q8czb"  # Slightly worse CE. Most similar in L0 to localL0
+    # recon_similar_l0_as_e2e_local = "p9zmh62k"
+    # recon_similar_l0_as_local_1jy3m5j0 = "rb8q8czb"
 
-    # create_cross_type_similarity_plots(api, project, constant_val="CE")
+    # Similar L0 to the e2e_local run
+    # run_dict = {
+    #     6: {
+    #         "local": "1jy3m5j0",
+    #         "e2e": "1bubkmps",
+    #         # "downstream": "p9zmh62k", better CE, worse L0
+    #         "downstream": "rb8q8czb",
+    #         "e2e_local": "7prgy8pa",
+    #     }
+    # }
+
+    # Similar L0 to the local run 1jy3m5j0
+    # run_dict = {
+    #     6: {
+    #         "local": "1jy3m5j0",
+    #         "e2e": "1bubkmps",
+    #         "downstream": "rb8q8czb",
+    #         "e2e_local": "7prgy8pa",
+    #     }
+    # }
+
+    # Similar CE
+    # run_dict = {
+    #     6: {
+    #         "local": "2wvu1zs5",
+    #         "e2e": "1bubkmps",
+    #         "downstream": "p9zmh62k",  # better CE, worse L0
+    #         "e2e_local": "7prgy8pa",
+    #     }
+    # }
+    # create_within_sae_similarity_plots(api, project, run_dict=run_dict)
+    # create_within_sae_similarity_plots(api, project)
+    # create_cross_type_similarity_plots(api, project, constant_val="CE", run_dict=run_dict)
+    # create_cross_type_similarity_plots(api, project, constant_val="l0", run_dict=run_dict)
+    # exit()
 
     # # These three are also relevent but not in the paper
     # # Sparsity coeff 1.5
@@ -986,36 +1068,47 @@ if __name__ == "__main__":
     # create_cross_seed_similarity_plot(api, project, run_ids)
 
     # Post-hoc ignore the identified outliers in e2e-local umap
-    e2e_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
-        2: {"x": (-2.0, None), "y": (None, None)},
-        6: {"x": (4.0, None), "y": (None, None)},
-        10: {"x": (None, None), "y": (None, None)},
-    }
+    # e2e_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
+    #     2: {"x": (-2.0, None), "y": (None, None)},
+    #     6: {"x": (4.0, None), "y": (None, None)},
+    #     10: {"x": (None, None), "y": (None, None)},
+    # }
+    # try:
+    #     create_umap_plots(
+    #         api,
+    #         project,
+    #         run_types=("e2e", "local"),
+    #         compute_umaps=False,
+    #         constant_val="CE",
+    #         lims=e2e_local_ce_lims,
+    #     )
+    # except FileNotFoundError:
+    #     logger.warning("Could not create e2e-local UMAP plot")
+
     try:
         create_umap_plots(
             api,
             project,
-            run_types=("e2e", "local"),
-            compute_umaps=False,
+            run_types=("e2e_local", "local"),
+            compute_umaps=True,
             constant_val="CE",
-            lims=e2e_local_ce_lims,
         )
     except FileNotFoundError:
         logger.warning("Could not create e2e-local UMAP plot")
 
-    downstream_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
-        2: {"x": (4, None), "y": (None, None)},
-        6: {"x": (None, None), "y": (None, None)},
-        10: {"x": (None, None), "y": (None, None)},
-    }
-    create_umap_plots(
-        api,
-        project,
-        run_types=("downstream", "local"),
-        compute_umaps=False,
-        constant_val="CE",
-        lims=downstream_local_ce_lims,
-        grid=False,
-    )
+    # downstream_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
+    #     2: {"x": (4, None), "y": (None, None)},
+    #     6: {"x": (None, None), "y": (None, None)},
+    #     10: {"x": (None, None), "y": (None, None)},
+    # }
+    # create_umap_plots(
+    #     api,
+    #     project,
+    #     run_types=("downstream", "local"),
+    #     compute_umaps=False,
+    #     constant_val="CE",
+    #     lims=downstream_local_ce_lims,
+    #     grid=False,
+    # )
 
 # %%

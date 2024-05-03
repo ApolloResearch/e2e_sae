@@ -3,7 +3,9 @@ from wandb.apis.public import Run
 from wandb.apis.public.runs import Runs
 
 
-def _get_run_type(kl_coeff: float | None, in_to_orig_coeff: float | None) -> str:
+def _get_run_type(
+    kl_coeff: float | None, in_to_orig_coeff: float | None, out_to_in_coeff: float | None
+) -> str:
     if (
         kl_coeff is not None
         and in_to_orig_coeff is not None
@@ -11,7 +13,20 @@ def _get_run_type(kl_coeff: float | None, in_to_orig_coeff: float | None) -> str
         and in_to_orig_coeff > 0
     ):
         return "downstream"
-    if kl_coeff is not None and kl_coeff > 0:
+    if (
+        kl_coeff is not None
+        and out_to_in_coeff is not None
+        and in_to_orig_coeff is None
+        and kl_coeff > 0
+        and out_to_in_coeff > 0
+    ):
+        return "e2e_local"
+    if (
+        kl_coeff is not None
+        and kl_coeff > 0
+        and (out_to_in_coeff is None or out_to_in_coeff == 0)
+        and in_to_orig_coeff is None
+    ):
         return "e2e"
     return "local"
 
@@ -64,7 +79,7 @@ def _extract_per_layer_metrics(
 
 
 def create_run_df(
-    runs: Runs, per_layer_metrics: bool = True, use_run_name: bool = False
+    runs: Runs, per_layer_metrics: bool = True, use_run_name: bool = False, grad_norm: bool = True
 ) -> pd.DataFrame:
     run_info = []
     for run in runs:
@@ -80,15 +95,18 @@ def create_run_df(
 
         kl_coeff = None
         in_to_orig_coeff = None
+        out_to_in_coeff = None
         if "logits_kl" in run.config["loss"] and run.config["loss"]["logits_kl"] is not None:
             kl_coeff = run.config["loss"]["logits_kl"]["coeff"]
         if "in_to_orig" in run.config["loss"] and run.config["loss"]["in_to_orig"] is not None:
             in_to_orig_coeff = run.config["loss"]["in_to_orig"]["total_coeff"]
+        if "out_to_in" in run.config["loss"] and run.config["loss"]["out_to_in"] is not None:
+            out_to_in_coeff = run.config["loss"]["out_to_in"]["coeff"]
 
         if use_run_name:
             run_type = _get_run_type_using_names(run.name)
         else:
-            run_type = _get_run_type(kl_coeff, in_to_orig_coeff)
+            run_type = _get_run_type(kl_coeff, in_to_orig_coeff, out_to_in_coeff)
 
         explained_var_layers = {}
         explained_var_ln_layers = {}
@@ -160,6 +178,7 @@ def create_run_df(
                 "ratio": ratio,
                 "sparsity_coeff": run.config["loss"]["sparsity"]["coeff"],
                 "in_to_orig_coeff": in_to_orig_coeff,
+                "out_to_in_coeff": out_to_in_coeff,
                 "kl_coeff": kl_coeff,
                 "out_to_in": out_to_in,
                 "L0": run.summary_metrics[f"sparsity/eval/L_0/{sae_pos}"],
@@ -170,7 +189,7 @@ def create_run_df(
                 "alive_dict_elements": run.summary_metrics[
                     f"sparsity/alive_dict_elements/{sae_pos}"
                 ],
-                "grad_norm": run.summary_metrics["grad_norm"],
+                "grad_norm": run.summary_metrics["grad_norm"] if grad_norm else None,
                 **explained_var_layers,
                 **explained_var_ln_layers,
                 **recon_loss_layers,

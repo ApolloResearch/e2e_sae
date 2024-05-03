@@ -17,16 +17,10 @@ from e2e_sae.analysis import create_run_df
 from e2e_sae.log import logger
 from e2e_sae.scripts.geometric_analysis import COLOR_MAP
 
-RUN_TYPE_MAP = {
-    "e2e": ("End-to-end", "o"),
-    "downstream": ("Downstream", "X"),
-    "local": ("Local", "^"),
-}
-
 # Runs with constant CE loss increase for each layer. Values represent wandb run IDs.
 CONSTANT_CE_RUNS = {
     2: {"e2e": "ovhfts9n", "local": "ue3lz0n7", "downstream": "visi12en"},
-    6: {"e2e": "zgdpkafo", "local": "1jy3m5j0", "downstream": "2lzle2f0"},
+    6: {"e2e": "zgdpkafo", "local": "1jy3m5j0", "downstream": "2lzle2f0", "e2e_local": "7prgy8pa"},
     10: {"e2e": "8crnit9h", "local": "m2hntlav", "downstream": "cvj5um2h"},
 }
 
@@ -35,6 +29,7 @@ STYLE_MAP = {
     "local": {"marker": "^", "color": COLOR_MAP["local"], "label": "Local"},
     "e2e": {"marker": "o", "color": COLOR_MAP["e2e"], "label": "End-to-end"},
     "downstream": {"marker": "X", "color": COLOR_MAP["downstream"], "label": "E2e + downstream"},
+    "e2e_local": {"marker": "s", "color": COLOR_MAP["e2e_local"], "label": "End-to-end + Local"},
 }
 
 
@@ -102,9 +97,9 @@ def plot_scatter_or_line(
             norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
 
         for run_type in run_types:
-            if run_type not in RUN_TYPE_MAP:
+            if run_type not in STYLE_MAP:
                 raise ValueError(f"Invalid run type: {run_type}")
-            label, marker = RUN_TYPE_MAP[run_type]
+            label, marker = STYLE_MAP[run_type]["label"], STYLE_MAP[run_type]["marker"]
             data = layer_df.loc[layer_df["run_type"] == run_type]
             if not data.empty:
                 plot_kwargs = {
@@ -171,11 +166,11 @@ def plot_scatter_or_line(
                     mlines.Line2D(
                         [],
                         [],
-                        marker=RUN_TYPE_MAP[run_type][1],
+                        marker=STYLE_MAP[run_type]["marker"],
                         color="black",
                         linestyle="None",
                         markersize=8,
-                        label=RUN_TYPE_MAP[run_type][0],
+                        label=STYLE_MAP[run_type]["label"],
                     )
                 )
             ax.legend(handles=legend_handles, title="Run Type", loc="best")
@@ -194,7 +189,7 @@ def plot_per_layer_metric(
     df: pd.DataFrame,
     run_ids: Mapping[int, Mapping[str, str]],
     metric: str,
-    final_layer: int = 8,
+    final_layer: int = 12,
     out_file: str | Path | None = None,
     ylim: tuple[float | None, float | None] = (None, None),
     legend_label_cols_and_precision: list[tuple[str, int]] | None = None,
@@ -495,9 +490,9 @@ def plot_two_axes_line(
         layer_df = df.loc[df["layer"] == layer]
         axs = subfig.subplots(1, 2)
         for run_type in run_types:
-            if run_type not in RUN_TYPE_MAP:
+            if run_type not in STYLE_MAP:
                 raise ValueError(f"Invalid run type: {run_type}")
-            label, marker = RUN_TYPE_MAP[run_type]
+            label, marker = STYLE_MAP[run_type]["label"], STYLE_MAP[run_type]["marker"]
             color = COLOR_MAP[run_type] if color_map is None else color_map[run_type]
             data = layer_df.loc[layer_df["run_type"] == run_type]
             if not data.empty:
@@ -581,7 +576,7 @@ def calc_summary_metric(
     layer_df = df.loc[df["layer"] == interpolate_layer]
     intersections = {x1: {}, x2: {}}
     for run_type in run_types:
-        if run_type not in RUN_TYPE_MAP:
+        if run_type not in STYLE_MAP:
             raise ValueError(f"Invalid run type: {run_type}")
         data = layer_df.loc[layer_df["run_type"] == run_type]
         if not data.empty:
@@ -825,7 +820,6 @@ def get_df_gpt2() -> pd.DataFrame:
     # Ignore runs that have an L0 bigger than d_resid
     df = df.loc[df["L0"] <= d_resid]
     # Only use the e2e+recon run in layer 10 that has kl_coeff=0.75
-    # df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "downstream") & (df["kl_coeff"] != 0.75))]
     df = df.loc[
         ~(
             (df["layer"] == 10)
@@ -837,60 +831,60 @@ def get_df_gpt2() -> pd.DataFrame:
 
 
 def gpt2_plots():
-    run_types = ("local", "e2e", "downstream")
+    run_types = ("local", "e2e", "downstream", "e2e_local")
     n_layers = 12
 
     df = get_df_gpt2()
 
     layers = list(sorted(df["layer"].unique()))
 
-    plot_n_samples_comparison(
-        df=df.loc[(df["ratio"] == 60) & (df["seed"] == 0) & (df["lr"] == 5e-4)],
-        out_dir=Path(__file__).resolve().parent / "out",
-        run_types=run_types,
-    )
-    # # 1 seed in each layer
-    local_seed_ids = [("ue3lz0n7", "d8vgjnyc"), ("1jy3m5j0", "uqfp43ti"), ("m2hntlav", "77bp68uk")]
-    e2e_seed_ids = [("ovhfts9n", "slxwr007"), ("tvj2owza", "atfccmo3"), ("jnjpmyqk", "ac9i1g6v")]
-    e2e_recon_ids = [("y8sca507", "hqo5azo2")]
-    seed_ids = local_seed_ids + e2e_seed_ids + e2e_recon_ids
-    plot_seed_comparison(
-        df=df.loc[df["lr"] == 5e-4],
-        run_ids=seed_ids,
-        out_dir=Path(__file__).resolve().parent / "out" / "seed_comparison",
-    )
+    # plot_n_samples_comparison(
+    #     df=df.loc[(df["ratio"] == 60) & (df["seed"] == 0) & (df["lr"] == 5e-4)],
+    #     out_dir=Path(__file__).resolve().parent / "out",
+    #     run_types=run_types,
+    # )
+    # # # 1 seed in each layer
+    # local_seed_ids = [("ue3lz0n7", "d8vgjnyc"), ("1jy3m5j0", "uqfp43ti"), ("m2hntlav", "77bp68uk")]
+    # e2e_seed_ids = [("ovhfts9n", "slxwr007"), ("tvj2owza", "atfccmo3"), ("jnjpmyqk", "ac9i1g6v")]
+    # e2e_recon_ids = [("y8sca507", "hqo5azo2")]
+    # seed_ids = local_seed_ids + e2e_seed_ids + e2e_recon_ids
+    # plot_seed_comparison(
+    #     df=df.loc[df["lr"] == 5e-4],
+    #     run_ids=seed_ids,
+    #     out_dir=Path(__file__).resolve().parent / "out" / "seed_comparison",
+    # )
 
-    plot_ratio_comparison(
-        df=df.loc[(df["seed"] == 0) & (df["n_samples"] == 400_000) & (df["lr"] == 5e-4)],
-        out_dir=Path(__file__).resolve().parent / "out" / "ratio_comparison",
-        run_types=run_types,
-    )
+    # plot_ratio_comparison(
+    #     df=df.loc[(df["seed"] == 0) & (df["n_samples"] == 400_000) & (df["lr"] == 5e-4)],
+    #     out_dir=Path(__file__).resolve().parent / "out" / "ratio_comparison",
+    #     run_types=run_types,
+    # )
 
-    local_lr_df = df.loc[
-        (df["seed"] == 0)
-        & (df["n_samples"] == 400_000)
-        & (df["ratio"] == 60)
-        & (df["run_type"] == "local")
-        & ~((df["L0"] > 300) & (df["layer"] == 2))  # Avoid points in L0 but not alive_dict subplot
-    ]
-    plot_two_axes_line_facet(
-        df=local_lr_df,
-        x1="L0",
-        x2="alive_dict_elements",
-        y="CELossIncrease",
-        facet_by="layer",
-        facet_vals=layers,
-        line_by="lr",
-        xlabel1="L0",
-        xlabel2="Alive Dictionary Elements",
-        ylabel="CE Loss Increase",
-        xlim1={2: (200.0, 0.0), 6: (200.0, 0.0), 10: (300.0, 0.0)},
-        xlim2={layer: (0, 45_000) for layer in layers},
-        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
-        ylim={layer: (0.4, 0) for layer in layers},
-        title={layer: f"Layer {layer}" for layer in layers},
-        out_file=Path(__file__).resolve().parent / "out" / "lr_comparison" / "lr_comparison.png",
-    )
+    # local_lr_df = df.loc[
+    #     (df["seed"] == 0)
+    #     & (df["n_samples"] == 400_000)
+    #     & (df["ratio"] == 60)
+    #     & (df["run_type"] == "local")
+    #     & ~((df["L0"] > 300) & (df["layer"] == 2))  # Avoid points in L0 but not alive_dict subplot
+    # ]
+    # plot_two_axes_line_facet(
+    #     df=local_lr_df,
+    #     x1="L0",
+    #     x2="alive_dict_elements",
+    #     y="CELossIncrease",
+    #     facet_by="layer",
+    #     facet_vals=layers,
+    #     line_by="lr",
+    #     xlabel1="L0",
+    #     xlabel2="Alive Dictionary Elements",
+    #     ylabel="CE Loss Increase",
+    #     xlim1={2: (200.0, 0.0), 6: (200.0, 0.0), 10: (300.0, 0.0)},
+    #     xlim2={layer: (0, 45_000) for layer in layers},
+    #     xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+    #     ylim={layer: (0.4, 0) for layer in layers},
+    #     title={layer: f"Layer {layer}" for layer in layers},
+    #     out_file=Path(__file__).resolve().parent / "out" / "lr_comparison" / "lr_comparison.png",
+    # )
     out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
     out_dir.mkdir(exist_ok=True, parents=True)
 
@@ -908,148 +902,158 @@ def gpt2_plots():
         & ~performance_df["name"].str.contains("lower-downstream")
     ]
 
-    # ylims for plots with ce_diff on the y axis
-    loss_increase_lims = {2: (0.2, 0.0), 6: (0.4, 0.0), 10: (0.4, 0.0)}
-    # xlims for plots with L0 on the x axis
-    l0_diff_xlims = {2: (200.0, 0.0), 6: (600.0, 0.0), 10: (600.0, 0.0)}
+    # # ylims for plots with ce_diff on the y axis
+    # loss_increase_lims = {2: (0.2, 0.0), 6: (0.4, 0.0), 10: (0.4, 0.0)}
+    # # xlims for plots with L0 on the x axis
+    # l0_diff_xlims = {2: (200.0, 0.0), 6: (600.0, 0.0), 10: (600.0, 0.0)}
 
-    # With performance_df, make a simple scatter plot of grad_norm vs alive_dict_elements
-    plot_scatter_or_line(
-        performance_df,
-        x="grad_norm",
-        y="alive_dict_elements",
-        ylim={layer: (0, 45_000) for layer in layers},
-        title="Grad Norm vs Alive Dictionary Elements",
-        xlabel="Grad Norm",
-        ylabel="Alive Dictionary Elements",
-        out_file=out_dir / "grad_norm_vs_alive_dict_elements.png",
-        sparsity_label=False,
-        run_types=run_types,
-        plot_type="scatter",
-    )
+    # # With performance_df, make a simple scatter plot of grad_norm vs alive_dict_elements
+    # plot_scatter_or_line(
+    #     performance_df,
+    #     x="grad_norm",
+    #     y="alive_dict_elements",
+    #     ylim={layer: (0, 45_000) for layer in layers},
+    #     title="Grad Norm vs Alive Dictionary Elements",
+    #     xlabel="Grad Norm",
+    #     ylabel="Alive Dictionary Elements",
+    #     out_file=out_dir / "grad_norm_vs_alive_dict_elements.png",
+    #     sparsity_label=False,
+    #     run_types=run_types,
+    #     plot_type="scatter",
+    # )
 
-    # Pareto curve plots (two axes line plots with L0 and alive_dict_elements on the x-axis)
-    # all layers
-    plot_two_axes_line_facet(
-        performance_df,
-        x1="L0",
-        x2="alive_dict_elements",
-        y="CELossIncrease",
-        facet_by="layer",
-        facet_vals=layers,
-        line_by="run_type",
-        xlabel1="L0",
-        xlabel2="Alive Dictionary Elements",
-        ylabel="CE Loss Increase",
-        xlim1=l0_diff_xlims,
-        xlim2={layer: (0, 45_000) for layer in layers},
-        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
-        ylim=loss_increase_lims,
-        title={layer: f"Layer {layer}" for layer in layers},
-        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss.png",
-        styles=STYLE_MAP,
-        legend_title="Run Type",
-    )
-    # just layer 6
-    plot_two_axes_line_facet(
-        performance_df,
-        x1="L0",
-        x2="alive_dict_elements",
-        y="CELossIncrease",
-        facet_by="layer",
-        facet_vals=[6],
-        line_by="run_type",
-        xlabel1="L0",
-        xlabel2="Alive Dictionary Elements",
-        ylabel="CE Loss Increase",
-        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_layer_6.png",
-        xlim1=l0_diff_xlims,
-        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
-        ylim=loss_increase_lims,
-        styles=STYLE_MAP,
-        legend_title="Run Type",
-    )
+    # # Pareto curve plots (two axes line plots with L0 and alive_dict_elements on the x-axis)
+    # # all layers
+    # plot_two_axes_line_facet(
+    #     performance_df,
+    #     x1="L0",
+    #     x2="alive_dict_elements",
+    #     y="CELossIncrease",
+    #     facet_by="layer",
+    #     facet_vals=layers,
+    #     line_by="run_type",
+    #     xlabel1="L0",
+    #     xlabel2="Alive Dictionary Elements",
+    #     ylabel="CE Loss Increase",
+    #     xlim1=l0_diff_xlims,
+    #     xlim2={layer: (0, 45_000) for layer in layers},
+    #     xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+    #     ylim=loss_increase_lims,
+    #     title={layer: f"Layer {layer}" for layer in layers},
+    #     out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss.png",
+    #     styles=STYLE_MAP,
+    #     legend_title="Run Type",
+    # )
+    # # just layer 6
+    # plot_two_axes_line_facet(
+    #     performance_df,
+    #     x1="L0",
+    #     x2="alive_dict_elements",
+    #     y="CELossIncrease",
+    #     facet_by="layer",
+    #     facet_vals=[6],
+    #     line_by="run_type",
+    #     xlabel1="L0",
+    #     xlabel2="Alive Dictionary Elements",
+    #     ylabel="CE Loss Increase",
+    #     out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_layer_6.png",
+    #     xlim1=l0_diff_xlims,
+    #     xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+    #     ylim=loss_increase_lims,
+    #     styles=STYLE_MAP,
+    #     legend_title="Run Type",
+    # )
 
-    # Calculate the summary metric for the CE ratio difference
-    calc_summary_metric(
-        df=performance_df,
-        x1="L0",
-        x2="alive_dict_elements",
-        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_summary.json",
-        interpolate_layer=6,
-        x1_interpolation_range=(300, 50),
-        x2_interpolation_range=(23000, 35000),
-    )
-    plot_scatter_or_line(
-        performance_df,
-        x="out_to_in",
-        y="CELossIncrease",
-        ylim=loss_increase_lims,
-        title="Out-to-In Loss vs CE Loss Increase",
-        xlabel="Out-to-In Loss",
-        ylabel="CE loss increase\n(original model - model with sae)",
-        out_file=out_dir / "out_to_in_vs_ce_loss.png",
-        sparsity_label=False,
-        run_types=run_types,
-        plot_type="scatter",
-    )
-    plot_scatter_or_line(
-        performance_df,
-        x="sum_recon_loss",
-        y="CELossIncrease",
-        ylim=loss_increase_lims,
-        title="Future Reconstruction Loss vs CE Loss Increase",
-        xlabel="Summed Future Reconstruction Loss",
-        ylabel="CE loss increase\n(original model - model with sae)",
-        out_file=out_dir / "future_recon_vs_ce_loss.png",
-        sparsity_label=False,
-        run_types=run_types,
-        plot_type="scatter",
-    )
-    plot_scatter_or_line(
-        performance_df,
-        x="explained_var_ln",
-        y="CELossIncrease",
-        z="L0",
-        ylim=loss_increase_lims,
-        title="Explained Variance LN vs CE Loss Increase",
-        xlabel="Explained Variance LN",
-        ylabel="CE loss increase\n(original model - model with sae)",
-        out_file=out_dir / "explained_var_ln_vs_ce_loss.png",
-        sparsity_label=False,
-        run_types=run_types,
-    )
-
+    # # Calculate the summary metric for the CE ratio difference
+    # calc_summary_metric(
+    #     df=performance_df,
+    #     x1="L0",
+    #     x2="alive_dict_elements",
+    #     out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_summary.json",
+    #     interpolate_layer=6,
+    #     x1_interpolation_range=(300, 50),
+    #     x2_interpolation_range=(23000, 35000),
+    # )
+    # plot_scatter_or_line(
+    #     performance_df,
+    #     x="out_to_in",
+    #     y="CELossIncrease",
+    #     ylim=loss_increase_lims,
+    #     title="Out-to-In Loss vs CE Loss Increase",
+    #     xlabel="Out-to-In Loss",
+    #     ylabel="CE loss increase\n(original model - model with sae)",
+    #     out_file=out_dir / "out_to_in_vs_ce_loss.png",
+    #     sparsity_label=False,
+    #     run_types=run_types,
+    #     plot_type="scatter",
+    # )
+    # plot_scatter_or_line(
+    #     performance_df,
+    #     x="sum_recon_loss",
+    #     y="CELossIncrease",
+    #     ylim=loss_increase_lims,
+    #     title="Future Reconstruction Loss vs CE Loss Increase",
+    #     xlabel="Summed Future Reconstruction Loss",
+    #     ylabel="CE loss increase\n(original model - model with sae)",
+    #     out_file=out_dir / "future_recon_vs_ce_loss.png",
+    #     sparsity_label=False,
+    #     run_types=run_types,
+    #     plot_type="scatter",
+    # )
+    # plot_scatter_or_line(
+    #     performance_df,
+    #     x="explained_var_ln",
+    #     y="CELossIncrease",
+    #     z="L0",
+    #     ylim=loss_increase_lims,
+    #     title="Explained Variance LN vs CE Loss Increase",
+    #     xlabel="Explained Variance LN",
+    #     ylabel="CE loss increase\n(original model - model with sae)",
+    #     out_file=out_dir / "explained_var_ln_vs_ce_loss.png",
+    #     sparsity_label=False,
+    #     run_types=run_types,
+    # )
+    # e2e_local = "7prgy8pa"
+    # local_similar_ce_as_e2e_local = "2wvu1zs5"
+    # local_similar_l0_as_e2e_local = "1jy3m5j0"
+    # e2e_similar_ce_as_e2e_local = "1bubkmps"
+    # e2e_similar_l0_as_e2e_local = "1bubkmps"
+    # recon_similar_ce_as_e2e_local = "p9zmh62k"  # Slightly better CE
+    # recon_similar_ce_as_e2e_local = "rb8q8czb"  # Slightly worse CE
+    # performance_df = df[df["id"].isin(["7prgy8pa", "1bubkmps", "p9zmh62k"])]
+    performance_df = df.loc[df["id"].isin(["7prgy8pa", "1bubkmps", "rb8q8czb"])]
     # We didn't track metrics for hook_resid_post in the final model layer in e2e+recon, though
     # perhaps we should have (including using the final layer's hook_resid_post in the loss)
     final_layer = n_layers - 1
+    # plot_per_layer_metric(
+    #     performance_df,
+    #     run_ids=CONSTANT_CE_RUNS,
+    #     metric="explained_var_ln",
+    #     final_layer=final_layer,
+    #     out_file=out_dir / "explained_var_ln_per_layer.png",
+    #     ylim=(None, 1),
+    #     legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
+    #     run_types=run_types,
+    #     horz_layout=True,
+    # )
+    # plot_per_layer_metric(
+    #     performance_df,
+    #     run_ids=CONSTANT_CE_RUNS,
+    #     metric="recon_loss",
+    #     final_layer=final_layer,
+    #     out_file=out_dir / "recon_loss_per_layer.png",
+    #     ylim=(0, None),
+    #     run_types=run_types,
+    #     horz_layout=True,
+    # )
     plot_per_layer_metric(
         performance_df,
-        run_ids=CONSTANT_CE_RUNS,
-        metric="explained_var_ln",
-        final_layer=final_layer,
-        out_file=out_dir / "explained_var_ln_per_layer.png",
-        ylim=(None, 1),
-        legend_label_cols_and_precision=[("L0", 0), ("CE_diff", 3)],
-        run_types=run_types,
-        horz_layout=True,
-    )
-    plot_per_layer_metric(
-        performance_df,
-        run_ids=CONSTANT_CE_RUNS,
+        # run_ids={6: CONSTANT_CE_RUNS[6]},
+        # run_ids={6: {"local": "7prgy8pa", "e2e": "1bubkmps", "downstream": "p9zmh62k"}},
+        run_ids={6: {"local": "7prgy8pa", "e2e": "1bubkmps", "downstream": "rb8q8czb"}},
         metric="recon_loss",
         final_layer=final_layer,
-        out_file=out_dir / "recon_loss_per_layer.png",
-        ylim=(0, None),
-        run_types=run_types,
-        horz_layout=True,
-    )
-    plot_per_layer_metric(
-        performance_df,
-        run_ids={6: CONSTANT_CE_RUNS[6]},
-        metric="recon_loss",
-        final_layer=final_layer,
-        out_file=out_dir / "recon_loss_per_layer_layer_6.png",
+        out_file=out_dir / "recon_loss_per_layer_layer_6_slightlybetterce.png",
         ylim=(0, 25),
         run_types=run_types,
         horz_layout=False,
@@ -1063,7 +1067,7 @@ def get_tinystories_1m_df() -> pd.DataFrame:
 
     d_resid = 64
 
-    df = create_run_df(runs, per_layer_metrics=False, use_run_name=True)
+    df = create_run_df(runs, per_layer_metrics=False, use_run_name=True, grad_norm=False)
 
     assert df["model_name"].nunique() == 1
 
