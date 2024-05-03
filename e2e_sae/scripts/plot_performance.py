@@ -738,11 +738,12 @@ def create_summary_latex_tables(df: pd.DataFrame, out_dir: Path) -> None:
     """
     col_map = {
         "layer": "Layer",
-        "run_type": "Run Type",
-        "sparsity_coeff": "$\\lambda$ (Sparsity Coeff)",
+        "run_type": "RunType",
+        "sparsity_coeff": "$\\lambda$",
         "L0": "$L_0$",
-        "alive_dict_elements": "Alive Elements",
-        "CELossIncrease": "CE Loss Increase",
+        "alive_dict_elements": "AliveElements",
+        "mean_grad_norm": "GradNorm",
+        "CELossIncrease": "CELossIncrease",
     }
     for run_group_name, run_group in [
         ("constant_CE", SIMILAR_CE_RUNS),
@@ -766,27 +767,23 @@ def create_summary_latex_tables(df: pd.DataFrame, out_dir: Path) -> None:
         order = {**layer_order, **run_type_order}
         run_group_df = run_group_df.sort_values(["layer", "run_type"], key=lambda x: x.map(order))
 
-        run_group_df = run_group_df.rename(columns=col_map)
-
         # Format the values in the DataFrame
-        run_group_df["$\\lambda$ (Sparsity Coeff)"] = run_group_df[
-            "$\\lambda$ (Sparsity Coeff)"
-        ].apply(lambda x: f"{x:.2f}")
-        run_group_df["$L_0$"] = run_group_df["$L_0$"].apply(lambda x: f"{x:.1f}")
-        run_group_df["Alive Elements"] = run_group_df["Alive Elements"].apply(
+        run_group_df["sparsity_coeff"] = run_group_df["sparsity_coeff"].apply(lambda x: f"{x:.2f}")
+        run_group_df["L0"] = run_group_df["L0"].apply(lambda x: f"{x:.1f}")
+        run_group_df["alive_dict_elements"] = run_group_df["alive_dict_elements"].apply(
             lambda x: f"{x // 1000}k"
         )
-        run_group_df["CE Loss Increase"] = run_group_df["CE Loss Increase"].apply(
-            lambda x: f"{x:.3f}"
-        )
+        run_group_df["mean_grad_norm"] = run_group_df["mean_grad_norm"].apply(lambda x: f"{x:.2f}")
+        run_group_df["CELossIncrease"] = run_group_df["CELossIncrease"].apply(lambda x: f"{x:.3f}")
 
+        run_group_df = run_group_df.rename(columns=col_map)
         # Create the LaTeX table
         latex_str = "\\begin{table}[h]\n\\centering\n"
         # The grey column will be L0 if run_group_name is constant_l0, and CE Loss otherwise
         if run_group_name == "constant_l0":
-            latex_str += "\\begin{tabular}{|c|c|c|>{\\columncolor[gray]{0.9}}c|c|c|}\n\\hline\n"
+            latex_str += "\\begin{tabular}{|c|c|c|>{\\columncolor[gray]{0.9}}c|c|c|c|}\n\\hline\n"
         else:
-            latex_str += "\\begin{tabular}{|c|c|c|c|c|>{\\columncolor[gray]{0.9}}c|}\n\\hline\n"
+            latex_str += "\\begin{tabular}{|c|c|c|c|c|c|>{\\columncolor[gray]{0.9}}c|}\n\\hline\n"
         # Same as above but have the c's depend on the number of columns
         latex_str += " & ".join(run_group_df.columns) + " \\\\\n\\hline\n"
 
@@ -915,7 +912,6 @@ def gpt2_plots():
     ]
 
     create_summary_latex_tables(df=performance_df, out_dir=Path(__file__).resolve().parent / "out")
-
     # ylims for plots with ce_diff on the y axis
     loss_increase_lims = {2: (0.2, 0.0), 6: (0.4, 0.0), 10: (0.4, 0.0)}
     # xlims for plots with L0 on the x axis
