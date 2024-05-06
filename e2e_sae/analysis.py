@@ -13,7 +13,10 @@ def _get_run_type(
         and kl_coeff > 0
         and in_to_orig_coeff > 0
     ):
-        return "downstream"
+        if out_to_in_coeff is not None and out_to_in_coeff > 0:
+            return "downstream_all"
+        else:
+            return "downstream"
     if (
         kl_coeff is not None
         and out_to_in_coeff is not None
