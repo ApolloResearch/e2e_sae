@@ -815,13 +815,6 @@ def get_df_gpt2() -> pd.DataFrame:
 
     df = create_run_df(runs)
 
-    # df for all run_types except for local should only have one unique lr (5e-4)
-    assert (
-        df.loc[df["run_type"] != "local"]["lr"].nunique() == 1
-        and df.loc[df["run_type"] != "local"]["lr"].unique()[0] == 5e-4
-    )
-
-    # assert df["lr"].nunique() == 1 and df["lr"].unique()[0] == 5e-4
     assert df["model_name"].nunique() == 1
 
     # Ignore runs that have an L0 bigger than d_resid
@@ -868,6 +861,7 @@ def gpt2_plots():
         run_types=run_types,
     )
 
+    # Local lr comparison
     local_lr_df = df.loc[
         (df["seed"] == 0)
         & (df["n_samples"] == 400_000)
@@ -891,7 +885,40 @@ def gpt2_plots():
         xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
         ylim={layer: (0.4, 0) for layer in layers},
         title={layer: f"Layer {layer}" for layer in layers},
-        out_file=Path(__file__).resolve().parent / "out" / "lr_comparison" / "lr_comparison.png",
+        out_file=Path(__file__).resolve().parent
+        / "out"
+        / "lr_comparison"
+        / "local_lr_comparison.png",
+    )
+
+    e2e_lr_df = df.loc[
+        (df["seed"] == 0)
+        & (df["n_samples"] == 400_000)
+        & (df["ratio"] == 60)
+        & (df["run_type"] == "e2e")
+        & ~((df["L0"] > 300) & (df["layer"] == 2))  # Avoid points in L0 but not alive_dict subplot
+        & (~df["name"].str.contains("seed-comparison"))
+    ]
+    plot_two_axes_line_facet(
+        df=e2e_lr_df,
+        x1="L0",
+        x2="alive_dict_elements",
+        y="CELossIncrease",
+        facet_by="layer",
+        facet_vals=layers,
+        line_by="lr",
+        xlabel1="L0",
+        xlabel2="Alive Dictionary Elements",
+        ylabel="CE Loss Increase",
+        xlim1={2: (200.0, 0.0), 6: (200.0, 0.0), 10: (300.0, 0.0)},
+        xlim2={layer: (0, 45_000) for layer in layers},
+        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+        ylim={layer: (0.4, 0) for layer in layers},
+        title={layer: f"Layer {layer}" for layer in layers},
+        out_file=Path(__file__).resolve().parent
+        / "out"
+        / "lr_comparison"
+        / "e2e_lr_comparison.png",
     )
     out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
     out_dir.mkdir(exist_ok=True, parents=True)
