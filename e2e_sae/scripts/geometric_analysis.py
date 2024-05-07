@@ -619,7 +619,20 @@ def create_umap_plots(
     constant_val: Literal["CE", "l0"] = "CE",
     lims: dict[int, dict[str, tuple[float | None, float | None]]] | None = None,
     grid: bool = False,
-):
+    plot_regions_in_layer: list[int] | None = None,
+) -> None:
+    """Create UMAP plots for the alive dictionary elements of the runs.
+
+    Args:
+        api: The wandb API.
+        project: The name of the wandb project.
+        run_types: The types of runs to compare.
+        compute_umaps: Whether to compute the UMAP embeddings or load them from file.
+        constant_val: The constant value to use for the runs.
+        lims: The x and y limits for the plot.
+        grid: Whether to plot a grid in the background.
+        plot_regions_in_layer: The layers to plot the regions in.
+    """
     run_types_str = "_".join(run_types)
     run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS  # type: ignore
     out_dir = Path(__file__).parent / "out" / "umap" / f"constant_{constant_val}"
@@ -674,6 +687,11 @@ def create_umap_plots(
 
         # The above but handle arbitrary number of run types
         labels = [f"{run_type}-{run_ids[run_type]}" for run_type in run_types]
+        regions = (
+            REGIONS[run_types_str][layer_num].regions
+            if plot_regions_in_layer and layer_num in plot_regions_in_layer
+            else None
+        )
         plot_umap(
             embed_info,
             labels=run_types,
@@ -681,7 +699,7 @@ def create_umap_plots(
             out_file=umap_file,
             lims=lims[layer_num],
             grid=grid,
-            regions=REGIONS[run_types_str][layer_num].regions,
+            regions=regions,
             legend_title=f"Layer {layer_num}",
         )
         for i, region in enumerate(REGIONS[run_types_str][layer_num].regions):
@@ -961,12 +979,12 @@ if __name__ == "__main__":
     project = "gpt2"
     api = wandb.Api()
 
-    # create_within_sae_similarity_plots(api, project)
+    create_within_sae_similarity_plots(api, project)
 
-    # create_cross_type_similarity_plots(api, project, constant_val="CE")
+    create_cross_type_similarity_plots(api, project, constant_val="CE")
 
-    # # These three are also relevent but not in the paper
-    # # Sparsity coeff 1.5
+    # These three are also relevent but not in the paper
+    # Sparsity coeff 1.5
     # create_seed_max_similarity_comparison_plots(
     #     api, project, run_ids=("bok0t1sw", "tuzvyysg"), layer=6, run_type="e2e"
     # )
@@ -978,12 +996,12 @@ if __name__ == "__main__":
     #     api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
     # )
 
-    # run_ids: dict[str, tuple[str, str]] = {
-    #     "local": ("1jy3m5j0", "uqfp43ti"),
-    #     "e2e": ("pzelh1s8", "ir00gg9g"),
-    #     "downstream": ("y8sca507", "hqo5azo2"),
-    # }
-    # create_cross_seed_similarity_plot(api, project, run_ids)
+    run_ids: dict[str, tuple[str, str]] = {
+        "local": ("1jy3m5j0", "uqfp43ti"),
+        "e2e": ("pzelh1s8", "ir00gg9g"),
+        "downstream": ("y8sca507", "hqo5azo2"),
+    }
+    create_cross_seed_similarity_plot(api, project, run_ids)
 
     # Post-hoc ignore the identified outliers in e2e-local umap
     e2e_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
@@ -999,6 +1017,8 @@ if __name__ == "__main__":
             compute_umaps=False,
             constant_val="CE",
             lims=e2e_local_ce_lims,
+            grid=False,
+            plot_regions_in_layer=[2, 6, 10],
         )
     except FileNotFoundError:
         logger.warning("Could not create e2e-local UMAP plot")
@@ -1016,6 +1036,7 @@ if __name__ == "__main__":
         constant_val="CE",
         lims=downstream_local_ce_lims,
         grid=False,
+        plot_regions_in_layer=[6],
     )
 
 # %%
