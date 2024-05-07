@@ -17,12 +17,6 @@ from e2e_sae.analysis import create_run_df
 from e2e_sae.log import logger
 from e2e_sae.scripts.geometric_analysis import COLOR_MAP
 
-RUN_TYPE_MAP = {
-    "e2e": ("End-to-end", "o"),
-    "downstream": ("Downstream", "X"),
-    "local": ("Local", "^"),
-}
-
 # Runs with constant CE loss increase for each layer. Values represent wandb run IDs.
 SIMILAR_CE_RUNS = {
     2: {"local": "ue3lz0n7", "e2e": "ovhfts9n", "downstream": "visi12en"},
@@ -37,9 +31,9 @@ SIMILAR_L0_RUNS = {
 
 
 STYLE_MAP = {
-    "local": {"marker": "^", "color": COLOR_MAP["local"], "label": "Local"},
-    "e2e": {"marker": "o", "color": COLOR_MAP["e2e"], "label": "End-to-end"},
-    "downstream": {"marker": "X", "color": COLOR_MAP["downstream"], "label": "E2e + downstream"},
+    "local": {"marker": "^", "color": COLOR_MAP["local"], "label": "local"},
+    "e2e": {"marker": "o", "color": COLOR_MAP["e2e"], "label": "e2e"},
+    "downstream": {"marker": "X", "color": COLOR_MAP["downstream"], "label": "e2e+ds"},
 }
 
 
@@ -107,9 +101,9 @@ def plot_scatter_or_line(
             norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
 
         for run_type in run_types:
-            if run_type not in RUN_TYPE_MAP:
+            if run_type not in STYLE_MAP:
                 raise ValueError(f"Invalid run type: {run_type}")
-            label, marker = RUN_TYPE_MAP[run_type]
+            label, marker = STYLE_MAP[run_type]["label"], STYLE_MAP[run_type]["marker"]
             data = layer_df.loc[layer_df["run_type"] == run_type]
             if not data.empty:
                 plot_kwargs = {
@@ -176,11 +170,11 @@ def plot_scatter_or_line(
                     mlines.Line2D(
                         [],
                         [],
-                        marker=RUN_TYPE_MAP[run_type][1],
+                        marker=STYLE_MAP[run_type]["marker"],
                         color="black",
                         linestyle="None",
                         markersize=8,
-                        label=RUN_TYPE_MAP[run_type][0],
+                        label=STYLE_MAP[run_type]["label"],
                     )
                 )
             ax.legend(handles=legend_handles, title="Run Type", loc="best")
@@ -506,7 +500,7 @@ def calc_summary_metric(
     layer_df = df.loc[df["layer"] == interpolate_layer]
     intersections = {x1: {}, x2: {}}
     for run_type in run_types:
-        if run_type not in RUN_TYPE_MAP:
+        if run_type not in STYLE_MAP:
             raise ValueError(f"Invalid run type: {run_type}")
         data = layer_df.loc[layer_df["run_type"] == run_type]
         if not data.empty:
