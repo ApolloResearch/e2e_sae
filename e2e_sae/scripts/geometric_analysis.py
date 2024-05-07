@@ -785,7 +785,24 @@ def create_subplot_hists(
     suptitle: str | None = None,
     out_file: Path | None = None,
     alpha=0.8,
+    plot_mean_lines: bool = True,
 ):
+    """Create a figure with subplots of histograms of the cosine similarities.
+
+    Args:
+        sim_list: A list of tensors containing the cosine similarities to plot.
+        titles: A list of titles for each subplot.
+        colors: A list of colors for each subplot.
+        bins: The number of bins to use for the histograms.
+        fig: The figure to plot the histograms on.
+        figsize: The size of the figure.
+        xlim: The x-axis limits for the histograms.
+        xlabel: The label for the x-axis.
+        suptitle: The title for the entire figure.
+        out_file: The file to save the plot to.
+        alpha: The alpha value for the histograms.
+        plot_mean_lines: Whether to plot vertical lines at the mean of each distribution.
+    """
     fig = fig or plt.figure(figsize=figsize, layout="constrained")
     axs = fig.subplots(len(sim_list), 1, sharex=True, gridspec_kw={"hspace": 0.1})
     axs = np.atleast_1d(axs)
@@ -797,6 +814,10 @@ def create_subplot_hists(
 
     axs[-1].set_xlim(xlim)
     axs[-1].set_xlabel(xlabel)
+    if plot_mean_lines:
+        for ax, sims in zip(axs, sim_list, strict=False):
+            # Draw vertical dotted line in black
+            ax.axvline(sims.mean().item(), color="k", linestyle="--", linewidth=1)
     # plt.tight_layout()
     if suptitle is not None:
         fig.suptitle(suptitle, fontweight="bold")
@@ -824,10 +845,11 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
         # plot all layers
         fig = plt.figure(figsize=(8, 4), layout="constrained")
         subfigs = fig.subfigures(1, len(pairwise_similarities), wspace=0.05)
+        subfigs = np.atleast_1d(subfigs)
         for i, (layer_num, layer_similarities) in enumerate(pairwise_similarities.items()):
             create_subplot_hists(
                 sim_list=list(layer_similarities.values()),
-                titles=["local", "end-to-end", "e2e + downstream"],
+                titles=["local", "e2e", "e2e+ds"],
                 colors=[COLOR_MAP[run_type] for run_type in layer_similarities],
                 fig=subfigs[i],
                 suptitle=f"Layer {layer_num}",
@@ -845,7 +867,7 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
             # Just layer 6
             fig = create_subplot_hists(
                 sim_list=list(pairwise_similarities[6].values()),
-                titles=["local", "end-to-end", "e2e + downstream"],
+                titles=["local", "e2e", "e2e+ds"],
                 colors=[COLOR_MAP[run_type] for run_type in pairwise_similarities[6]],
                 figsize=(4, 4),
                 out_file=out_dir / "within_sae_similarities_CE_layer_6.png",
@@ -931,7 +953,7 @@ def create_cross_type_similarity_plots(
             fig=subfigs[i],
             suptitle=f"Layer {layer_num}",
             colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"]],
-            titles=["end-to-end → local", "e2e + downstream → local"],
+            titles=["e2e → local", "e2e+ds → local"],
         )
     fig.suptitle(f"Cross Type Similarities (Constant {constant_val.upper()})", fontweight="bold")
     out_file = out_dir / "cross_type_similarities_all_layers.png"
@@ -944,7 +966,7 @@ def create_cross_type_similarity_plots(
         sim_list=list(cross_max_similarity[6].values()),
         figsize=(4, 3),
         colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"]],
-        titles=["end-to-end → local", "e2e + downstream → local"],
+        titles=["e2e → local", "e2e+ds → local"],
         out_file=out_dir / "cross_type_similarities_layer_6.png",
     )
 
@@ -968,7 +990,7 @@ def create_cross_seed_similarity_plot(
 
     create_subplot_hists(
         sim_list=list(sim_dict.values()),
-        titles=["local", "end-to-end", "e2e + downstream"],
+        titles=["local", "e2e", "e2e+ds"],
         colors=[COLOR_MAP[run_type] for run_type in sim_dict],
         out_file=out_dir / "cross_seed_all_types.png",
         figsize=(4, 4),
