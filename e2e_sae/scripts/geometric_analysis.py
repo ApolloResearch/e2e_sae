@@ -773,12 +773,59 @@ def create_subplot_hists(
     axs = np.atleast_1d(axs)
     colors = colors or [None for _ in sim_list]
     for ax, sims, title, color in zip(axs, sim_list, titles, colors, strict=True):
-        ax.hist(sims.flatten().detach().numpy(), bins=bins, color=color, alpha=alpha)
+        ax.hist(sims.flatten().detach().numpy(), range=xlim, bins=bins, color=color, alpha=alpha)
         ax.set_title(title, pad=2)
-        # ax.set_yticks([])
+        ax.set_yticks([])
 
     axs[-1].set_xlim(xlim)
     axs[-1].set_xlabel(xlabel)
+    # plt.tight_layout()
+    if suptitle is not None:
+        fig.suptitle(suptitle, fontweight="bold")
+    if out_file:
+        plt.savefig(out_file, dpi=500)
+        plt.savefig(out_file.with_suffix(".svg"))
+        logger.info(f"Saved plot to {out_file}")
+
+
+def create_subplot_hists_short(
+    sim_list: Sequence[Float[Tensor, "n_dict"]],  # noqa: F821
+    titles: Sequence[str | None],
+    colors: Sequence[Any] | None = None,
+    bins: int = 50,
+    fig: Figure | None = None,
+    figsize: tuple[float, float] = (3, 2),
+    xlim: tuple[float, float] = (0, 1),
+    xlabel: str = "Cosine Similarity",
+    suptitle: str | None = None,
+    out_file: Path | None = None,
+    alpha=0.8,
+    left_pad=0.35,
+    text_offset_pts=35,
+):
+    fig = fig or plt.figure(figsize=figsize)
+    axs = fig.subplots(len(sim_list), 1, sharex=True)
+    plt.subplots_adjust(left=left_pad, top=0.95, bottom=0.25, hspace=0.2, right=0.95)
+    axs = np.atleast_1d(axs)
+    colors = colors or [None for _ in sim_list]
+    for ax, sims, title, color in zip(axs, sim_list, titles, colors, strict=True):
+        ax.hist(sims.flatten().detach().numpy(), bins=bins, color=color, alpha=alpha, density=True)
+        ax.axvline(sims.mean().item(), color="k", linestyle="solid", alpha=0.8, lw=1)
+        # ax.text(-0.28, 0.5, title, va="center", ha="center", transform=ax.transAxes, fontsize=10)
+        ax.annotate(
+            title,
+            (0, 0.5),
+            (-text_offset_pts, 0),
+            xycoords="axes fraction",
+            textcoords="offset points",
+            va="center",
+            ha="center",
+        )
+        ax.set_yticks([])
+
+    axs[-1].set_xlim(xlim)
+    axs[-1].set_xlabel(xlabel)
+    axs[-1].set_xticks([0, 0.5, 1])
     # plt.tight_layout()
     if suptitle is not None:
         fig.suptitle(suptitle, fontweight="bold")
@@ -825,11 +872,10 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
 
         if constant_val == "CE":
             # Just layer 6
-            fig = create_subplot_hists(
+            fig = create_subplot_hists_short(
                 sim_list=list(pairwise_similarities[6].values()),
-                titles=["local", "end-to-end", "e2e + downstream"],
+                titles=["local", "end-to-end", "e2e + \ndownstream"],
                 colors=[COLOR_MAP[run_type] for run_type in pairwise_similarities[6]],
-                figsize=(4, 4),
                 out_file=out_dir / "within_sae_similarities_CE_layer_6.png",
             )
 
@@ -922,12 +968,14 @@ def create_cross_type_similarity_plots(
     logger.info(f"Saved plot to {out_file}")
 
     # Just layer 6
-    fig = create_subplot_hists(
+    fig = create_subplot_hists_short(
         sim_list=list(cross_max_similarity[6].values()),
-        figsize=(4, 3),
+        figsize=(3.5, 1.8),
         colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"]],
-        titles=["end-to-end → local", "e2e + downstream → local"],
+        titles=["end-to-end\n→ local", "e2e + downstream\n → local"],
         out_file=out_dir / "cross_type_similarities_layer_6.png",
+        left_pad=0.43,
+        text_offset_pts=50,
     )
 
 
@@ -948,12 +996,11 @@ def create_cross_seed_similarity_plot(
     out_dir = Path(__file__).parent / "out" / "seed_comparison"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    create_subplot_hists(
+    create_subplot_hists_short(
         sim_list=list(sim_dict.values()),
-        titles=["local", "end-to-end", "e2e + downstream"],
+        titles=["local", "end-to-end", "e2e + \ndownstream"],
         colors=[COLOR_MAP[run_type] for run_type in sim_dict],
         out_file=out_dir / "cross_seed_all_types.png",
-        figsize=(4, 4),
     )
 
 
