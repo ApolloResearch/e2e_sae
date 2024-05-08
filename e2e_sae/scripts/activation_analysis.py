@@ -15,7 +15,8 @@ from e2e_sae.data import DatasetConfig, create_data_loader
 from e2e_sae.hooks import SAEActs
 from e2e_sae.log import logger
 from e2e_sae.models.transformers import SAETransformer
-from e2e_sae.scripts.geometric_analysis import COLOR_MAP, CONSTANT_CE_RUNS, create_subplot_hists
+from e2e_sae.scripts.geometric_analysis import create_subplot_hists
+from e2e_sae.scripts.plot_settings import COLOR_MAP, SIMILAR_CE_RUNS
 
 ActTensor = Float[torch.Tensor, "batch seq hidden"]
 LogitTensor = Float[torch.Tensor, "batch seq vocab"]
@@ -137,7 +138,7 @@ ActsDict = dict[tuple[int, str], Acts]
 
 
 def get_acts_from_layer_type(layer: int, run_type: str, n_batches: int = 1):
-    run_id = CONSTANT_CE_RUNS[layer][run_type]
+    run_id = SIMILAR_CE_RUNS[layer][run_type]
     run = wandb.Api().run(f"sparsify/gpt2/{run_id}")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     return get_acts(run, batch_size=5, batches=n_batches, device=device)
@@ -185,8 +186,8 @@ def create_latex_table(data: dict[int, dict[str, tuple[float, float]]]):
 if __name__ == "__main__":
     acts_dict: ActsDict = {
         (layer, run_type): get_acts_from_layer_type(layer, run_type, n_batches=20)
-        for layer in CONSTANT_CE_RUNS
-        for run_type in CONSTANT_CE_RUNS[layer]
+        for layer in SIMILAR_CE_RUNS
+        for run_type in SIMILAR_CE_RUNS[layer]
     }
 
     acts_6_e2e = acts_dict[6, "e2e"]
