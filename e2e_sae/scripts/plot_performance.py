@@ -17,12 +17,6 @@ from e2e_sae.analysis import create_run_df
 from e2e_sae.log import logger
 from e2e_sae.scripts.geometric_analysis import COLOR_MAP
 
-RUN_TYPE_MAP = {
-    "e2e": ("End-to-end", "o"),
-    "downstream": ("Downstream", "X"),
-    "local": ("Local", "^"),
-}
-
 # Runs with constant CE loss increase for each layer. Values represent wandb run IDs.
 SIMILAR_CE_RUNS = {
     2: {"local": "ue3lz0n7", "e2e": "ovhfts9n", "downstream": "visi12en"},
@@ -37,9 +31,9 @@ SIMILAR_L0_RUNS = {
 
 
 STYLE_MAP = {
-    "local": {"marker": "^", "color": COLOR_MAP["local"], "label": "Local"},
-    "e2e": {"marker": "o", "color": COLOR_MAP["e2e"], "label": "End-to-end"},
-    "downstream": {"marker": "X", "color": COLOR_MAP["downstream"], "label": "E2e + downstream"},
+    "local": {"marker": "^", "color": COLOR_MAP["local"], "label": "local"},
+    "e2e": {"marker": "o", "color": COLOR_MAP["e2e"], "label": "e2e"},
+    "downstream": {"marker": "X", "color": COLOR_MAP["downstream"], "label": "e2e+ds"},
 }
 
 
@@ -107,9 +101,9 @@ def plot_scatter_or_line(
             norm = mcolors.LogNorm(vmin=vmin, vmax=vmax)
 
         for run_type in run_types:
-            if run_type not in RUN_TYPE_MAP:
+            if run_type not in STYLE_MAP:
                 raise ValueError(f"Invalid run type: {run_type}")
-            label, marker = RUN_TYPE_MAP[run_type]
+            label, marker = STYLE_MAP[run_type]["label"], STYLE_MAP[run_type]["marker"]
             data = layer_df.loc[layer_df["run_type"] == run_type]
             if not data.empty:
                 plot_kwargs = {
@@ -176,11 +170,11 @@ def plot_scatter_or_line(
                     mlines.Line2D(
                         [],
                         [],
-                        marker=RUN_TYPE_MAP[run_type][1],
+                        marker=STYLE_MAP[run_type]["marker"],
                         color="black",
                         linestyle="None",
                         markersize=8,
-                        label=RUN_TYPE_MAP[run_type][0],
+                        label=STYLE_MAP[run_type]["label"],
                     )
                 )
             ax.legend(handles=legend_handles, title="Run Type", loc="best")
@@ -506,7 +500,7 @@ def calc_summary_metric(
     layer_df = df.loc[df["layer"] == interpolate_layer]
     intersections = {x1: {}, x2: {}}
     for run_type in run_types:
-        if run_type not in RUN_TYPE_MAP:
+        if run_type not in STYLE_MAP:
             raise ValueError(f"Invalid run type: {run_type}")
         data = layer_df.loc[layer_df["run_type"] == run_type]
         if not data.empty:
@@ -738,11 +732,12 @@ def create_summary_latex_tables(df: pd.DataFrame, out_dir: Path) -> None:
     """
     col_map = {
         "layer": "Layer",
-        "run_type": "Run Type",
-        "sparsity_coeff": "$\\lambda$ (Sparsity Coeff)",
+        "run_type": "RunType",
+        "sparsity_coeff": "$\\lambda$",
         "L0": "$L_0$",
-        "alive_dict_elements": "Alive Elements",
-        "CELossIncrease": "CE Loss Increase",
+        "alive_dict_elements": "AliveElements",
+        "mean_grad_norm": "GradNorm",
+        "CELossIncrease": "CELossIncrease",
     }
     for run_group_name, run_group in [
         ("constant_CE", SIMILAR_CE_RUNS),
@@ -766,27 +761,23 @@ def create_summary_latex_tables(df: pd.DataFrame, out_dir: Path) -> None:
         order = {**layer_order, **run_type_order}
         run_group_df = run_group_df.sort_values(["layer", "run_type"], key=lambda x: x.map(order))
 
-        run_group_df = run_group_df.rename(columns=col_map)
-
         # Format the values in the DataFrame
-        run_group_df["$\\lambda$ (Sparsity Coeff)"] = run_group_df[
-            "$\\lambda$ (Sparsity Coeff)"
-        ].apply(lambda x: f"{x:.2f}")
-        run_group_df["$L_0$"] = run_group_df["$L_0$"].apply(lambda x: f"{x:.1f}")
-        run_group_df["Alive Elements"] = run_group_df["Alive Elements"].apply(
+        run_group_df["sparsity_coeff"] = run_group_df["sparsity_coeff"].apply(lambda x: f"{x:.2f}")
+        run_group_df["L0"] = run_group_df["L0"].apply(lambda x: f"{x:.1f}")
+        run_group_df["alive_dict_elements"] = run_group_df["alive_dict_elements"].apply(
             lambda x: f"{x // 1000}k"
         )
-        run_group_df["CE Loss Increase"] = run_group_df["CE Loss Increase"].apply(
-            lambda x: f"{x:.3f}"
-        )
+        run_group_df["mean_grad_norm"] = run_group_df["mean_grad_norm"].apply(lambda x: f"{x:.2f}")
+        run_group_df["CELossIncrease"] = run_group_df["CELossIncrease"].apply(lambda x: f"{x:.3f}")
 
+        run_group_df = run_group_df.rename(columns=col_map)
         # Create the LaTeX table
         latex_str = "\\begin{table}[h]\n\\centering\n"
         # The grey column will be L0 if run_group_name is constant_l0, and CE Loss otherwise
         if run_group_name == "constant_l0":
-            latex_str += "\\begin{tabular}{|c|c|c|>{\\columncolor[gray]{0.9}}c|c|c|}\n\\hline\n"
+            latex_str += "\\begin{tabular}{|c|c|c|>{\\columncolor[gray]{0.9}}c|c|c|c|}\n\\hline\n"
         else:
-            latex_str += "\\begin{tabular}{|c|c|c|c|c|>{\\columncolor[gray]{0.9}}c|}\n\\hline\n"
+            latex_str += "\\begin{tabular}{|c|c|c|c|c|c|>{\\columncolor[gray]{0.9}}c|}\n\\hline\n"
         # Same as above but have the c's depend on the number of columns
         latex_str += " & ".join(run_group_df.columns) + " \\\\\n\\hline\n"
 
@@ -818,13 +809,6 @@ def get_df_gpt2() -> pd.DataFrame:
 
     df = create_run_df(runs)
 
-    # df for all run_types except for local should only have one unique lr (5e-4)
-    assert (
-        df.loc[df["run_type"] != "local"]["lr"].nunique() == 1
-        and df.loc[df["run_type"] != "local"]["lr"].unique()[0] == 5e-4
-    )
-
-    # assert df["lr"].nunique() == 1 and df["lr"].unique()[0] == 5e-4
     assert df["model_name"].nunique() == 1
 
     # Ignore runs that have an L0 bigger than d_resid
@@ -871,6 +855,7 @@ def gpt2_plots():
         run_types=run_types,
     )
 
+    # Local lr comparison
     local_lr_df = df.loc[
         (df["seed"] == 0)
         & (df["n_samples"] == 400_000)
@@ -894,7 +879,40 @@ def gpt2_plots():
         xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
         ylim={layer: (0.4, 0) for layer in layers},
         title={layer: f"Layer {layer}" for layer in layers},
-        out_file=Path(__file__).resolve().parent / "out" / "lr_comparison" / "lr_comparison.png",
+        out_file=Path(__file__).resolve().parent
+        / "out"
+        / "lr_comparison"
+        / "local_lr_comparison.png",
+    )
+
+    e2e_lr_df = df.loc[
+        (df["seed"] == 0)
+        & (df["n_samples"] == 400_000)
+        & (df["ratio"] == 60)
+        & (df["run_type"] == "e2e")
+        & ~((df["L0"] > 300) & (df["layer"] == 2))  # Avoid points in L0 but not alive_dict subplot
+        & (~df["name"].str.contains("seed-comparison"))
+    ]
+    plot_two_axes_line_facet(
+        df=e2e_lr_df,
+        x1="L0",
+        x2="alive_dict_elements",
+        y="CELossIncrease",
+        facet_by="layer",
+        facet_vals=layers,
+        line_by="lr",
+        xlabel1="L0",
+        xlabel2="Alive Dictionary Elements",
+        ylabel="CE Loss Increase",
+        xlim1={2: (200.0, 0.0), 6: (200.0, 0.0), 10: (300.0, 0.0)},
+        xlim2={layer: (0, 45_000) for layer in layers},
+        xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
+        ylim={layer: (0.4, 0) for layer in layers},
+        title={layer: f"Layer {layer}" for layer in layers},
+        out_file=Path(__file__).resolve().parent
+        / "out"
+        / "lr_comparison"
+        / "e2e_lr_comparison.png",
     )
     out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
     out_dir.mkdir(exist_ok=True, parents=True)
@@ -912,10 +930,10 @@ def gpt2_plots():
         & ~performance_df["name"].str.contains("lower-downstream")
         & -performance_df["name"].str.contains("e2e-local")
         & ~performance_df["name"].str.contains("recon-all")
+        & ~performance_df["name"].str.contains("misc_")
     ]
 
     create_summary_latex_tables(df=performance_df, out_dir=Path(__file__).resolve().parent / "out")
-
     # ylims for plots with ce_diff on the y axis
     loss_increase_lims = {2: (0.2, 0.0), 6: (0.4, 0.0), 10: (0.4, 0.0)}
     # xlims for plots with L0 on the x axis
