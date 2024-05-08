@@ -22,7 +22,10 @@ from torch import Tensor
 from wandb.apis.public import Run
 
 from e2e_sae.log import logger
-from e2e_sae.scripts.plot_settings import SIMILAR_CE_RUNS, SIMILAR_L0_RUNS, STYLE_MAP
+from e2e_sae.scripts.plot_settings import (
+    SIMILAR_RUN_INFO,
+    STYLE_MAP,
+)
 from e2e_sae.settings import REPO_ROOT
 
 
@@ -601,7 +604,7 @@ def create_umap_plots(
     project: str,
     run_types: tuple[str, str],
     compute_umaps: bool = True,
-    constant_val: Literal["CE", "l0"] = "CE",
+    similar_run_var: Literal["CE", "l0"] = "CE",
     lims: dict[int, dict[str, tuple[float | None, float | None]]] | None = None,
     grid: bool = False,
     plot_regions_in_layer: list[int] | None = None,
@@ -613,14 +616,14 @@ def create_umap_plots(
         project: The name of the wandb project.
         run_types: The types of runs to compare.
         compute_umaps: Whether to compute the UMAP embeddings or load them from file.
-        constant_val: The constant value to use for the runs.
+        similar_run_var: The constant value to use for the runs.
         lims: The x and y limits for the plot.
         grid: Whether to plot a grid in the background.
         plot_regions_in_layer: The layers to plot the regions in.
     """
     run_types_str = "_".join(run_types)
-    run_dict = SIMILAR_L0_RUNS if constant_val == "l0" else SIMILAR_CE_RUNS  # type: ignore
-    out_dir = Path(__file__).parent / "out" / "umap" / f"constant_{constant_val}"
+    run_dict = SIMILAR_RUN_INFO[similar_run_var]
+    out_dir = Path(__file__).parent / "out" / "umap" / f"constant_{similar_run_var}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if lims is None:
@@ -736,7 +739,7 @@ def get_max_pairwise_similarities(
         A dictionary mapping layer numbers to dictionaries of max pairwise cosine similarities,
         where the inner dictionary is keyed by run type.
     """
-    if from_file:
+    if from_file and out_file.exists():
         return torch.load(out_file, map_location="cpu")
 
     max_pairwise_similarities: MaxPairwiseSimilarities = {}
@@ -878,19 +881,25 @@ def permutation_mean_diff(sample_a: ArrayLike, sample_b: ArrayLike, permutations
     return stats.bootstrap((sample_a, sample_b), mean_diff, n_resamples=permutations, batch=1000)
 
 
-def create_within_sae_similarity_plots(api: wandb.Api, project: str):
-    for constant_val in ["CE", "l0"]:
-        run_dict = SIMILAR_L0_RUNS if constant_val == "l0" else SIMILAR_CE_RUNS
-        out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}"
+def create_within_sae_similarity_plots(api: wandb.Api, project: str, from_file: bool = False):
+    """Create plots comparing the cosine similarity of with the next-closest dict element.
+
+    Args:
+        api: The wandb API.
+        project: The name of the wandb project.
+        from_file: Whether to load the max pairwise similarities from file or calculate them.
+    """
+    for similar_run_var, run_dict in SIMILAR_RUN_INFO.items():
+        out_dir = Path(__file__).parent / "out" / f"constant_{similar_run_var}"
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_file = out_dir / f"max_pairwise_similarities_constant_{constant_val}.pt"
+        out_file = out_dir / f"max_pairwise_similarities_constant_{similar_run_var}.pt"
         pairwise_similarities = get_max_pairwise_similarities(
             api=api,
             project=project,
             run_dict=run_dict,
             run_types=("local", "e2e", "downstream"),
             out_file=out_file,
-            from_file=True,
+            from_file=from_file,
         )
 
         # plot all layers
@@ -906,13 +915,15 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
                 suptitle=f"Layer {layer_num}",
             )
             # subfigs[i].suptitle(f"Layer {layer_num}")
-        fig.suptitle(f"Within SAE Similarities (Similar {constant_val.upper()})", fontweight="bold")
-        out_file = out_dir / f"within_sae_similarities_{constant_val}_all_layers.png"
+        fig.suptitle(
+            f"Within SAE Similarities (Similar {similar_run_var.upper()})", fontweight="bold"
+        )
+        out_file = out_dir / f"within_sae_similarities_{similar_run_var}_all_layers.png"
         plt.savefig(out_file)
         plt.savefig(out_file.with_suffix(".svg"))
         logger.info(f"Saved plot to {out_file}")
 
-        if constant_val == "CE":
+        if similar_run_var == "CE":
             # Just layer 6
             fig = create_subplot_hists_short(
                 sim_list=list(pairwise_similarities[6].values()),
@@ -985,12 +996,13 @@ CrossMaxSimilarity = dict[int, dict[str, Float[Tensor, "n_dict_1"]]]  # noqa: F8
 def create_cross_type_similarity_plots(
     api: wandb.Api,
     project: str,
-    constant_val: str = "CE",
+    similar_run_var: str = "CE",
     from_file: bool = False,
 ):
     """Create plots comparing the max similarities between different run types."""
-    run_dict = SIMILAR_L0_RUNS if constant_val == "l0" else SIMILAR_CE_RUNS
-    out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}"
+
+    run_dict = SIMILAR_RUN_INFO[similar_run_var]
+    out_dir = Path(__file__).parent / "out" / f"constant_{similar_run_var}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Get pairwise similarities between the two runtypes for each layer
@@ -1024,7 +1036,7 @@ def create_cross_type_similarity_plots(
                 f"{STYLE_MAP['downstream']['label']} → {STYLE_MAP['local']['label']}",
             ],
         )
-    fig.suptitle(f"Cross Type Similarities (Constant {constant_val.upper()})", fontweight="bold")
+    fig.suptitle(f"Cross Type Similarities (Constant {similar_run_var.upper()})", fontweight="bold")
     out_file = out_dir / "cross_type_similarities_all_layers.png"
     plt.savefig(out_file)
     plt.savefig(out_file.with_suffix(".svg"))
@@ -1072,9 +1084,8 @@ if __name__ == "__main__":
     project = "gpt2"
     api = wandb.Api()
 
-    create_within_sae_similarity_plots(api, project)
-
-    create_cross_type_similarity_plots(api, project, constant_val="CE")
+    create_within_sae_similarity_plots(api, project, from_file=False)
+    create_cross_type_similarity_plots(api, project, similar_run_var="CE", from_file=False)
 
     # These three are also relevent but not in the paper
     # Sparsity coeff 1.5
@@ -1089,14 +1100,14 @@ if __name__ == "__main__":
     #     api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
     # )
 
-    # run_ids: dict[str, tuple[str, str]] = {
-    #     "local": ("1jy3m5j0", "uqfp43ti"),
-    #     "e2e": ("pzelh1s8", "ir00gg9g"),
-    #     "downstream": ("y8sca507", "hqo5azo2"),
-    # }
-    # create_cross_seed_similarity_plot(api, project, run_ids)
+    run_ids: dict[str, tuple[str, str]] = {
+        "local": ("1jy3m5j0", "uqfp43ti"),
+        "e2e": ("pzelh1s8", "ir00gg9g"),
+        "downstream": ("y8sca507", "hqo5azo2"),
+    }
+    create_cross_seed_similarity_plot(api, project, run_ids)
 
-    # # Post-hoc ignore the identified outliers in e2e-local umap
+    # Post-hoc ignore the identified outliers in e2e-local umap
     # e2e_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
     #     2: {"x": (-2.0, None), "y": (None, None)},
     #     6: {"x": (4.0, None), "y": (None, None)},
@@ -1108,7 +1119,7 @@ if __name__ == "__main__":
     #         project,
     #         run_types=("e2e", "local"),
     #         compute_umaps=False,
-    #         constant_val="CE",
+    #         similar_run_var="CE",
     #         lims=e2e_local_ce_lims,
     #         grid=False,
     #         plot_regions_in_layer=[2, 6, 10],
@@ -1116,20 +1127,18 @@ if __name__ == "__main__":
     # except FileNotFoundError:
     #     logger.warning("Could not create e2e-local UMAP plot")
 
-    # downstream_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
-    #     2: {"x": (4, None), "y": (None, None)},
-    #     6: {"x": (None, None), "y": (None, None)},
-    #     10: {"x": (None, None), "y": (None, None)},
-    # }
-    # create_umap_plots(
-    #     api,
-    #     project,
-    #     run_types=("downstream", "local"),
-    #     compute_umaps=False,
-    #     constant_val="CE",
-    #     lims=downstream_local_ce_lims,
-    #     grid=False,
-    #     plot_regions_in_layer=[6],
-    # )
-
-# %%
+    downstream_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
+        2: {"x": (4, None), "y": (None, None)},
+        6: {"x": (None, None), "y": (None, None)},
+        10: {"x": (None, None), "y": (None, None)},
+    }
+    create_umap_plots(
+        api,
+        project,
+        run_types=("downstream", "local"),
+        compute_umaps=False,
+        similar_run_var="CE",
+        lims=downstream_local_ce_lims,
+        grid=False,
+        plot_regions_in_layer=[6],
+    )

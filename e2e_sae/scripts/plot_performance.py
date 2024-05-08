@@ -15,7 +15,11 @@ from numpy.typing import NDArray
 
 from e2e_sae.analysis import create_run_df
 from e2e_sae.log import logger
-from e2e_sae.scripts.plot_settings import SIMILAR_CE_RUNS, SIMILAR_L0_RUNS, STYLE_MAP
+from e2e_sae.scripts.plot_settings import (
+    SIMILAR_CE_RUNS,
+    SIMILAR_RUN_INFO,
+    STYLE_MAP,
+)
 
 
 def plot_scatter_or_line(
@@ -720,10 +724,8 @@ def create_summary_latex_tables(df: pd.DataFrame, out_dir: Path) -> None:
         "mean_grad_norm": "GradNorm",
         "CELossIncrease": "CELossIncrease",
     }
-    for run_group_name, run_group in [
-        ("constant_CE", SIMILAR_CE_RUNS),
-        ("constant_l0", SIMILAR_L0_RUNS),
-    ]:
+    for similar_run_var, run_group in SIMILAR_RUN_INFO.items():
+        run_group_name = f"constant_{similar_run_var}"
         layer_dfs = {}
         run_types: list[str] | None = None
         for layer, run_info in run_group.items():
@@ -736,7 +738,7 @@ def create_summary_latex_tables(df: pd.DataFrame, out_dir: Path) -> None:
 
         # Sort by layer and run_type. Layer should be in numerical order.
         # Run type should be in the order "local", "e2e", "downstream"
-        layer_order = {layer: i for i, layer in enumerate(SIMILAR_CE_RUNS.keys())}
+        layer_order = {layer: i for i, layer in enumerate(run_group.keys())}
         assert run_types is not None
         run_type_order = {run_type: len(layer_order) + i for i, run_type in enumerate(run_types)}
         order = {**layer_order, **run_type_order}
@@ -762,7 +764,7 @@ def create_summary_latex_tables(df: pd.DataFrame, out_dir: Path) -> None:
         # Same as above but have the c's depend on the number of columns
         latex_str += " & ".join(run_group_df.columns) + " \\\\\n\\hline\n"
 
-        for layer, layer_df in run_group_df.groupby("Layer"):
+        for _, layer_df in run_group_df.groupby("Layer"):
             for _, row in layer_df.iterrows():
                 latex_str += (
                     " & ".join(["" if pd.isna(val) else str(val) for val in row.values]) + " \\\\\n"
