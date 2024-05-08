@@ -746,7 +746,7 @@ def create_summary_latex_tables(df: pd.DataFrame, out_dir: Path) -> None:
         run_group_df["sparsity_coeff"] = run_group_df["sparsity_coeff"].apply(lambda x: f"{x:.2f}")
         run_group_df["L0"] = run_group_df["L0"].apply(lambda x: f"{x:.1f}")
         run_group_df["alive_dict_elements"] = run_group_df["alive_dict_elements"].apply(
-            lambda x: f"{x // 1000}k"
+            lambda x: f"{round(x, -3) // 1000}k"
         )
         run_group_df["mean_grad_norm"] = run_group_df["mean_grad_norm"].apply(lambda x: f"{x:.2f}")
         run_group_df["CELossIncrease"] = run_group_df["CELossIncrease"].apply(lambda x: f"{x:.3f}")
@@ -829,7 +829,6 @@ def gpt2_plots():
         run_ids=seed_ids,
         out_dir=Path(__file__).resolve().parent / "out" / "seed_comparison",
     )
-
     plot_ratio_comparison(
         df=df.loc[(df["seed"] == 0) & (df["n_samples"] == 400_000) & (df["lr"] == 5e-4)],
         out_dir=Path(__file__).resolve().parent / "out" / "ratio_comparison",
@@ -865,7 +864,7 @@ def gpt2_plots():
         / "lr_comparison"
         / "local_lr_comparison.png",
     )
-
+    # e2e lr comparison
     e2e_lr_df = df.loc[
         (df["seed"] == 0)
         & (df["n_samples"] == 400_000)
@@ -915,6 +914,7 @@ def gpt2_plots():
     ]
 
     create_summary_latex_tables(df=performance_df, out_dir=Path(__file__).resolve().parent / "out")
+
     # ylims for plots with ce_diff on the y axis
     loss_increase_lims = {2: (0.2, 0.0), 6: (0.4, 0.0), 10: (0.4, 0.0)}
     # xlims for plots with L0 on the x axis
