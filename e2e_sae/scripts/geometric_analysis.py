@@ -15,7 +15,9 @@ import wandb
 from jaxtyping import Float
 from matplotlib import colors as mcolors
 from matplotlib.figure import Figure
+from numpy.typing import ArrayLike
 from pydantic import BaseModel, ConfigDict
+from scipy import stats
 from torch import Tensor
 from wandb.apis.public import Run
 
@@ -835,6 +837,24 @@ def create_subplot_hists_short(
         logger.info(f"Saved plot to {out_file}")
 
 
+def permutation_mean_diff(sample_a: ArrayLike, sample_b: ArrayLike, permutations: int):
+    """Compute the mean difference between two samples and its confidence interval.
+
+    Args:
+        sample_a: The first sample.
+        sample_b: The second sample.
+        permutations: The number of permutations to perform.
+
+    Returns:
+        A scipy BootstrapResults object
+    """
+
+    def mean_diff(resamp_a: ArrayLike, resamp_b: ArrayLike, axis=-1) -> float:
+        return np.mean(resamp_a, axis=axis) - np.mean(resamp_b, axis=axis)  # type: ignore[reportCallIssue]
+
+    return stats.bootstrap((sample_a, sample_b), mean_diff, n_resamples=permutations, batch=1000)
+
+
 def create_within_sae_similarity_plots(api: wandb.Api, project: str):
     for constant_val in ["CE", "l0"]:
         run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS
@@ -886,6 +906,23 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
                     for run_type, sims in pairwise_similarities[6].items()
                 )
             )
+
+            for run_type in ["e2e", "downstream"]:
+                # Permutation test for mean difference
+                bootstrap_result = permutation_mean_diff(
+                    pairwise_similarities[6]["local"],
+                    pairwise_similarities[6][run_type],
+                    permutations=1000,
+                )
+                diff = (
+                    pairwise_similarities[6]["local"].mean()
+                    - pairwise_similarities[6][run_type].mean()
+                )
+                low, high = bootstrap_result.confidence_interval
+                logger.info(
+                    f"Permutation test for mean difference between local and {run_type}:"
+                    f"\n\t{diff:.3f} [95\\%CI: {low:.3f}-{high:.3f}]"
+                )
 
 
 def get_cross_max_similarities(
