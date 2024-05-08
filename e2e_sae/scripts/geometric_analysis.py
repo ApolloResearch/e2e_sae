@@ -22,25 +22,8 @@ from torch import Tensor
 from wandb.apis.public import Run
 
 from e2e_sae.log import logger
+from e2e_sae.scripts.plot_settings import SIMILAR_CE_RUNS, SIMILAR_L0_RUNS, STYLE_MAP
 from e2e_sae.settings import REPO_ROOT
-
-CONSTANT_CE_RUNS = {
-    2: {"local": "ue3lz0n7", "e2e": "ovhfts9n", "downstream": "visi12en"},
-    6: {"local": "1jy3m5j0", "e2e": "zgdpkafo", "downstream": "2lzle2f0"},
-    10: {"local": "m2hntlav", "e2e": "8crnit9h", "downstream": "cvj5um2h"},
-}
-CONSTANT_L0_RUNS = {
-    2: {"local": "6vtk4k51", "e2e": "bst0prdd", "downstream": "e26jflpq"},
-    6: {"local": "jup3glm9", "e2e": "tvj2owza", "downstream": "2lzle2f0"},
-    10: {"local": "5vmpdgaz", "e2e": "8crnit9h", "downstream": "cvj5um2h"},
-}
-
-
-COLOR_MAP = {
-    "local": "#f0a70a",
-    "e2e": "#518c31",
-    "downstream": plt.get_cmap("tab20b").colors[2],  # type: ignore[reportAttributeAccessIssue]
-}
 
 
 class RegionCoords(BaseModel):
@@ -499,11 +482,11 @@ def plot_umap(
             embedding[i * alive_elements_per_dict[i] : (i + 1) * alive_elements_per_dict[i], 1],  # type: ignore
             label=label,
             s=1,
-            color=COLOR_MAP[run_types[i]],
+            color=STYLE_MAP[run_types[i]]["color"],
             alpha=0.3,
         )
     # Create legend elements with larger point size
-    colors = [COLOR_MAP[run_type] for run_type in run_types]
+    colors = [STYLE_MAP[run_type]["color"] for run_type in run_types]
     legend_elements = [
         plt.Line2D(
             [0], [0], marker="o", color="w", label=label, markerfacecolor=color, markersize=10
@@ -636,7 +619,7 @@ def create_umap_plots(
         plot_regions_in_layer: The layers to plot the regions in.
     """
     run_types_str = "_".join(run_types)
-    run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS  # type: ignore
+    run_dict = SIMILAR_L0_RUNS if constant_val == "l0" else SIMILAR_CE_RUNS  # type: ignore
     out_dir = Path(__file__).parent / "out" / "umap" / f"constant_{constant_val}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -794,6 +777,7 @@ def create_subplot_hists(
     colors = colors or [None for _ in sim_list]
     for ax, sims, title, color in zip(axs, sim_list, titles, colors, strict=True):
         ax.hist(sims.flatten().detach().numpy(), range=xlim, bins=bins, color=color, alpha=alpha)
+        ax.axvline(sims.mean().item(), color="k", linestyle="dashed", alpha=0.8, lw=1)
         ax.set_title(title, pad=2)
         ax.set_yticks([])
 
@@ -814,23 +798,23 @@ def create_subplot_hists_short(
     colors: Sequence[Any] | None = None,
     bins: int = 50,
     fig: Figure | None = None,
-    figsize: tuple[float, float] = (3, 2),
+    figsize: tuple[float, float] = (2.5, 2),
     xlim: tuple[float, float] = (0, 1),
     xlabel: str = "Cosine Similarity",
     suptitle: str | None = None,
     out_file: Path | None = None,
     alpha=0.8,
-    left_pad=0.35,
-    text_offset_pts=35,
+    left_pad=0.3,
+    text_offset_pts=25,
 ):
     fig = fig or plt.figure(figsize=figsize)
     axs = fig.subplots(len(sim_list), 1, sharex=True)
-    plt.subplots_adjust(left=left_pad, top=0.95, bottom=0.25, hspace=0.2, right=0.95)
+    plt.subplots_adjust(left=left_pad, top=0.95, bottom=(0.5 / figsize[1]), hspace=0.2, right=0.95)
     axs = np.atleast_1d(axs)
     colors = colors or [None for _ in sim_list]
     for ax, sims, title, color in zip(axs, sim_list, titles, colors, strict=True):
         ax.hist(sims.flatten().detach().numpy(), bins=bins, color=color, alpha=alpha, density=True)
-        ax.axvline(sims.mean().item(), color="k", linestyle="solid", alpha=0.8, lw=1)
+        ax.axvline(sims.mean().item(), color="k", linestyle="dashed", alpha=0.8, lw=1)
         # ax.text(-0.28, 0.5, title, va="center", ha="center", transform=ax.transAxes, fontsize=10)
         ax.annotate(
             title,
@@ -875,7 +859,7 @@ def permutation_mean_diff(sample_a: ArrayLike, sample_b: ArrayLike, permutations
 
 def create_within_sae_similarity_plots(api: wandb.Api, project: str):
     for constant_val in ["CE", "l0"]:
-        run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS
+        run_dict = SIMILAR_L0_RUNS if constant_val == "l0" else SIMILAR_CE_RUNS
         out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_file = out_dir / f"max_pairwise_similarities_constant_{constant_val}.pt"
@@ -894,15 +878,13 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
         for i, (layer_num, layer_similarities) in enumerate(pairwise_similarities.items()):
             create_subplot_hists(
                 sim_list=list(layer_similarities.values()),
-                titles=["local", "end-to-end", "e2e + downstream"],
-                colors=[COLOR_MAP[run_type] for run_type in layer_similarities],
+                titles=[STYLE_MAP[run_type]["label"] for run_type in layer_similarities],
+                colors=[STYLE_MAP[run_type]["color"] for run_type in layer_similarities],
                 fig=subfigs[i],
                 suptitle=f"Layer {layer_num}",
             )
             # subfigs[i].suptitle(f"Layer {layer_num}")
-        fig.suptitle(
-            f"Within SAE Similarities (Constant {constant_val.upper()})", fontweight="bold"
-        )
+        fig.suptitle(f"Within SAE Similarities (Similar {constant_val.upper()})", fontweight="bold")
         out_file = out_dir / f"within_sae_similarities_{constant_val}_all_layers.png"
         plt.savefig(out_file)
         plt.savefig(out_file.with_suffix(".svg"))
@@ -912,8 +894,8 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
             # Just layer 6
             fig = create_subplot_hists_short(
                 sim_list=list(pairwise_similarities[6].values()),
-                titles=["local", "end-to-end", "e2e + \ndownstream"],
-                colors=[COLOR_MAP[run_type] for run_type in pairwise_similarities[6]],
+                titles=[STYLE_MAP[run_type]["label"] for run_type in pairwise_similarities[6]],
+                colors=[STYLE_MAP[run_type]["color"] for run_type in pairwise_similarities[6]],
                 out_file=out_dir / "within_sae_similarities_CE_layer_6.png",
             )
 
@@ -939,7 +921,7 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str):
                 low, high = bootstrap_result.confidence_interval
                 logger.info(
                     f"Permutation test for mean difference between local and {run_type}:"
-                    f"\n\t{diff:.3f} [95\\%CI: {low:.3f}-{high:.3f}]"
+                    f"\n\t{diff:.3f} (95\\% CI: [{low:.3f}-{high:.3f}])"
                 )
 
 
@@ -985,7 +967,7 @@ def create_cross_type_similarity_plots(
     from_file: bool = False,
 ):
     """Create plots comparing the max similarities between different run types."""
-    run_dict = CONSTANT_L0_RUNS if constant_val == "l0" else CONSTANT_CE_RUNS
+    run_dict = SIMILAR_L0_RUNS if constant_val == "l0" else SIMILAR_CE_RUNS
     out_dir = Path(__file__).parent / "out" / f"constant_{constant_val}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1008,13 +990,17 @@ def create_cross_type_similarity_plots(
     # All layers
     fig = plt.figure(figsize=(8, 3), layout="constrained")
     subfigs = fig.subfigures(1, len(cross_max_similarity), wspace=0.05)
+
     for i, (layer_num, max_sim) in enumerate(cross_max_similarity.items()):
         create_subplot_hists(
             sim_list=list(max_sim.values()),
             fig=subfigs[i],
             suptitle=f"Layer {layer_num}",
-            colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"]],
-            titles=["end-to-end → local", "e2e + downstream → local"],
+            colors=[STYLE_MAP["e2e"]["color"], STYLE_MAP["downstream"]["color"]],
+            titles=[
+                f"{STYLE_MAP["e2e"]["label"]} → {STYLE_MAP["local"]["label"]}",
+                f"{STYLE_MAP["downstream"]["label"]} → {STYLE_MAP["local"]["label"]}",
+            ],
         )
     fig.suptitle(f"Cross Type Similarities (Constant {constant_val.upper()})", fontweight="bold")
     out_file = out_dir / "cross_type_similarities_all_layers.png"
@@ -1025,12 +1011,13 @@ def create_cross_type_similarity_plots(
     # Just layer 6
     fig = create_subplot_hists_short(
         sim_list=list(cross_max_similarity[6].values()),
-        figsize=(3.5, 1.8),
-        colors=[COLOR_MAP["e2e"], COLOR_MAP["downstream"]],
-        titles=["end-to-end\n→ local", "e2e + downstream\n → local"],
+        figsize=(2.5, 1.5),
+        colors=[STYLE_MAP["e2e"]["color"], STYLE_MAP["downstream"]["color"]],
+        titles=[
+            f"{STYLE_MAP["e2e"]["label"]}\n→ {STYLE_MAP["local"]["label"]}",
+            f"{STYLE_MAP["downstream"]["label"]}\n→ {STYLE_MAP["local"]["label"]}",
+        ],
         out_file=out_dir / "cross_type_similarities_layer_6.png",
-        left_pad=0.43,
-        text_offset_pts=50,
     )
 
 
@@ -1053,8 +1040,8 @@ def create_cross_seed_similarity_plot(
 
     create_subplot_hists_short(
         sim_list=list(sim_dict.values()),
-        titles=["local", "end-to-end", "e2e + \ndownstream"],
-        colors=[COLOR_MAP[run_type] for run_type in sim_dict],
+        titles=[STYLE_MAP[run_type]["label"] for run_type in sim_dict],
+        colors=[STYLE_MAP[run_type]["color"] for run_type in sim_dict],
         out_file=out_dir / "cross_seed_all_types.png",
     )
 
@@ -1080,47 +1067,47 @@ if __name__ == "__main__":
     #     api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
     # )
 
-    run_ids: dict[str, tuple[str, str]] = {
-        "local": ("1jy3m5j0", "uqfp43ti"),
-        "e2e": ("pzelh1s8", "ir00gg9g"),
-        "downstream": ("y8sca507", "hqo5azo2"),
-    }
-    create_cross_seed_similarity_plot(api, project, run_ids)
+    # run_ids: dict[str, tuple[str, str]] = {
+    #     "local": ("1jy3m5j0", "uqfp43ti"),
+    #     "e2e": ("pzelh1s8", "ir00gg9g"),
+    #     "downstream": ("y8sca507", "hqo5azo2"),
+    # }
+    # create_cross_seed_similarity_plot(api, project, run_ids)
 
-    # Post-hoc ignore the identified outliers in e2e-local umap
-    e2e_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
-        2: {"x": (-2.0, None), "y": (None, None)},
-        6: {"x": (4.0, None), "y": (None, None)},
-        10: {"x": (None, None), "y": (None, None)},
-    }
-    try:
-        create_umap_plots(
-            api,
-            project,
-            run_types=("e2e", "local"),
-            compute_umaps=False,
-            constant_val="CE",
-            lims=e2e_local_ce_lims,
-            grid=False,
-            plot_regions_in_layer=[2, 6, 10],
-        )
-    except FileNotFoundError:
-        logger.warning("Could not create e2e-local UMAP plot")
+    # # Post-hoc ignore the identified outliers in e2e-local umap
+    # e2e_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
+    #     2: {"x": (-2.0, None), "y": (None, None)},
+    #     6: {"x": (4.0, None), "y": (None, None)},
+    #     10: {"x": (None, None), "y": (None, None)},
+    # }
+    # try:
+    #     create_umap_plots(
+    #         api,
+    #         project,
+    #         run_types=("e2e", "local"),
+    #         compute_umaps=False,
+    #         constant_val="CE",
+    #         lims=e2e_local_ce_lims,
+    #         grid=False,
+    #         plot_regions_in_layer=[2, 6, 10],
+    #     )
+    # except FileNotFoundError:
+    #     logger.warning("Could not create e2e-local UMAP plot")
 
-    downstream_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
-        2: {"x": (4, None), "y": (None, None)},
-        6: {"x": (None, None), "y": (None, None)},
-        10: {"x": (None, None), "y": (None, None)},
-    }
-    create_umap_plots(
-        api,
-        project,
-        run_types=("downstream", "local"),
-        compute_umaps=False,
-        constant_val="CE",
-        lims=downstream_local_ce_lims,
-        grid=False,
-        plot_regions_in_layer=[6],
-    )
+    # downstream_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
+    #     2: {"x": (4, None), "y": (None, None)},
+    #     6: {"x": (None, None), "y": (None, None)},
+    #     10: {"x": (None, None), "y": (None, None)},
+    # }
+    # create_umap_plots(
+    #     api,
+    #     project,
+    #     run_types=("downstream", "local"),
+    #     compute_umaps=False,
+    #     constant_val="CE",
+    #     lims=downstream_local_ce_lims,
+    #     grid=False,
+    #     plot_regions_in_layer=[6],
+    # )
 
 # %%
