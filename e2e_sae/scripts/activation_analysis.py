@@ -16,7 +16,7 @@ from e2e_sae.hooks import SAEActs
 from e2e_sae.log import logger
 from e2e_sae.models.transformers import SAETransformer
 from e2e_sae.scripts.geometric_analysis import create_subplot_hists
-from e2e_sae.scripts.plot_settings import COLOR_MAP, SIMILAR_CE_RUNS
+from e2e_sae.scripts.plot_settings import COLOR_MAP, SIMILAR_CE_RUNS, STYLE_MAP
 
 ActTensor = Float[torch.Tensor, "batch seq hidden"]
 LogitTensor = Float[torch.Tensor, "batch seq vocab"]
@@ -53,7 +53,9 @@ def kl_div(new_logits: LogitTensor, old_logits: LogitTensor) -> Float[torch.Tens
 
 @torch.no_grad()
 def get_acts(run: Run, batch_size=5, batches=1, device: str = "cuda") -> Acts:
-    cache_file = OUT_DIR / "cache" / f"{run.id}.pt"
+    cache_dir = OUT_DIR / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / f"{run.id}.pt"
     if cache_file.exists():
         cached_acts = Acts(**torch.load(cache_file))
         logger.info(f"Loaded cached acts from {cache_file}")
@@ -144,7 +146,7 @@ def get_acts_from_layer_type(layer: int, run_type: str, n_batches: int = 1):
     return get_acts(run, batch_size=5, batches=n_batches, device=device)
 
 
-def cosine_sim_plot(acts_dict: ActsDict, out_file: Path | None = None):
+def cosine_sim_plot(acts_dict: ActsDict, run_types: list[str], out_file: Path | None = None):
     def get_sims(acts: Acts):
         orig = acts.orig.flatten(0, 1)
         recon = acts.recon.flatten(0, 1)
@@ -154,10 +156,10 @@ def cosine_sim_plot(acts_dict: ActsDict, out_file: Path | None = None):
     subfigs = fig.subfigures(1, 3, wspace=0.05)
 
     for subfig, layer in zip(subfigs, [2, 6, 10], strict=True):
-        sims = [get_sims(acts_dict[layer, run_type]) for run_type in ["local", "e2e", "downstream"]]
+        sims = [get_sims(acts_dict[layer, run_type]) for run_type in run_types]
         create_subplot_hists(
             sim_list=sims,
-            titles=["Local", "End-to-end", "E2e + downstream"],
+            titles=[STYLE_MAP[run_type]["label"] for run_type in run_types],
             colors=list(COLOR_MAP.values()),
             fig=subfig,
             suptitle=f"Layer {layer}",
@@ -184,10 +186,11 @@ def create_latex_table(data: dict[int, dict[str, tuple[float, float]]]):
 
 
 if __name__ == "__main__":
+    run_types = list(SIMILAR_CE_RUNS[6].keys())
     acts_dict: ActsDict = {
         (layer, run_type): get_acts_from_layer_type(layer, run_type, n_batches=20)
         for layer in SIMILAR_CE_RUNS
-        for run_type in SIMILAR_CE_RUNS[layer]
+        for run_type in run_types
     }
 
     acts_6_e2e = acts_dict[6, "e2e"]
@@ -197,10 +200,7 @@ if __name__ == "__main__":
     )
 
     norms = {
-        layer: {
-            run_type: get_norm_ratios(acts_dict[(layer, run_type)])
-            for run_type in ["local", "e2e", "downstream"]
-        }
+        layer: {run_type: get_norm_ratios(acts_dict[(layer, run_type)]) for run_type in run_types}
         for layer in [2, 6, 10]
     }
 
@@ -212,4 +212,4 @@ if __name__ == "__main__":
     with open(OUT_DIR / "norm_ratios.json", "w") as f:
         json.dump(norms, f)
 
-    cosine_sim_plot(acts_dict, out_file=OUT_DIR / "cosine_similarity.png")
+    cosine_sim_plot(acts_dict, run_types, out_file=OUT_DIR / "cosine_similarity.png")

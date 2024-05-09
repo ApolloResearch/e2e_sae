@@ -674,15 +674,15 @@ def create_umap_plots(
                     )
 
         # The above but handle arbitrary number of run types
-        labels = [f"{run_type}-{run_ids[run_type]}" for run_type in run_types]
         regions = (
             REGIONS[run_types_str][layer_num].regions
             if plot_regions_in_layer and layer_num in plot_regions_in_layer
             else None
         )
+        legend_labels = [STYLE_MAP[run_type]["label"] for run_type in run_types]
         plot_umap(
             embed_info,
-            labels=run_types,
+            labels=legend_labels,
             run_types=run_types,
             out_file=umap_file,
             lims=lims[layer_num],
@@ -690,6 +690,7 @@ def create_umap_plots(
             regions=regions,
             legend_title=f"Layer {layer_num}",
         )
+        run_labels = [f"{run_type}-{run_ids[run_type]}" for run_type in run_types]
         for i, region in enumerate(REGIONS[run_types_str][layer_num].regions):
             region_dict_1_indices, region_dict_2_indices = get_dict_indices_for_embedding_range(
                 embed_info, **region.coords.model_dump()
@@ -701,7 +702,7 @@ def create_umap_plots(
                 json.dump(
                     {
                         "embedding_file": str(path_from_repo_root),
-                        "run_labels": labels,
+                        "run_labels": run_labels,
                         "description": region.description,
                         "coords": region.coords.model_dump(),
                         run_types[0]: region_dict_1_indices,
