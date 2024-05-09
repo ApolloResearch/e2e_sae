@@ -16,7 +16,7 @@ from e2e_sae.hooks import SAEActs
 from e2e_sae.log import logger
 from e2e_sae.models.transformers import SAETransformer
 from e2e_sae.scripts.geometric_analysis import create_subplot_hists
-from e2e_sae.scripts.plot_settings import COLOR_MAP, SIMILAR_CE_RUNS, STYLE_MAP
+from e2e_sae.scripts.plot_settings import SIMILAR_CE_RUNS, STYLE_MAP
 
 ActTensor = Float[torch.Tensor, "batch seq hidden"]
 LogitTensor = Float[torch.Tensor, "batch seq vocab"]
@@ -147,6 +147,8 @@ def get_acts_from_layer_type(layer: int, run_type: str, n_batches: int = 1):
 
 
 def cosine_sim_plot(acts_dict: ActsDict, run_types: list[str], out_file: Path | None = None):
+    colors = [STYLE_MAP[run_type]["color"] for run_type in run_types]
+
     def get_sims(acts: Acts):
         orig = acts.orig.flatten(0, 1)
         recon = acts.recon.flatten(0, 1)
@@ -160,7 +162,7 @@ def cosine_sim_plot(acts_dict: ActsDict, run_types: list[str], out_file: Path | 
         create_subplot_hists(
             sim_list=sims,
             titles=[STYLE_MAP[run_type]["label"] for run_type in run_types],
-            colors=list(COLOR_MAP.values()),
+            colors=colors,
             fig=subfig,
             suptitle=f"Layer {layer}",
         )

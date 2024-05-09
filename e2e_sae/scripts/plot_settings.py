@@ -25,14 +25,8 @@ SIMILAR_RUN_INFO = {
     "alive_elements": SIMILAR_ALIVE_ELEMENTS_RUNS,
 }
 
-COLOR_MAP = {
-    "local": "#f0a70a",
-    "e2e": "#518c31",
-    "downstream": plt.get_cmap("tab20b").colors[2],  # type: ignore[reportAttributeAccessIssue]
-}
-
 STYLE_MAP = {
-    "local": {"marker": "^", "color": COLOR_MAP["local"], "label": "local"},
-    "e2e": {"marker": "o", "color": COLOR_MAP["e2e"], "label": "e2e"},
-    "downstream": {"marker": "X", "color": COLOR_MAP["downstream"], "label": "e2e+ds"},
+    "local": {"marker": "^", "color": "#f0a70a", "label": "local"},
+    "e2e": {"marker": "o", "color": "#518c31", "label": "e2e"},
+    "downstream": {"marker": "X", "color": plt.get_cmap("tab20b").colors[2], "label": "e2e+ds"},  # type: ignore[reportAttributeAccessIssue]
 }
