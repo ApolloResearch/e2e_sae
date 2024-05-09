@@ -61,7 +61,7 @@ class SAETransformer(nn.Module):
         self,
         tokens: Int[Tensor, "batch pos"],
         run_entire_model: bool,
-        final_layer: int | None,
+        final_layer: int | None = None,
         cache_positions: list[str] | None = None,
     ) -> tuple[
         Float[torch.Tensor, "batch pos d_vocab"], dict[str, Float[torch.Tensor, "batch pos dim"]]
@@ -78,6 +78,9 @@ class SAETransformer(nn.Module):
             - The logits of the original model.
             - The activations of the original model.
         """
+        assert (
+            not run_entire_model or final_layer is None
+        ), "Can't specify both run_entire_model and final_layer"
         all_hook_names = self.raw_sae_positions + (cache_positions or [])
         orig_logits, orig_acts = self.tlens_model.run_with_cache(
             tokens,
