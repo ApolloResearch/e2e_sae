@@ -12,7 +12,7 @@ dependencies = [
     "wandb~=0.16.2",
     "fire~=0.5.0",
     "tqdm~=4.66.1",
-    "pytest~=8.0.0",
+    "pytest~=8.1.2",
     "ipykernel~=6.29.0",
     "transformer-lens~=1.14.0",
     "jaxtyping~=0.2.25",
@@ -31,7 +31,7 @@ repository = "https://github.com/ApolloResearch/e2e_sae"
 [project.optional-dependencies]
 dev = [
     "ruff~=0.1.14",
-    "pyright~=1.1.360",
+    "pyright~=1.1.362",
     "pre-commit~=3.6.0",
 ]
 
