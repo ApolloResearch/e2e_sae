@@ -284,21 +284,20 @@ def _format_two_axes(axs: Sequence[plt.Axes], better_labels: bool) -> None:
     axs[1].yaxis.set_tick_params(color="white")
 
     if better_labels:
-        # add "Better" text annotations
         axs[0].text(
-            s="Better →",
-            x=1,
+            s="← Better",
+            x=0.5,
             y=1.02,
-            ha="right",
+            ha="center",
             va="bottom",
             fontsize=10,
             transform=axs[0].transAxes,
         )
         axs[1].text(
             s="← Better",
-            x=0,
+            x=0.5,
             y=1.02,
-            ha="left",
+            ha="center",
             va="bottom",
             fontsize=10,
             transform=axs[1].transAxes,
@@ -306,7 +305,7 @@ def _format_two_axes(axs: Sequence[plt.Axes], better_labels: bool) -> None:
         axs[0].text(
             s="Better →",
             x=1.075,
-            y=1,
+            y=0.625,
             ha="center",
             va="top",
             fontsize=10,
@@ -315,7 +314,6 @@ def _format_two_axes(axs: Sequence[plt.Axes], better_labels: bool) -> None:
         )
 
 
-# TODO: replace calls with plot_two_axes_line_facet (which is a bit more general)
 def plot_two_axes_line_facet(
     df: pd.DataFrame,
     x1: str,
@@ -410,7 +408,7 @@ def plot_two_axes_line_facet(
                 axs[1].plot([], [], **line_style)
 
         if facet_val == facet_vals[-1]:
-            axs[0].legend(title=legend_title or line_by, loc="lower left")
+            axs[0].legend(title=legend_title or line_by, loc="lower right")
 
         if xlim1 is not None:
             axs[0].set_xlim(xmin=xlim1[facet_val][0], xmax=xlim1[facet_val][1])
@@ -632,10 +630,10 @@ def plot_ratio_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequence[s
         facet_by="run_type",
         facet_vals=run_types,
         line_by="ratio",
-        xlim1={run_type: (200, 0) for run_type in run_types},
+        xlim1={run_type: (0, 200) for run_type in run_types},
         xlim2={run_type: (0, 45_000) for run_type in run_types},
         xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
-        ylim={run_type: (0.75, 0) for run_type in run_types},
+        ylim={run_type: (0.5, 0) for run_type in run_types},
         title={run_type: run_type for run_type in run_types},
         out_file=out_dir / "ratio_comparison.png",
         xlabel2="Alive Dictionary Elements",
@@ -697,7 +695,7 @@ def plot_n_samples_comparison(df: pd.DataFrame, out_dir: Path, run_types: Sequen
         facet_by="run_type",
         facet_vals=run_types,
         line_by="n_samples",
-        xlim1={run_type: (200, 0) for run_type in run_types},
+        xlim1={run_type: (0, 200) for run_type in run_types},
         xlim2={run_type: (10_000, 48_000) for run_type in run_types},
         xticks2=([10_000, 20_000, 30_000, 40_000], ["10k", "20k", "30k", "40k"]),
         ylim={run_type: (0.75, 0) for run_type in run_types},
@@ -856,7 +854,7 @@ def gpt2_plots():
         xlabel1="L0",
         xlabel2="Alive Dictionary Elements",
         ylabel="CE Loss Increase",
-        xlim1={2: (200.0, 0.0), 6: (200.0, 0.0), 10: (300.0, 0.0)},
+        xlim1={2: (0.0, 200.0), 6: (0.0, 200.0), 10: (0.0, 300.0)},
         xlim2={layer: (0, 45_000) for layer in layers},
         xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
         ylim={layer: (0.4, 0) for layer in layers},
@@ -886,7 +884,7 @@ def gpt2_plots():
         xlabel1="L0",
         xlabel2="Alive Dictionary Elements",
         ylabel="CE Loss Increase",
-        xlim1={2: (200.0, 0.0), 6: (200.0, 0.0), 10: (300.0, 0.0)},
+        xlim1={2: (0.0, 200.0), 6: (0.0, 200.0), 10: (0.0, 300.0)},
         xlim2={layer: (0, 45_000) for layer in layers},
         xticks2=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
         ylim={layer: (0.4, 0) for layer in layers},
@@ -920,7 +918,7 @@ def gpt2_plots():
     # ylims for plots with ce_diff on the y axis
     loss_increase_lims = {2: (0.2, 0.0), 6: (0.4, 0.0), 10: (0.4, 0.0)}
     # xlims for plots with L0 on the x axis
-    l0_diff_xlims = {2: (200.0, 0.0), 6: (600.0, 0.0), 10: (600.0, 0.0)}
+    l0_diff_xlims = {2: (0.0, 200.0), 6: (0.0, 600.0), 10: (0.0, 600.0)}
 
     plot_two_axes_line_facet(
         performance_df,
@@ -983,7 +981,6 @@ def gpt2_plots():
         styles=STYLE_MAP,
         legend_title="Run Type",
     )
-
     # Calculate the summary metric for the CE ratio difference
     calc_summary_metric(
         df=performance_df,
@@ -1122,7 +1119,7 @@ def tinystories_1m_plots():
     # ylims for plots with ce_diff on the y axis
     loss_increase_lims = {0: (0.4, 0), 3: (0.6, 0), 6: (0.6, 0)}
     # xlims for plots with L0 on the x axis
-    l0_diff_xlims = {0: (40, 0), 3: (64, 0), 6: (64, 0)}
+    l0_diff_xlims = {0: (0, 40), 3: (0, 64), 6: (0, 64)}
     # xlims for plots with alive_dict_elements on the x axis
 
     plot_two_axes_line_facet(
