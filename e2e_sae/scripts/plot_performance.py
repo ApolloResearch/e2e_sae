@@ -794,15 +794,6 @@ def get_df_gpt2() -> pd.DataFrame:
 
     # Ignore runs that have an L0 bigger than d_resid
     df = df.loc[df["L0"] <= d_resid]
-    # Only use the e2e+recon run in layer 10 that has kl_coeff=0.75
-    # df = df.loc[~((df["layer"] == 10) & (df["run_type"] == "downstream") & (df["kl_coeff"] != 0.75))]
-    df = df.loc[
-        ~(
-            (df["layer"] == 10)
-            & (df["run_type"] == "downstream")
-            & ((df["kl_coeff"] != 0.5) | (df["in_to_orig_coeff"] != 0.05))
-        )
-    ]
     return df
 
 
