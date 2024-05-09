@@ -484,155 +484,6 @@ def get_autointerp_results_df(out_dir: Path):
     return df_stats
 
 
-def compare_autointerp_results(df_stats: pd.DataFrame):
-    """
-    Compare autointerp results across SAEs.
-
-    Args:
-        output_dir: Directory containing the autointerp output files.
-
-    Returns:
-        None
-    """
-    sns.set_theme(style="whitegrid", palette="pastel")
-    g = sns.catplot(
-        data=df_stats,
-        x="sae",
-        y="explanationScore",
-        kind="box",
-        palette="pastel",
-        hue="layer",
-        showmeans=True,
-        meanprops={
-            "marker": "o",
-            "markerfacecolor": "white",
-            "markeredgecolor": "black",
-            "markersize": "10",
-        },
-    )
-    sns.swarmplot(
-        data=df_stats, x="sae", y="explanationScore", color="k", size=4, ax=g.ax, legend=False
-    )
-    plt.title("Quality of auto-interpretability explanations across SAEs")
-    plt.ylabel("Auto-interpretability score")
-    plt.xlabel("SAE")
-    results_file = out_dir / "Auto-interpretability_results.png"
-    plt.savefig(results_file, bbox_inches="tight")
-    # plt.savefig("Auto-interpretability_results.pdf", bbox_inches="tight")
-    # plt.show()
-    print(f"Saved to {results_file}")
-
-    sns.set_theme(rc={"figure.figsize": (6, 6)})
-    b = sns.barplot(
-        df_stats,
-        x="sae",
-        y="explanationScore",
-        palette="pastel",
-        hue="layer",
-        capsize=0.3,
-        legend=False,
-    )
-    s = sns.swarmplot(data=df_stats, x="sae", y="explanationScore", color="k", alpha=0.25, size=6)
-    plt.title("Quality of auto-interpretability explanations across SAEs")
-    plt.ylabel("Auto-interpretability score")
-    plt.xlabel("SAE")
-    plt.yticks(np.arange(0, 1, 0.1))
-    bar_file = out_dir / "Auto-interpretability_results_bar.png"
-    plt.savefig(bar_file, bbox_inches="tight")
-    # plt.savefig("Auto-interpretability_results_bar.pdf", bbox_inches="tight")
-    # plt.show()
-    print(f"Saved to {bar_file}")
-
-
-def compare_across_saes(df_stats: pd.DataFrame):
-    # Plot the relative performance of the SAEs
-    sns.set_theme(style="whitegrid", palette="pastel")
-    g = sns.catplot(
-        data=df_stats,
-        x="sae",
-        y="explanationScore",
-        kind="box",
-        palette="pastel",
-        hue="layer",
-        showmeans=True,
-        meanprops={
-            "marker": "o",
-            "markerfacecolor": "white",
-            "markeredgecolor": "black",
-            "markersize": "5",
-        },
-    )
-    sns.swarmplot(
-        data=df_stats, x="sae", y="explanationScore", color="k", size=4, ax=g.ax, legend=False
-    )
-    # ax.set_title("Quality of auto-interpretability explanations across SAEs")
-    # ax.set_ylabel("Auto-interpretability score")
-    # ax.set_xlabel("SAE")
-    result_file = out_dir / "Auto-interpretability_results.png"
-    plt.savefig(result_file, bbox_inches="tight")
-    plt.close()
-    # plt.savefig("Auto-interpretability_results.pdf", bbox_inches="tight")
-    # plt.show()
-    print(result_file)
-
-    # Plot the relative performance of the SAEs
-    sns.set_theme(rc={"figure.figsize": (6, 6)})
-    b = sns.barplot(
-        df_stats,
-        x="sae",
-        y="explanationScore",
-        palette="pastel",
-        hue="layer",
-        capsize=0.3,
-        legend=False,
-    )
-    s = sns.swarmplot(data=df_stats, x="sae", y="explanationScore", color="k", alpha=0.25, size=6)
-    plt.title("Quality of auto-interpretability explanations across SAEs")
-    plt.ylabel("Auto-interpretability score")
-    plt.xlabel("SAE")
-    plt.yticks(np.arange(0, 1, 0.1))
-    bar_file = out_dir / "Auto-interpretability_results_bar.png"
-    plt.savefig(bar_file, bbox_inches="tight")
-    plt.close()
-    # plt.savefig("Auto-interpretability_results_bar.pdf", bbox_inches="tight")
-    # plt.show()
-    print(bar_file)
-
-
-def bootstrapped_bar(df_stats: pd.DataFrame):
-    fig, axs = plt.subplots(1, 2, figsize=(8, 4), sharey=True)
-
-    sae_names = {
-        "res_scefr-ajt": "Downstream",
-        "res_sll-ajt": "CE Local",
-        "res_scl-ajt": "L0 Local",
-    }
-    # make matplotlib histogram with ci as error bars
-    for layer, ax in zip([6, 10], axs, strict=True):
-        layer_data = df_stats.loc[df_stats.layer == layer]
-
-        means, yerrs = [], [[], []]
-        for sae_type in sae_names:
-            sae_data = layer_data.loc[layer_data.sae == sae_type]
-            scores = sae_data.explanationScore.to_numpy()
-            ci = bootstrap((scores,), statistic=np.mean).confidence_interval
-            means.append(scores.mean())
-            yerrs[0].append(scores.mean() - ci.low)
-            yerrs[1].append(ci.high - scores.mean())
-
-        ax.bar(range(3), means, yerr=yerrs, capsize=5)
-        ax.set_title(f"Layer {layer}")
-        ax.set_xticks(range(3), sae_names.values())
-
-    axs[0].set_ylabel("Mean Explanation Score")
-
-    plt.tight_layout()
-    plt.show()
-    plt.savefig(out_dir / "bootstrapped_bar.png")
-    print(f"Saved to {out_dir / 'bootstrapped_bar.png'}")
-    plt.close()
-
-
 def pair_violin_plot(df_stats: pd.DataFrame, pairs: dict[int, dict[str, str]], out_file: Path):
     fig, axs = plt.subplots(1, 3, sharey=True, figsize=(7, 3.5))
 
@@ -705,14 +556,13 @@ def bootstrap_p_value(sample_a: ArrayLike, sample_b: ArrayLike) -> float:
     return p_value
 
 
-def bootstrap_mean_diff(sample_a: ArrayLike, sample_b: ArrayLike):
+def bootstrap_mean_diff(sample_a: ArrayLike, sample_b: ArrayLike) -> tuple[float, Any]:
     def mean_diff(resample_a, resample_b):  # type: ignore
         return np.mean(resample_a) - np.mean(resample_b)
 
     result = bootstrap((sample_a, sample_b), n_resamples=100_000, statistic=mean_diff)
-    diff = np.mean(sample_a) - np.mean(sample_b)  # type: ignore
-    low, high = result.confidence_interval
-    print(f"Diff {diff:.2f}, [{low:.2f},{high:.2f}]")
+    diff: float = np.mean(sample_a) - np.mean(sample_b)  # type: ignore
+    return diff, result.confidence_interval
 
 
 def compute_p_values(df: pd.DataFrame, pairs: dict[int, dict[str, str]]):
@@ -723,17 +573,17 @@ def compute_p_values(df: pd.DataFrame, pairs: dict[int, dict[str, str]]):
             score_groups.get_group((layer, sae_downstream)).to_numpy(),
             score_groups.get_group((layer, sae_local)).to_numpy(),
         )
-        print(f"L{layer}, {sae_downstream} vs {sae_local}: p={pval}")
-        bootstrap_mean_diff(
+        # print(f"L{layer}, {sae_downstream} vs {sae_local}: p={pval}")
+        diff, ci = bootstrap_mean_diff(
             score_groups.get_group((layer, sae_downstream)).to_numpy(),
             score_groups.get_group((layer, sae_local)).to_numpy(),
         )
+        print(f"{layer}&${diff:.2f}\\ [{ci.low:.2f},{ci.high:.2f}]$&{pval:.2g}")
 
 
 if __name__ == "__main__":
-    # out_dir = Path(__file__).parent / "out/autointerp/"
-    # input_dir = out_dir  # Path("/data/apollo/autointerp")
-    out_dir = Path("/data/apollo/autointerp/")
+    plot_out_dir = Path(__file__).parent / "out/autointerp/"
+    score_out_dir = Path("/data/apollo/autointerp/")
     ## Running autointerp
     # Get runs for similar CE and similar L0 for e2e+Downstream and local
     # Note that "10-res_slefr-ajt" does not exist, we use 10-res_scefr-ajt for similar l0 too
@@ -757,10 +607,10 @@ if __name__ == "__main__":
         feature_model_id="gpt2-small",
         autointerp_explainer_model_name="gpt-4-turbo-2024-04-09",
         autointerp_scorer_model_name="gpt-3.5-turbo",
-        out_dir=out_dir,
+        out_dir=score_out_dir,
     )
 
-    df = get_autointerp_results_df(out_dir)
+    df = get_autointerp_results_df(score_out_dir)
 
     ## Analysis of autointerp results
 
@@ -778,9 +628,8 @@ if __name__ == "__main__":
 
     # compare_autointerp_results(df)
     # compare_across_saes(df)
-    bootstrapped_bar(df)
-    pair_violin_plot(df, const_l0_pairs, out_dir / "l0_violin.png")
-    pair_violin_plot(df, const_ce_pairs, out_dir / "ce_violin.png")
+    pair_violin_plot(df, const_l0_pairs, plot_out_dir / "l0_violin.png")
+    pair_violin_plot(df, const_ce_pairs, plot_out_dir / "ce_violin.png")
     print("SAME L0")
     compute_p_values(df, const_l0_pairs)
     print("\nSAME CE")
