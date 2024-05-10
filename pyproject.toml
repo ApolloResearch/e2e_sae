@@ -21,8 +21,10 @@ dependencies = [
     "matplotlib~=3.5.3",
     "seaborn~=0.13.2",
     "umap-learn~=0.5.6",
+    "tenacity~=8.2.3",
+    "statsmodels~=0.14.2",
     "eindex-callum@git+https://github.com/callummcdougall/eindex",
-    "sae_vis@git+https://github.com/callummcdougall/sae_vis.git@b28a0f7c7e936f4bea05528d952dfcd438533cce"
+    "neuron_explainer@git+https://github.com/ApolloResearch/automated-interpretability.git"
 ]
 
 [project.urls]

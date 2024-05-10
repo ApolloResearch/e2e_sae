@@ -8,7 +8,7 @@ training types:
 - Local (i.e. vanilla SAEs): Loss function includes sparsity and MSE at the SAE layer
 - Any combination of the above.
 
-See [TODO: add paper] which argues for training SAEs e2e rather than locally.
+See [TODO: add paper] which argues for training SAEs e2e rather than locally. All SAEs presented in the paper can be found at https://wandb.ai/sparsify/gpt2 and can be loaded using this library.
 
 ## Usage
 ### Installation
