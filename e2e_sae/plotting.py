@@ -23,6 +23,7 @@ def plot_per_layer_metric(
     legend_title: str | None = None,
     styles: Mapping[str, Mapping[str, Any]] | None = None,
     horz_layout: bool = False,
+    show_ax_titles: bool = True,
     save_svg: bool = True,
 ) -> None:
     """
@@ -42,6 +43,7 @@ def plot_per_layer_metric(
         styles: The styles to use.
         horz_layout: Whether to use a horizontal layout for the subplots. Requires sae_layers to be
             exactly [2, 6, 10]. Ignores legend_label_cols_and_precision if True.
+        show_ax_titles: Whether to show titles for each subplot.
         save_svg: Whether to save the plot as an SVG file in addition to PNG. Default is True.
     """
     metric_names = {
@@ -96,7 +98,8 @@ def plot_per_layer_metric(
         for run_type in run_types:
             plot_metric(ax, layer_df.loc[layer_df["run_type"] == run_type], sae_layer, xs)
 
-        ax.set_title(f"SAE Layer {sae_layer}", fontweight="bold")
+        if show_ax_titles:
+            ax.set_title(f"SAE Layer {sae_layer}", fontweight="bold")
         ax.set_xlabel("Model Layer")
         if (not horz_layout) or i == 0:
             ax.legend(title=legend_title, loc="best")

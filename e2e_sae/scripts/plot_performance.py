@@ -671,6 +671,7 @@ def gpt2_plots():
         styles=STYLE_MAP,
         legend_title="SAE Type",
         horz_layout=False,
+        show_ax_titles=False,
     )
 
 
