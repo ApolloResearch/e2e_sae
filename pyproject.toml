@@ -20,6 +20,8 @@ dependencies = [
     "zstandard~=0.22.0",
     "matplotlib~=3.5.3",
     "seaborn~=0.13.2",
+    "tenacity~=8.2.3",
+    "statsmodels~=0.14.2",
     "eindex-callum@git+https://github.com/callummcdougall/eindex",
     "neuron_explainer@git+https://github.com/ApolloResearch/automated-interpretability.git"
 ]
