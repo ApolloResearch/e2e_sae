@@ -1,9 +1,14 @@
 """Run and analyze autointerp for SAEs.
 
 NOTE: Running this script currently requires installing ApolloResearch's fork of neuron-explainer.
-https://github.com/ApolloResearch/automated-interpretability
+https://github.com/ApolloResearch/automated-interpretability. This has been updated to work with
+gpt4-turbo-2024-04-09 and fixes an OPENAI_API_KEY issue.
 
-This has been updated to work with gpt4-turbo-2024-04-09 and fixes an OPENAI_API_KEY issue.
+This script requires the following environment variables:
+- OPENAI_API_KEY: OpenAI API key.
+- NEURONPEDIA_API_KEY: Neuronpedia API key.
+These can be set in .env in the root of the repository (see .env.example).
+
 """
 import asyncio
 import glob
@@ -583,7 +588,8 @@ def compute_p_values(df: pd.DataFrame, pairs: dict[int, dict[str, str]]):
 
 if __name__ == "__main__":
     plot_out_dir = Path(__file__).parent / "out/autointerp/"
-    score_out_dir = Path("/data/apollo/autointerp/")
+    score_out_dir = Path(__file__).parent / "out/autointerp/"
+    score_out_dir.mkdir(parents=True, exist_ok=True)
     ## Running autointerp
     # Get runs for similar CE and similar L0 for e2e+Downstream and local
     # Note that "10-res_slefr-ajt" does not exist, we use 10-res_scefr-ajt for similar l0 too
