@@ -1101,7 +1101,7 @@ def collect_all_within_sae_similarities(
         legend_pos="upper right",
         title={layer: f"Layer {layer}" for layer in layers},
         axis_formatter=partial(format_axes_orthogonality),
-        out_file=out_dir / "within_sae_similarity_facet.png",
+        out_file=out_dir / "within_sae_similarity.png",
         styles=STYLE_MAP,
         plot_type="scatter",
     )

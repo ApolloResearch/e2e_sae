@@ -453,7 +453,7 @@ def gpt2_plots():
         out_file=Path(__file__).resolve().parent
         / "out"
         / "lr_comparison"
-        / "local_lr_comparison_facet.png",
+        / "local_lr_comparison.png",
     )
     # e2e lr comparison
     e2e_lr_df = df.loc[
@@ -484,7 +484,7 @@ def gpt2_plots():
         out_file=Path(__file__).resolve().parent
         / "out"
         / "lr_comparison"
-        / "e2e_lr_comparison_facet.png",
+        / "e2e_lr_comparison.png",
     )
     out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
     out_dir.mkdir(exist_ok=True, parents=True)
@@ -529,7 +529,7 @@ def gpt2_plots():
         yticks=([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"]),
         title={layer: f"Layer {layer}" for layer in layers},
         axis_formatter=partial(format_two_axes, better_labels=False),
-        out_file=out_dir / "grad_norm_vs_ce_loss_vs_alive_dict_elements_facet.png",
+        out_file=out_dir / "grad_norm_vs_ce_loss_vs_alive_dict_elements.png",
         styles=STYLE_MAP,
         legend_title="SAE Type",
     )
@@ -550,7 +550,7 @@ def gpt2_plots():
         title={layer: f"Layer {layer}" for layer in layers},
         axis_formatter=partial(format_two_axes, better_labels=True),
         legend_title="SAE Type",
-        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_facet.png",
+        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss.png",
         styles=STYLE_MAP,
     )
 
@@ -566,7 +566,7 @@ def gpt2_plots():
         ylabel="CE Loss Increase",
         legend_title="SAE Type",
         axis_formatter=partial(format_two_axes, better_labels=True),
-        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_layer_6_facet.png",
+        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_layer_6.png",
         xlims=[l0_diff_xlims, None],
         xticks=[None, ([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"])],
         ylim=loss_increase_lims,
@@ -688,7 +688,7 @@ def tinystories_1m_plots():
         ylabel="CE Loss Increase",
         legend_title="SAE Type",
         axis_formatter=partial(format_two_axes, better_labels=True),
-        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_layer_3_facet.png",
+        out_file=out_dir / "l0_alive_dict_elements_vs_ce_loss_layer_3.png",
         xlims=[l0_diff_xlims, {3: (0, None)}],
         ylim={3: (0.6, 0)},
         styles=STYLE_MAP,
