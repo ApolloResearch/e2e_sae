@@ -1097,7 +1097,6 @@ def collect_all_within_sae_similarities(
         line_by_vals=["local", "e2e", "downstream"],
         xlabels=["L0", "CE Loss Increase", "Alive Dictionary Elements"],
         ylabel="Mean Max Cosine Similarity",
-        suptitle="Within SAE Similarities",
         legend_title="SAE type",
         legend_pos="upper right",
         title={layer: f"Layer {layer}" for layer in layers},
