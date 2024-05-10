@@ -1,3 +1,4 @@
+import tempfile
 from functools import partial
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -376,22 +377,23 @@ class SAETransformer(nn.Module):
             file for file in run.files() if file.name.endswith("final_config.yaml")
         ][0]
 
-        train_config_file = train_config_file_remote.download(
-            exist_ok=True, replace=True, root="/tmp/"
-        ).name
-
         checkpoints = [file for file in run.files() if file.name.endswith(".pt")]
         latest_checkpoint_remote = sorted(
             checkpoints, key=lambda x: int(x.name.split(".pt")[0].split("_")[-1])
         )[-1]
-        latest_checkpoint_file = latest_checkpoint_remote.download(
-            exist_ok=True, replace=True, root="/tmp/"
-        ).name
-        assert latest_checkpoint_file is not None, "Failed to download the latest checkpoint."
 
-        return cls.from_checkpoint(
-            checkpoint_file=latest_checkpoint_file, config_file=train_config_file
-        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            train_config_file = train_config_file_remote.download(
+                exist_ok=True, replace=True, root=temp_dir
+            ).name
+            latest_checkpoint_file = latest_checkpoint_remote.download(
+                exist_ok=True, replace=True, root=temp_dir
+            ).name
+            assert latest_checkpoint_file is not None, "Failed to download the latest checkpoint."
+
+            return cls.from_checkpoint(
+                checkpoint_file=latest_checkpoint_file, config_file=train_config_file
+            )
 
     @classmethod
     def from_checkpoint(
