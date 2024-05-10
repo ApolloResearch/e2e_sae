@@ -480,9 +480,15 @@ def plot_umap(
 
     plt.figure(figsize=(8, 8), dpi=600)
     for i, label in enumerate(labels):
+        assert i in [0, 1], "indexing into i>=2 not implimented."
+        idxs = (
+            slice(None, alive_elements_per_dict[0])
+            if i == 0
+            else slice(alive_elements_per_dict[0], None)
+        )
         plt.scatter(
-            embedding[i * alive_elements_per_dict[i] : (i + 1) * alive_elements_per_dict[i], 0],  # type: ignore
-            embedding[i * alive_elements_per_dict[i] : (i + 1) * alive_elements_per_dict[i], 1],  # type: ignore
+            embedding[idxs, 0],
+            embedding[idxs, 1],
             label=label,
             s=1,
             color=STYLE_MAP[run_types[i]]["color"],
