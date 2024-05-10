@@ -12,15 +12,18 @@ dependencies = [
     "wandb~=0.16.2",
     "fire~=0.5.0",
     "tqdm~=4.66.1",
-    "pytest~=8.0.0",
+    "pytest~=8.1.2",
     "ipykernel~=6.29.0",
     "transformer-lens~=1.14.0",
     "jaxtyping~=0.2.25",
     "python-dotenv~=1.0.1",
     "zstandard~=0.22.0",
-    "matplotlib>=3.5.3",
+    "matplotlib~=3.5.3",
+    "seaborn~=0.13.2",
+    "tenacity~=8.2.3",
+    "statsmodels~=0.14.2",
     "eindex-callum@git+https://github.com/callummcdougall/eindex",
-    "sae_vis@git+https://github.com/callummcdougall/sae_vis.git@b28a0f7c7e936f4bea05528d952dfcd438533cce"
+    "neuron_explainer@git+https://github.com/ApolloResearch/automated-interpretability.git"
 ]
 
 [project.urls]
@@ -29,7 +32,7 @@ repository = "https://github.com/ApolloResearch/e2e_sae"
 [project.optional-dependencies]
 dev = [
     "ruff~=0.1.14",
-    "pyright~=1.1.357",
+    "pyright~=1.1.360",
     "pre-commit~=3.6.0",
 ]
 
