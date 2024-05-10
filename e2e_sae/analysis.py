@@ -1,5 +1,6 @@
 import pandas as pd
 import tqdm
+import wandb
 from wandb.apis.public import Run
 from wandb.apis.public.runs import Runs
 
@@ -217,4 +218,20 @@ def create_run_df(
             }
         )
     df = pd.DataFrame(run_info)
+    return df
+
+
+def get_df_gpt2() -> pd.DataFrame:
+    api = wandb.Api()
+    project = "sparsify/gpt2"
+    runs = api.runs(project)
+
+    d_resid = 768
+
+    df = create_run_df(runs)
+
+    assert df["model_name"].nunique() == 1
+
+    # Ignore runs that have an L0 bigger than d_resid
+    df = df.loc[df["L0"] <= d_resid]
     return df

@@ -1,12 +1,14 @@
 import json
 import os
 from collections.abc import Mapping, Sequence
+from functools import partial
 from pathlib import Path
 from typing import Any, Literal
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import seaborn as sns
 import torch
 import torch.nn.functional as F
@@ -21,7 +23,9 @@ from scipy import stats
 from torch import Tensor
 from wandb.apis.public import Run
 
+from e2e_sae.analysis import get_df_gpt2
 from e2e_sae.log import logger
+from e2e_sae.plotting import plot_facet
 from e2e_sae.scripts.plot_settings import (
     SIMILAR_RUN_INFO,
     STYLE_MAP,
@@ -219,6 +223,65 @@ REGIONS: dict[str, dict[int, LayerRegions]] = {
         ),
     },
 }
+
+
+def format_axes_orthogonality(axs: Sequence[plt.Axes]) -> None:
+    """Adds 'better' and orthogonality arrows and remove y-axis between the plots."""
+    # move y-axis to right of second subplot
+    axs[2].yaxis.set_label_position("right")
+    axs[2].yaxis.set_ticks_position("right")
+    axs[2].yaxis.set_tick_params(color="white")
+
+    # Ignore the yaxis ticks for axs[1]
+    axs[1].yaxis.set_ticklabels([])
+
+    axs[0].text(
+        s="← Better",
+        x=0.5,
+        y=1.02,
+        ha="center",
+        va="bottom",
+        fontsize=10,
+        transform=axs[0].transAxes,
+    )
+    axs[1].text(
+        s="← Better",
+        x=0.5,
+        y=1.02,
+        ha="center",
+        va="bottom",
+        fontsize=10,
+        transform=axs[1].transAxes,
+    )
+    axs[2].text(
+        s="← Better",
+        x=0.5,
+        y=1.02,
+        ha="center",
+        va="bottom",
+        fontsize=10,
+        transform=axs[2].transAxes,
+    )
+    axs[0].text(
+        s="← More orthogonal",
+        x=1.075,
+        y=0.75,
+        ha="center",
+        va="top",
+        fontsize=10,
+        transform=axs[0].transAxes,
+        rotation=90,
+    )
+    axs[1].text(
+        s="← More orthogonal",
+        x=1.075,
+        y=0.75,
+        ha="center",
+        va="top",
+        fontsize=10,
+        transform=axs[1].transAxes,
+        rotation=90,
+    )
 
 
 class EmbedInfo(BaseModel):
@@ -728,8 +791,6 @@ def get_max_pairwise_similarities(
     project: str,
     run_dict: Mapping[int, Mapping[str, str]],
     run_types: Sequence[str],
-    out_file: Path,
-    from_file: bool = False,
 ) -> MaxPairwiseSimilarities:
     """For each run, calculate the max pairwise cosine similarity for each dictionary element.
 
@@ -739,15 +800,12 @@ def get_max_pairwise_similarities(
         api: The wandb API.
         project: The name of the wandb project.
         run_dict: A dictionary mapping layer numbers to dictionaries of run IDs.
-        out_file: The file to save or load the max pairwise similarities to.
-        from_file: Whether to load the max pairwise similarities from file.
+        run_types: The types of runs to compare.
 
     Returns:
         A dictionary mapping layer numbers to dictionaries of max pairwise cosine similarities,
         where the inner dictionary is keyed by run type.
     """
-    if from_file and out_file.exists():
-        return torch.load(out_file, map_location="cpu")
 
     max_pairwise_similarities: MaxPairwiseSimilarities = {}
     for layer_num in run_dict:
@@ -763,8 +821,6 @@ def get_max_pairwise_similarities(
             # Get the max pairwise cosine similarity for each dictionary element
             max_cosine_sim, _ = torch.max(pairwise_similarities, dim=1)
             max_pairwise_similarities[layer_num][run_type] = max_cosine_sim
-
-    torch.save(max_pairwise_similarities, out_file)
     return max_pairwise_similarities
 
 
@@ -900,14 +956,15 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str, from_file: 
         out_dir = Path(__file__).parent / "out" / f"constant_{similar_run_var}"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_file = out_dir / f"max_pairwise_similarities_constant_{similar_run_var}.pt"
-        pairwise_similarities = get_max_pairwise_similarities(
-            api=api,
-            project=project,
-            run_dict=run_dict,
-            run_types=("local", "e2e", "downstream"),
-            out_file=out_file,
-            from_file=from_file,
-        )
+        layers = list(run_dict.keys())
+        run_types = list(run_dict[layers[0]].keys())
+        if from_file and out_file.exists():
+            pairwise_similarities = torch.load(out_file)
+        else:
+            pairwise_similarities = get_max_pairwise_similarities(
+                api=api, project=project, run_dict=run_dict, run_types=run_types
+            )
+        torch.save(pairwise_similarities, out_file)
 
         # plot all layers
         fig = plt.figure(figsize=(8, 4), layout="constrained")
@@ -963,6 +1020,102 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str, from_file: 
                     f"Permutation test for mean difference between local and {run_type}:"
                     f"\n\t{diff:.3f} (95\\% CI: [{low:.3f}-{high:.3f}])"
                 )
+
+
+def collect_all_within_sae_similarities(
+    api: wandb.Api,
+    project: str,
+    from_similarities_file: bool = False,
+    from_summary_file: bool = False,
+) -> pd.DataFrame:
+    """Collect all within SAE similarities and save to a csv file.
+
+    Args:
+        api: The wandb API.
+        project: The name of the wandb project.
+        from_similarities_file: Whether to load the raw max pairwise similarities from file or
+            calculate them.
+        from_summary_file: Whether to load the summary file from file or calculate it.
+
+    Returns:
+        A DataFrame of runs containing the mean max pairwise cosine similarity for each run.
+    """
+
+    out_dir = Path(__file__).parent / "out" / "within_sae_similarities"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    if from_summary_file and (out_dir / "within_sae_similarities.csv").exists():
+        summary_df = pd.read_csv(out_dir / "within_sae_similarities.csv")
+    else:
+        df = get_df_gpt2()
+        summary_df = df.loc[(df["ratio"] == 60) & (df["seed"] == 0) & (df["n_samples"] == 400_000)]
+        # For layer 2 we filter out the runs with L0 > 200. Otherwise we end up with point in one
+        # subplot but not the other
+        summary_df = summary_df.loc[~((summary_df["L0"] > 200) & (summary_df["layer"] == 2))]
+        # Ignore specialised runs
+        summary_df = summary_df.loc[
+            ~summary_df["name"].str.contains("seed-comparison")
+            & ~summary_df["name"].str.contains("lr-comparison")
+            & ~summary_df["name"].str.contains("lower-downstream")
+            & -summary_df["name"].str.contains("e2e-local")
+            & ~summary_df["name"].str.contains("recon-all")
+            & ~summary_df["name"].str.contains("misc_")
+        ]
+
+        # Iterate through the runs and get the max pairwise similarities
+        mean_max_pairwise_sims = []
+        for run_idx in summary_df.index:
+            run_type = summary_df.loc[run_idx, "run_type"]
+            layer = summary_df.loc[run_idx, "layer"]
+            run_id = summary_df.loc[run_idx, "id"]
+            if (
+                from_similarities_file
+                and (out_dir / f"within_sae_similarities_{run_id}.pt").exists()
+            ):
+                max_pairwise_sim = torch.load(out_dir / f"within_sae_similarities_{run_id}.pt")
+            else:
+                max_pairwise_sim = get_max_pairwise_similarities(
+                    api=api,
+                    project=project,
+                    run_dict={layer: {run_type: run_id}},
+                    run_types=[run_type],
+                )
+            torch.save(max_pairwise_sim, out_dir / f"within_sae_similarities_{run_id}.pt")
+            mean_max_pairwise_sim = max_pairwise_sim[layer][run_type].mean().item()
+            mean_max_pairwise_sims.append(mean_max_pairwise_sim)
+
+        summary_df["mean_max_pairwise_sim"] = mean_max_pairwise_sims
+        summary_df.to_csv(out_dir / "within_sae_similarities.csv", index=False)
+
+    layers = sorted(list(summary_df["layer"].unique()))
+    # Create a single plot with three facets
+    plot_facet(
+        df=summary_df,
+        xs=["L0", "CELossIncrease", "alive_dict_elements"],
+        y="mean_max_pairwise_sim",
+        facet_by="layer",
+        line_by="run_type",
+        xlabels=["L0", "CE Loss Increase", "Alive Dictionary Elements"],
+        ylabel="Mean Max Cosine Similarity",
+        suptitle="Within SAE Similarities",
+        legend_title="SAE type",
+        legend_pos="upper right",
+        title={layer: f"Layer {layer}" for layer in layers},
+        axis_formatter=partial(format_axes_orthogonality),
+        out_file=out_dir / "within_sae_similarity_facet.png",
+        styles=STYLE_MAP,
+        plot_type="scatter",
+    )
+
+    summary_df = (
+        summary_df.loc[:, ["layer", "run_type", "mean_max_pairwise_sim"]]
+        .groupby(["layer", "run_type"])
+        .mean()
+        .reset_index()
+    )
+    summary_df = summary_df.pivot(index="layer", columns="run_type", values="mean_max_pairwise_sim")
+    summary_df.to_csv(out_dir / "within_sae_similarities_grouped.csv")
+
+    return summary_df
 
 
 def get_cross_max_similarities(
@@ -1090,6 +1243,10 @@ def create_cross_seed_similarity_plot(
 if __name__ == "__main__":
     project = "gpt2"
     api = wandb.Api()
+
+    collect_all_within_sae_similarities(
+        api, project, from_similarities_file=True, from_summary_file=False
+    )
 
     create_within_sae_similarity_plots(api, project, from_file=False)
     create_cross_type_similarity_plots(api, project, similar_run_var="CE", from_file=False)
