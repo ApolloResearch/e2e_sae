@@ -31,7 +31,7 @@ class Acts(BaseModel):
     orig: ActTensor = torch.empty(0, 1024, 768)
     recon: ActTensor = torch.empty(0, 1024, 768)
     kl: Float[torch.Tensor, "batch seq"] = torch.empty(0, 1024)
-    c_idxs: Int[torch.Tensor, "idxs"] | None = None
+    c_idxs: Int[torch.Tensor, "idxs"] | None = None  # noqa: F821
     c: Float[torch.Tensor, "batch seq c"] | None = None
     orig_pred_tok_ids: Int[torch.Tensor, "batch seq k"] | None = None
     orig_pred_log_probs: Float[torch.Tensor, "batch seq k"] | None = None
@@ -44,7 +44,7 @@ class Acts(BaseModel):
         tokens: torch.Tensor,
         acts: SAEActs,
         kl: Float[torch.Tensor, "batch seq"],
-        c_idxs: Int[torch.Tensor, "idxs"] | None = None,
+        c_idxs: Int[torch.Tensor, "idxs"] | None = None,  # noqa: F821
         orig_logits: LogitTensor | None = None,
         sae_logits: LogitTensor | None = None,
     ):
@@ -99,7 +99,7 @@ def get_acts(
     batch_size=5,
     batches=1,
     device: str = "cuda",
-    c_idxs: Int[torch.Tensor, "idxs"] | None = None,
+    c_idxs: Int[torch.Tensor, "idxs"] | None = None,  # noqa: F821
     load_cache: bool = True,
     save_cache: bool = True,
 ) -> Acts:
