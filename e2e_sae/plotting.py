@@ -120,6 +120,7 @@ def plot_facet(
     y: str,
     facet_by: str,
     line_by: str,
+    line_by_vals: Sequence[str] | None = None,
     sort_by: str | None = None,
     xlabels: Sequence[str | None] | None = None,
     ylabel: str | None = None,
@@ -146,6 +147,7 @@ def plot_facet(
         y: The variable to plot on the y-axis.
         facet_by: The variable to facet the plot by.
         line_by: The variable to draw lines for.
+        line_by_vals: The values to draw lines for. If None, all unique values will be used.
         sort_by: The variable governing how lines are drawn between points. If None, lines will be
             drawn based on the y value.
         title: The title of the plot.
@@ -183,18 +185,27 @@ def plot_facet(
 
     # Get all unique line values from the entire DataFrame
     all_line_vals = df[line_by].unique()
-    # Sort the line values based on the type of the line_by column
-    if line_by == "run_type":
-        sorted_line_vals = ["local", "e2e", "downstream"]
+    if line_by_vals is not None:
+        assert all(
+            val in all_line_vals for val in line_by_vals
+        ), f"Invalid line values: {line_by_vals}"
+        sorted_line_vals = line_by_vals
     else:
         sorted_line_vals = sorted(all_line_vals, key=str if df[line_by].dtype == object else float)
 
+    colors = sns.color_palette("tab10", n_colors=len(sorted_line_vals))
     for subfig, facet_val in zip(subfigs, facet_vals, strict=False):
         axs = subfig.subplots(1, num_axes)
         facet_df = df.loc[df[facet_by] == facet_val]
-        for line_val in sorted_line_vals:
+        for line_val, color in zip(sorted_line_vals, colors, strict=True):
             data = facet_df.loc[facet_df[line_by] == line_val]
-            line_style = {"label": line_val, "marker": "o", "linewidth": 1.1}  # default
+            line_style = {
+                "label": line_val,
+                "marker": "o",
+                "linewidth": 1.1,
+                "color": color,
+                "linestyle": "-" if plot_type == "line" else "None",
+            }  # default
             line_style.update(
                 {} if styles is None else styles.get(line_val, {})
             )  # specific overrides

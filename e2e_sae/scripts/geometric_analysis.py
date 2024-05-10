@@ -1087,13 +1087,14 @@ def collect_all_within_sae_similarities(
         summary_df.to_csv(out_dir / "within_sae_similarities.csv", index=False)
 
     layers = sorted(list(summary_df["layer"].unique()))
-    # Create a single plot with three facets
+    # Create a single plot with three columns, one for each x-axis
     plot_facet(
         df=summary_df,
         xs=["L0", "CELossIncrease", "alive_dict_elements"],
         y="mean_max_pairwise_sim",
         facet_by="layer",
         line_by="run_type",
+        line_by_vals=["local", "e2e", "downstream"],
         xlabels=["L0", "CE Loss Increase", "Alive Dictionary Elements"],
         ylabel="Mean Max Cosine Similarity",
         suptitle="Within SAE Similarities",

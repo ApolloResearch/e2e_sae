@@ -396,6 +396,111 @@ def create_summary_latex_tables(df: pd.DataFrame, out_dir: Path) -> None:
         logger.info(f"Saved to {out_file}")
 
 
+def plot_lr_comparisons(df: pd.DataFrame, layers: Sequence[int]) -> None:
+    """Plot the CE loss increase vs L0 and alive_dict_elements for different learning rates."""
+    # Local lr comparison
+    local_lr_df = df.loc[
+        (df["seed"] == 0)
+        & (df["n_samples"] == 400_000)
+        & (df["ratio"] == 60)
+        & (df["run_type"] == "local")
+        & ~((df["L0"] > 300) & (df["layer"] == 2))  # Avoid points in L0 but not alive_dict subplot
+        & (~df["name"].str.contains("misc_"))
+    ]
+    plot_facet(
+        df=local_lr_df,
+        xs=["L0", "alive_dict_elements"],
+        y="CELossIncrease",
+        facet_by="layer",
+        line_by="lr",
+        xlabels=["L0", "Alive Dictionary Elements"],
+        facet_vals=layers,
+        xlims=[
+            {2: (0, 200), 6: (0, 200), 10: (0, 300)},
+            {layer: (0, 45_000) for layer in layers},
+        ],
+        xticks=[None, ([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"])],
+        ylim={2: (0.2, 0), 6: (0.4, 0), 10: (0.4, 0)},
+        styles={lr: {"markersize": 5} for lr in local_lr_df["lr"].unique()},
+        title={layer: f"Layer {layer}" for layer in layers},
+        axis_formatter=partial(format_two_axes, better_labels=True),
+        out_file=Path(__file__).resolve().parent
+        / "out"
+        / "lr_comparison"
+        / "local_lr_comparison.png",
+        plot_type="line",
+    )
+
+    # e2e lr comparison
+    e2e_lr_df = df.loc[
+        (df["seed"] == 0)
+        & (df["n_samples"] == 400_000)
+        & (df["ratio"] == 60)
+        & (df["run_type"] == "e2e")
+        & ~((df["L0"] > 300) & (df["layer"] == 2))  # Avoid points in L0 but not alive_dict subplot
+        & (~df["name"].str.contains("seed-comparison"))
+        & (~df["name"].str.contains("misc_"))
+    ]
+    plot_facet(
+        df=e2e_lr_df,
+        xs=["L0", "alive_dict_elements"],
+        y="CELossIncrease",
+        facet_by="layer",
+        line_by="lr",
+        xlabels=["L0", "Alive Dictionary Elements"],
+        facet_vals=layers,
+        xlims=[
+            {2: (0, 200), 6: (0, 200), 10: (0, 300)},
+            {layer: (0, 45_000) for layer in layers},
+        ],
+        xticks=[None, ([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"])],
+        ylim={2: (0.2, 0), 6: (0.4, 0), 10: (0.4, 0)},
+        styles={lr: {"markersize": 5} for lr in local_lr_df["lr"].unique()},
+        title={layer: f"Layer {layer}" for layer in layers},
+        axis_formatter=partial(format_two_axes, better_labels=True),
+        out_file=Path(__file__).resolve().parent
+        / "out"
+        / "lr_comparison"
+        / "e2e_lr_comparison.png",
+        plot_type="line",
+    )
+
+    # e2e+ds lr comparison
+    e2e_ds_lr_df = df.loc[
+        (df["seed"] == 0)
+        & (df["n_samples"] == 400_000)
+        & (df["ratio"] == 60)
+        & (df["run_type"] == "downstream")
+        & ~((df["L0"] > 300) & (df["layer"] == 2))  # Avoid points in L0 but not alive_dict subplot
+        & (~df["name"].str.contains("seed-comparison"))
+        & (~df["name"].str.contains("misc_"))
+        & (~df["name"].str.contains("lower-downstream"))
+    ]
+    plot_facet(
+        df=e2e_ds_lr_df,
+        xs=["L0", "alive_dict_elements"],
+        y="CELossIncrease",
+        facet_by="layer",
+        line_by="lr",
+        xlabels=["L0", "Alive Dictionary Elements"],
+        facet_vals=layers,
+        xlims=[
+            {2: (0, 200), 6: (0, 200), 10: (0, 300)},
+            {layer: (0, 45_000) for layer in layers},
+        ],
+        xticks=[None, ([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"])],
+        ylim={2: (0.2, 0), 6: (0.4, 0), 10: (0.4, 0)},
+        styles={lr: {"markersize": 5} for lr in local_lr_df["lr"].unique()},
+        title={layer: f"Layer {layer}" for layer in layers},
+        axis_formatter=partial(format_two_axes, better_labels=True),
+        out_file=Path(__file__).resolve().parent
+        / "out"
+        / "lr_comparison"
+        / "e2e_ds_lr_comparison.png",
+        plot_type="line",
+    )
+
+
 def gpt2_plots():
     run_types = ("local", "e2e", "downstream")
     n_layers = 12
@@ -425,67 +530,8 @@ def gpt2_plots():
         run_types=run_types,
     )
 
-    # Local lr comparison
-    local_lr_df = df.loc[
-        (df["seed"] == 0)
-        & (df["n_samples"] == 400_000)
-        & (df["ratio"] == 60)
-        & (df["run_type"] == "local")
-        & ~((df["L0"] > 300) & (df["layer"] == 2))  # Avoid points in L0 but not alive_dict subplot
-    ]
+    plot_lr_comparisons(df, layers)
 
-    plot_facet(
-        df=local_lr_df,
-        xs=["L0", "alive_dict_elements"],
-        y="CELossIncrease",
-        facet_by="layer",
-        line_by="lr",
-        xlabels=["L0", "Alive Dictionary Elements"],
-        facet_vals=layers,
-        xlims=[
-            {layer: (0, 200) for layer in layers},
-            {layer: (0, 45_000) for layer in layers},
-        ],
-        xticks=[None, ([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"])],
-        ylim={layer: (0.4, 0) for layer in layers},
-        title={layer: f"Layer {layer}" for layer in layers},
-        axis_formatter=partial(format_two_axes, better_labels=True),
-        out_file=Path(__file__).resolve().parent
-        / "out"
-        / "lr_comparison"
-        / "local_lr_comparison.png",
-    )
-    # e2e lr comparison
-    e2e_lr_df = df.loc[
-        (df["seed"] == 0)
-        & (df["n_samples"] == 400_000)
-        & (df["ratio"] == 60)
-        & (df["run_type"] == "e2e")
-        & ~((df["L0"] > 300) & (df["layer"] == 2))  # Avoid points in L0 but not alive_dict subplot
-        & (~df["name"].str.contains("seed-comparison"))
-    ]
-
-    plot_facet(
-        df=e2e_lr_df,
-        xs=["L0", "alive_dict_elements"],
-        y="CELossIncrease",
-        facet_by="layer",
-        line_by="lr",
-        xlabels=["L0", "Alive Dictionary Elements"],
-        facet_vals=layers,
-        xlims=[
-            {layer: (0, 200) for layer in layers},
-            {layer: (0, 45_000) for layer in layers},
-        ],
-        xticks=[None, ([0, 10_000, 20_000, 30_000, 40_000], ["0", "10k", "20k", "30k", "40k"])],
-        ylim={layer: (0.4, 0) for layer in layers},
-        title={layer: f"Layer {layer}" for layer in layers},
-        axis_formatter=partial(format_two_axes, better_labels=True),
-        out_file=Path(__file__).resolve().parent
-        / "out"
-        / "lr_comparison"
-        / "e2e_lr_comparison.png",
-    )
     out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
     out_dir.mkdir(exist_ok=True, parents=True)
 
@@ -519,6 +565,7 @@ def gpt2_plots():
         facet_by="layer",
         facet_vals=layers,
         line_by="run_type",
+        line_by_vals=["local", "e2e", "downstream"],
         sort_by="CELossIncrease",
         xlabels=["Mean Grad Norm", "CE Loss Increase"],
         ylabel="Alive Dictionary Elements",
@@ -542,6 +589,7 @@ def gpt2_plots():
         facet_by="layer",
         facet_vals=layers,
         line_by="run_type",
+        line_by_vals=["local", "e2e", "downstream"],
         xlabels=["L0", "Alive Dictionary Elements"],
         ylabel="CE Loss Increase",
         xlims=[l0_diff_xlims, {layer: (0, 45_000) for layer in layers}],
@@ -562,6 +610,7 @@ def gpt2_plots():
         facet_by="layer",
         facet_vals=[6],
         line_by="run_type",
+        line_by_vals=["local", "e2e", "downstream"],
         xlabels=["L0", "Alive Dictionary Elements"],
         ylabel="CE Loss Increase",
         legend_title="SAE Type",
@@ -684,6 +733,7 @@ def tinystories_1m_plots():
         facet_by="layer",
         facet_vals=[3],
         line_by="run_type",
+        line_by_vals=["local", "e2e", "downstream"],
         xlabels=["L0", "Alive Dictionary Elements"],
         ylabel="CE Loss Increase",
         legend_title="SAE Type",
