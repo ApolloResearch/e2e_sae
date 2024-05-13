@@ -57,14 +57,12 @@ from e2e_sae.utils import (
 )
 
 
-class SparsifiersConfig(BaseModel):
+class SAEsConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    type_of_sparsifier: str | None = "sae"
     dict_size_to_input_ratio: PositiveFloat = 1.0
-    k: PositiveInt | None = None  # Only used for codebook sparsifier
     pretrained_sae_paths: Annotated[
         list[RootPath] | None, BeforeValidator(lambda x: [x] if isinstance(x, str | Path) else x)
-    ] = Field(None, description="Path to a pretrained SAE model to load. If None, don't load any.")
+    ] = Field(None, description="Path to a pretrained SAEs to load. If None, don't load any.")
     retrain_saes: bool = Field(False, description="Whether to retrain the pretrained SAEs.")
     sae_positions: Annotated[
         list[str], BeforeValidator(lambda x: [x] if isinstance(x, str) else x)
@@ -127,7 +125,7 @@ class Config(BaseModel):
     loss: LossConfigs
     train_data: DatasetConfig
     eval_data: DatasetConfig | None = None
-    saes: SparsifiersConfig
+    saes: SAEsConfig
 
     @model_validator(mode="before")
     @classmethod
