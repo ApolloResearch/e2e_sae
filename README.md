@@ -34,12 +34,12 @@ The library also contains scripts for training mlps and SAEs on mlps, as well as
 custom transformerlens models and SAEs on these models (see [here](e2e_sae/scripts/)).
 ### Load a Pre-trained SAE
 You can load any pre-trained SAE (and accompanying TransformerLens model) trained using this library
-from Weights and Biases by running
+from Weights and Biases or locally by running
 ```python
 from e2e_sae import SAETransformer
 model = SAETransformer.from_wandb("<entity/project/run_id>")
-# or, if training was done locally:
-model = SAETransformer.from_checkpoint("/path/to/checkpoint/dir") 
+# or, if stored locally
+model = SAETransformer.from_local_path("/path/to/checkpoint/dir") 
 ```
 Note that all runs in the [TODO: Add e2e paper]() can be loaded this way (e.g.
 [sparsify/gpt2/tvj2owza](https://wandb.ai/sparsify/gpt2/runs/tvj2owza)).
