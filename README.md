@@ -2,10 +2,10 @@
 
 This library is used to train and evaluate Sparse Autoencoders (SAEs). It handles the following
 training types:
-- End-to-end (e2e): Loss function includes sparsity and final model kl_divergence.
-- e2e + future reconstruction: Loss function includes sparsity, final model kl_divergence, and MSE
-    at future layers.
-- Local (i.e. vanilla SAEs): Loss function includes sparsity and MSE at the SAE layer
+- e2e (end-to-end): Loss function includes sparsity and final model kl_divergence.
+- e2e + downstream reconstruction: Loss function includes sparsity, final model kl_divergence, and MSE
+    at downstream layers.
+- local (i.e. vanilla SAEs): Loss function includes sparsity and MSE at the SAE layer
 - Any combination of the above.
 
 See [TODO: add paper] which argues for training SAEs e2e rather than locally. All SAEs presented in the paper can be found at https://wandb.ai/sparsify/gpt2 and can be loaded using this library.
