@@ -13,7 +13,7 @@ See [TODO: add paper] which argues for training SAEs e2e rather than locally. Al
 ## Usage
 ### Installation
 ```bash
-pip install .
+pip install e2e_sae
 ```
 
 ### Train SAEs on any [TransformerLens](https://github.com/neelnanda-io/TransformerLens) model
