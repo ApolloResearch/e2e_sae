@@ -396,12 +396,12 @@ class SAETransformer(nn.Module):
         ).name
         assert latest_checkpoint_file is not None, "Failed to download the latest checkpoint."
 
-        return cls.from_checkpoint(
+        return cls.from_local_path(
             checkpoint_file=latest_checkpoint_file, config_file=train_config_file
         )
 
     @classmethod
-    def from_checkpoint(
+    def from_local_path(
         cls,
         checkpoint_dir: str | Path | None = None,
         checkpoint_file: str | Path | None = None,
@@ -409,7 +409,7 @@ class SAETransformer(nn.Module):
     ) -> "SAETransformer":
         """Instantiate an SAETransformer using a checkpoint from a specified directory.
 
-        Our current implementation restricts us from using the
+        NOTE: the current implementation restricts us from using the
         e2e_sae/scripts/train_tlens_saes/run_train_tlens_saes.py.Config class for type
         validation due to circular imports. Would need to move the Config class to a separate file
         to use it here.
