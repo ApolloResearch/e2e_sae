@@ -31,7 +31,7 @@ jobs:
         pip install ".[dev]"
     - name: Run pyright type check
       run: |
-        pyright .
+        pyright
     - name: Run ruff lint
       run: |
         ruff check --fix-only .
