@@ -1,8 +1,7 @@
 """Run and analyze autointerp for SAEs.
 
-NOTE: Running this script currently requires installing ApolloResearch's fork of neuron-explainer.
-https://github.com/ApolloResearch/automated-interpretability. This has been updated to work with
-gpt4-turbo-2024-04-09 and fixes an OPENAI_API_KEY issue.
+NOTE: Running this script currently requires installing Johnny Lin's fork of OpenAI's
+neuron_explainer (`pip install git+https://github.com/hijohnnylin/automated-interpretability.git`).
 
 This script requires the following environment variables:
 - OPENAI_API_KEY: OpenAI API key.
@@ -619,7 +618,6 @@ if __name__ == "__main__":
     df = get_autointerp_results_df(score_out_dir)
 
     ## Analysis of autointerp results
-
     const_l0_pairs = {
         2: {"local": "res_sll-ajt", "downstream": "res_slefr-ajt"},
         6: {"local": "res_sll-ajt", "downstream": "res_slefr-ajt"},
@@ -632,8 +630,6 @@ if __name__ == "__main__":
         10: {"local": "res_scl-ajt", "downstream": "res_scefr-ajt"},
     }
 
-    # compare_autointerp_results(df)
-    # compare_across_saes(df)
     pair_violin_plot(df, const_l0_pairs, plot_out_dir / "l0_violin.png")
     pair_violin_plot(df, const_ce_pairs, plot_out_dir / "ce_violin.png")
     print("SAME L0")
