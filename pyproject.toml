@@ -1,6 +1,6 @@
 [project]
 name = "e2e_sae"
-version = "0.0.1"
+version = "0.0.2"
 description = "Repo for training sparse autoencoders end-to-end"
 requires-python = ">=3.11"
 readme = "README.md"
