@@ -1,4 +1,5 @@
 **/out/
+neuronpedia_outputs/
 .env
 .vscode/settings.json
 wandb/
