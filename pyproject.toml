@@ -74,6 +74,9 @@ known-third-party = ["wandb"]
 
 [tool.pyright]
 include = ["e2e_sae", "tests"]
+exclude = [
+    "e2e_sae/scripts/autointerp.py",  # neuron_explainer package not yet on pypi
+]
 
 strictListInference = true
 strictDictionaryInference = true
