@@ -9,7 +9,7 @@ from e2e_sae.losses import (
     OutToInLoss,
     SparsityLoss,
 )
-from e2e_sae.scripts.train_tlens_saes.run_train_tlens_saes import Config, SparsifiersConfig
+from e2e_sae.scripts.train_tlens_saes.run_train_tlens_saes import Config, SAEsConfig
 from e2e_sae.scripts.train_tlens_saes.run_train_tlens_saes import main as run_training
 
 
@@ -68,7 +68,7 @@ def test_train_tiny_gpt():
             split="train",
             n_ctx=1024,
         ),
-        saes=SparsifiersConfig(
+        saes=SAEsConfig(
             retrain_saes=False,
             pretrained_sae_paths=None,
             sae_positions=[
