@@ -49,6 +49,13 @@ This will instantiate a `SAETransformer` class, which contains a TransformerLens
 attached. To do a forward pass without SAEs, use the `forward_raw` method, to do a forward pass with
 SAEs, use the `forward` method (or simply call the SAETansformer instance).
 
+
+### Autointerpretability
+To run autointerpretability on SAEs uploaded to Neuronpedia, use the script
+`e2e_sae/scripts/autointerp.py`. Note that this will require you to first install Johnny Lin's fork
+of OpenAI's `neuron_explainer` package with `pip install
+git+https://github.com/hijohnnylin/automated-interpretability.git`.
+
 ## Contributing
 Developer dependencies are installed with `make install-dev`, which will also install pre-commit
 hooks.
