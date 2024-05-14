@@ -870,7 +870,6 @@ def create_subplot_hists(
         for ax, sims in zip(axs, sim_list, strict=False):
             # Draw vertical dotted line in black
             ax.axvline(sims.mean().item(), color="k", linestyle="--", linewidth=1)
-    # plt.tight_layout()
     if suptitle is not None:
         fig.suptitle(suptitle, fontweight="bold")
     if out_file:
@@ -1196,7 +1195,6 @@ def create_cross_type_similarity_plots(
                 f"{STYLE_MAP['downstream']['label']} → {STYLE_MAP['local']['label']}",
             ],
         )
-    fig.suptitle(f"Cross Type Similarities (Constant {similar_run_var.upper()})", fontweight="bold")
     out_file = out_dir / "cross_type_similarities_all_layers.png"
     plt.savefig(out_file)
     plt.savefig(out_file.with_suffix(".svg"))
@@ -1250,7 +1248,6 @@ if __name__ == "__main__":
 
     create_within_sae_similarity_plots(api, project, from_file=False)
     create_cross_type_similarity_plots(api, project, similar_run_var="CE", from_file=False)
-
     # These three are also relevent but not in the paper
     # Sparsity coeff 1.5
     # create_seed_max_similarity_comparison_plots(
