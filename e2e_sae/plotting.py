@@ -258,6 +258,7 @@ def plot_facet(
         fig.suptitle(suptitle, fontweight="bold", x=xtitle_pos)
 
     if out_file is not None:
+        Path(out_file).parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(out_file)
         logger.info(f"Saved to {out_file}")
         if save_svg:

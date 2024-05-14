@@ -1,3 +1,6 @@
+"""Functions for analyzing the geometric properties of the SAE dictionaries, including cosine
+similarities and UMAP embeddings."""
+
 import json
 import os
 from collections.abc import Mapping, Sequence
@@ -1248,18 +1251,6 @@ if __name__ == "__main__":
 
     create_within_sae_similarity_plots(api, project, from_file=False)
     create_cross_type_similarity_plots(api, project, similar_run_var="CE", from_file=False)
-    # These three are also relevent but not in the paper
-    # Sparsity coeff 1.5
-    # create_seed_max_similarity_comparison_plots(
-    #     api, project, run_ids=("bok0t1sw", "tuzvyysg"), layer=6, run_type="e2e"
-    # )
-    # create_seed_max_similarity_comparison_plots(
-    #     api, project, run_ids=("atfccmo3", "tvj2owza"), layer=6, run_type="e2e"
-    # )
-    # # This is far less similar. Has lower sparsity too (0.2)
-    # create_seed_max_similarity_comparison_plots(
-    #     api, project, run_ids=("hbjl3zwy", "wzzcimkj"), layer=6, run_type="e2e"
-    # )
 
     run_ids: dict[str, tuple[str, str]] = {
         "local": ("1jy3m5j0", "uqfp43ti"),
@@ -1274,20 +1265,18 @@ if __name__ == "__main__":
     #     6: {"x": (4.0, None), "y": (None, None)},
     #     10: {"x": (None, None), "y": (None, None)},
     # }
-    # try:
-    #     create_umap_plots(
-    #         api,
-    #         project,
-    #         run_types=("e2e", "local"),
-    #         compute_umaps=False,
-    #         similar_run_var="CE",
-    #         lims=e2e_local_ce_lims,
-    #         grid=False,
-    #         plot_regions_in_layer=[2, 6, 10],
-    #     )
-    # except FileNotFoundError:
-    #     logger.warning("Could not create e2e-local UMAP plot")
+    # create_umap_plots(
+    #     api,
+    #     project,
+    #     run_types=("e2e", "local"),
+    #     compute_umaps=False,
+    #     similar_run_var="CE",
+    #     lims=e2e_local_ce_lims,
+    #     grid=False,
+    #     plot_regions_in_layer=[2, 6, 10],
+    # )
 
+    # Post-hoc ignore the identified outliers in downstream-local umap
     downstream_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
         2: {"x": (4, None), "y": (None, None)},
         6: {"x": (None, None), "y": (None, None)},

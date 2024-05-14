@@ -1,4 +1,4 @@
-"""Run and analyze autointerp for SAEs.
+"""Run and analyze autointerpretations for SAEs stored in Neuronpedia.
 
 This script requires the following environment variables:
 - OPENAI_API_KEY: OpenAI API key.
