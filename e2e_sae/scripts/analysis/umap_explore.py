@@ -53,7 +53,9 @@ outlier_pos_0_dir = normalize(local_acts.orig[:, 0, :].mean(0), p=2, dim=0)
 
 
 def umaps_in_dir(
-    dir: Float[torch.Tensor, "emb"], vabs: float | None = None, outfile: Path | None = None
+    dir: Float[torch.Tensor, "emb"],  # noqa: F821
+    vabs: float | None = None,
+    outfile: Path | None = None,
 ):
     fig, axs = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(10, 5), layout="constrained")
     local_sims = cosine_similarity(local_dictionary.alive_dict_elements.T, dir, dim=-1)

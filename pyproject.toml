@@ -23,6 +23,7 @@ dependencies = [
     "umap-learn~=0.5.6",
     "tenacity~=8.2.3",
     "statsmodels~=0.14.2",
+    "automated-interpretability~=0.0.3"
 ]
 
 [project.urls]
@@ -74,9 +75,6 @@ known-third-party = ["wandb"]
 
 [tool.pyright]
 include = ["e2e_sae", "tests"]
-exclude = [
-    "e2e_sae/scripts/analysis/autointerp.py",  # neuron_explainer package not yet on pypi
-]
 
 strictListInference = true
 strictDictionaryInference = true

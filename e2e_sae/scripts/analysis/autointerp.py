@@ -1,8 +1,5 @@
 """Run and analyze autointerp for SAEs.
 
-NOTE: Running this script currently requires installing Johnny Lin's fork of OpenAI's
-neuron_explainer (`pip install git+https://github.com/hijohnnylin/automated-interpretability.git`).
-
 This script requires the following environment variables:
 - OPENAI_API_KEY: OpenAI API key.
 - NEURONPEDIA_API_KEY: Neuronpedia API key.
