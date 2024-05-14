@@ -24,6 +24,7 @@ from numpy.typing import ArrayLike
 from pydantic import BaseModel, ConfigDict
 from scipy import stats
 from torch import Tensor
+from tqdm import tqdm
 from wandb.apis.public import Run
 
 from e2e_sae.analysis import get_df_gpt2
@@ -650,7 +651,13 @@ def get_alive_dict_elements(
         replace=False,
     )
     assert latest_checkpoint is not None
-    weights = torch.load(latest_checkpoint.name, map_location="cpu")
+    try:
+        weights = torch.load(latest_checkpoint.name, map_location="cpu")
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Error loading weights from {latest_checkpoint.name}. "
+            f"Deleting this file may resolve the issue."
+        ) from e
     decoder_keys = [k for k in weights if k.endswith("decoder.weight")]
     assert len(decoder_keys) == 1, "Only one decoder should be present in the SAE"
 
@@ -687,7 +694,7 @@ def create_umap_plots(
         api: The wandb API.
         project: The name of the wandb project.
         run_types: The types of runs to compare.
-        compute_umaps: Whether to compute the UMAP embeddings or load them from file.
+        compute_umaps: Whether to compute the UMAP embeddings or load them from file, if available.
         similar_run_var: The constant value to use for the runs.
         lims: The x and y limits for the plot.
         grid: Whether to plot a grid in the background.
@@ -709,7 +716,7 @@ def create_umap_plots(
 
         embed_file = out_dir / REGIONS[run_types_str][layer_num].filename
 
-        if compute_umaps:
+        if compute_umaps or not embed_file.exists():
             all_alive_elements = []
             for run_type in run_types:
                 alive_elements = get_alive_dict_elements(
@@ -721,7 +728,8 @@ def create_umap_plots(
             embed_info = compute_umap_embedding(alive_elements_pair=tuple(all_alive_elements))
             torch.save(embed_info.model_dump(), embed_file)
 
-        embed_info = EmbedInfo(**torch.load(embed_file))
+        else:
+            embed_info = EmbedInfo(**torch.load(embed_file))
         umap_file = embed_file.with_suffix(".png")
 
         # Get indices for all embeddings
@@ -1065,7 +1073,7 @@ def collect_all_within_sae_similarities(
 
         # Iterate through the runs and get the max pairwise similarities
         mean_max_pairwise_sims = []
-        for run_idx in summary_df.index:
+        for run_idx in tqdm(summary_df.index, desc="Calculating within dict similarities"):
             run_type = summary_df.loc[run_idx, "run_type"]
             layer = summary_df.loc[run_idx, "layer"]
             run_id = summary_df.loc[run_idx, "id"]
