@@ -15,8 +15,8 @@ from e2e_sae.data import DatasetConfig, create_data_loader
 from e2e_sae.hooks import SAEActs
 from e2e_sae.log import logger
 from e2e_sae.models.transformers import SAETransformer
-from e2e_sae.scripts.geometric_analysis import create_subplot_hists
-from e2e_sae.scripts.plot_settings import SIMILAR_CE_RUNS, STYLE_MAP
+from e2e_sae.scripts.analysis.geometric_analysis import create_subplot_hists
+from e2e_sae.scripts.analysis.plot_settings import SIMILAR_CE_RUNS, STYLE_MAP
 
 ActTensor = Float[torch.Tensor, "batch seq hidden"]
 LogitTensor = Float[torch.Tensor, "batch seq vocab"]

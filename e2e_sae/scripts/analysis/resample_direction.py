@@ -11,8 +11,8 @@ from jaxtyping import Float
 from transformer_lens import HookedTransformer
 
 from e2e_sae.data import DatasetConfig, create_data_loader
-from e2e_sae.scripts.activation_analysis import get_acts, kl_div, pca
-from e2e_sae.scripts.plot_settings import SIMILAR_CE_RUNS
+from e2e_sae.scripts.analysis.activation_analysis import get_acts, kl_div, pca
+from e2e_sae.scripts.analysis.plot_settings import SIMILAR_CE_RUNS
 
 ActTensor = Float[torch.Tensor, "batch seq hidden"]
 LogitTensor = Float[torch.Tensor, "batch seq vocab"]

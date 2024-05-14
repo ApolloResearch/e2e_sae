@@ -12,7 +12,7 @@ import wandb
 from e2e_sae.analysis import create_run_df, get_df_gpt2
 from e2e_sae.log import logger
 from e2e_sae.plotting import plot_facet, plot_per_layer_metric
-from e2e_sae.scripts.plot_settings import (
+from e2e_sae.scripts.analysis.plot_settings import (
     SIMILAR_CE_RUNS,
     SIMILAR_RUN_INFO,
     STYLE_MAP,
@@ -509,28 +509,29 @@ def gpt2_plots():
 
     layers = list(sorted(df["layer"].unique()))
 
-    plot_n_samples_comparison(
-        df=df.loc[(df["ratio"] == 60) & (df["seed"] == 0) & (df["lr"] == 5e-4)],
-        out_dir=Path(__file__).resolve().parent / "out",
-        run_types=run_types,
-    )
-    # # 1 seed in each layer
-    local_seed_ids = [("ue3lz0n7", "d8vgjnyc"), ("1jy3m5j0", "uqfp43ti"), ("m2hntlav", "77bp68uk")]
-    e2e_seed_ids = [("ovhfts9n", "slxwr007"), ("tvj2owza", "atfccmo3"), ("jnjpmyqk", "ac9i1g6v")]
-    e2e_recon_ids = [("y8sca507", "hqo5azo2")]
-    seed_ids = local_seed_ids + e2e_seed_ids + e2e_recon_ids
-    plot_seed_comparison(
-        df=df.loc[df["lr"] == 5e-4],
-        run_ids=seed_ids,
-        out_dir=Path(__file__).resolve().parent / "out" / "seed_comparison",
-    )
-    plot_ratio_comparison(
-        df=df.loc[(df["seed"] == 0) & (df["n_samples"] == 400_000) & (df["lr"] == 5e-4)],
-        out_dir=Path(__file__).resolve().parent / "out" / "ratio_comparison",
-        run_types=run_types,
-    )
+    # plot_n_samples_comparison(
+    #     df=df.loc[(df["ratio"] == 60) & (df["seed"] == 0) & (df["lr"] == 5e-4)],
+    #     out_dir=Path(__file__).resolve().parent / "out",
+    #     run_types=run_types,
+    # )
+    # # # 1 seed in each layer
+    # local_seed_ids = [("ue3lz0n7", "d8vgjnyc"), ("1jy3m5j0", "uqfp43ti"), ("m2hntlav", "77bp68uk")]
+    # e2e_seed_ids = [("ovhfts9n", "slxwr007"), ("tvj2owza", "atfccmo3"), ("jnjpmyqk", "ac9i1g6v")]
+    # e2e_recon_ids = [("y8sca507", "hqo5azo2")]
+    # seed_ids = local_seed_ids + e2e_seed_ids + e2e_recon_ids
+    # plot_seed_comparison(
+    #     df=df.loc[df["lr"] == 5e-4],
+    #     run_ids=seed_ids,
+    #     out_dir=Path(__file__).resolve().parent / "out" / "seed_comparison",
+    # )
+    # plot_ratio_comparison(
+    #     df=df.loc[(df["seed"] == 0) & (df["n_samples"] == 400_000) & (df["lr"] == 5e-4)],
+    #     out_dir=Path(__file__).resolve().parent / "out" / "ratio_comparison",
+    #     run_types=run_types,
+    # )
 
     plot_lr_comparisons(df, layers)
+    exit()
 
     out_dir = Path(__file__).resolve().parent / "out" / "_".join(run_types)
     out_dir.mkdir(exist_ok=True, parents=True)

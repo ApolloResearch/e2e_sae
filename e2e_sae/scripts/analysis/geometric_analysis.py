@@ -26,7 +26,7 @@ from wandb.apis.public import Run
 from e2e_sae.analysis import get_df_gpt2
 from e2e_sae.log import logger
 from e2e_sae.plotting import plot_facet
-from e2e_sae.scripts.plot_settings import (
+from e2e_sae.scripts.analysis.plot_settings import (
     SIMILAR_RUN_INFO,
     STYLE_MAP,
 )

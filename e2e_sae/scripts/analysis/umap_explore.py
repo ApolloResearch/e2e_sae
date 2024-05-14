@@ -10,21 +10,21 @@ from scipy.stats import pearsonr, spearmanr
 from torch.nn.functional import cosine_similarity, normalize
 
 from e2e_sae.log import logger
-from e2e_sae.scripts.activation_analysis import Acts, get_acts, pca
-from e2e_sae.scripts.geometric_analysis import (
+from e2e_sae.scripts.analysis.activation_analysis import Acts, get_acts, pca
+from e2e_sae.scripts.analysis.geometric_analysis import (
     EmbedInfo,
     create_subplot_hists,
     get_alive_dict_elements,
 )
-from e2e_sae.scripts.plot_settings import SIMILAR_CE_RUNS, STYLE_MAP
+from e2e_sae.scripts.analysis.plot_settings import SIMILAR_CE_RUNS, STYLE_MAP
 
 # %%
 local_run_id = SIMILAR_CE_RUNS[10]["local"]
 downstream_run_id = SIMILAR_CE_RUNS[10]["downstream"]
 
-scripts_dir = Path(__file__).parent
+analysis_dir = Path(__file__).parent
 
-umap_data_dir = Path(scripts_dir / "out/umap")
+umap_data_dir = Path(analysis_dir / "out/umap")
 umap_file = umap_data_dir / "constant_CE/downstream_local_umap_blocks.10.hook_resid_pre.pt"
 
 info = EmbedInfo(**torch.load(umap_file))
@@ -34,7 +34,7 @@ api = wandb.Api()
 local_acts = get_acts(api.run(f"sparsify/gpt2/{local_run_id}"))
 downstream_acts = get_acts(api.run(f"sparsify/gpt2/{downstream_run_id}"))
 
-out_dir = scripts_dir / "out/pca_dir_0"
+out_dir = analysis_dir / "out/pca_dir_0"
 
 # %%
 
