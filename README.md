@@ -52,6 +52,12 @@ SAEs, use the `forward` method (or simply call the SAETansformer instance).
 The dictionary elements of an SAE can be accessed via `SAE.dict_elements`. This is will normalize
 the decoder elements to have norm 1.
 
+### Autointerpretability
+To run autointerpretability on SAEs uploaded to Neuronpedia, use the script
+`e2e_sae/scripts/autointerp.py`. Note that this will require you to first install Johnny Lin's fork
+of OpenAI's `neuron_explainer` package with `pip install
+git+https://github.com/hijohnnylin/automated-interpretability.git`.
+
 ## Contributing
 Developer dependencies are installed with `make install-dev`, which will also install pre-commit
 hooks.
