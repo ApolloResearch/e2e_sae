@@ -204,25 +204,26 @@ REGIONS: dict[str, dict[int, LayerRegions]] = {
             filename="downstream_local_umap_blocks.10.hook_resid_pre.pt",
             regions=[
                 Region(
-                    coords=RegionCoords(xmin=5.5, xmax=6, ymin=-0.1, ymax=0.2),
+                    coords=RegionCoords(xmin=5.5, xmax=5.8, ymin=-0.1, ymax=0.2),
                     description="Local dense cluster on right",
+                    letter="H",
                 ),
-                Region(
-                    coords=RegionCoords(xmin=6, xmax=6.5, ymin=1, ymax=1.5),
-                    description="downstream outlier right",
-                ),
-                Region(
-                    coords=RegionCoords(xmin=3.7, xmax=4, ymin=0.3, ymax=0.5),
-                    description="Mostly downstream in right/middle",
-                ),
-                Region(
-                    coords=RegionCoords(xmin=-2.5, xmax=-2.3, ymin=-2.3, ymax=-2),
-                    description="Mixed hanging off bottom left",
-                ),
-                Region(
-                    coords=RegionCoords(xmin=-0.5, xmax=-0.2, ymin=2, ymax=2.3),
-                    description="Mixed in middle",
-                ),
+                # Region(
+                #     coords=RegionCoords(xmin=6, xmax=6.5, ymin=1, ymax=1.5),
+                #     description="downstream outlier right",
+                # ),
+                # Region(
+                #     coords=RegionCoords(xmin=3.7, xmax=4, ymin=0.3, ymax=0.5),
+                #     description="Mostly downstream in right/middle",
+                # ),
+                # Region(
+                #     coords=RegionCoords(xmin=-2.5, xmax=-2.3, ymin=-2.3, ymax=-2),
+                #     description="Mixed hanging off bottom left",
+                # ),
+                # Region(
+                #     coords=RegionCoords(xmin=-0.5, xmax=-0.2, ymin=2, ymax=2.3),
+                #     description="Mixed in middle",
+                # ),
             ],
         ),
     },
@@ -1267,6 +1268,8 @@ if __name__ == "__main__":
     }
     create_cross_seed_similarity_plot(api, project, run_ids)
 
+    sns.reset_defaults()
+
     # Post-hoc ignore the identified outliers in e2e-local umap
     # e2e_local_ce_lims: dict[int, dict[str, tuple[float | None, float | None]]] = {
     #     2: {"x": (-2.0, None), "y": (None, None)},
@@ -1298,5 +1301,5 @@ if __name__ == "__main__":
         similar_run_var="CE",
         lims=downstream_local_ce_lims,
         grid=False,
-        plot_regions_in_layer=[6],
+        plot_regions_in_layer=[6, 10],
     )
