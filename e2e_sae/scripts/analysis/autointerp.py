@@ -633,3 +633,11 @@ if __name__ == "__main__":
     compute_p_values(df, const_l0_pairs)
     print("\nSAME CE")
     compute_p_values(df, const_ce_pairs)
+
+    counts = df.groupby(["layer", "sae"]).feature.count()
+    print("n values, similar l0")
+    for layer, sae_dict in const_l0_pairs.items():
+        print(layer, counts[layer][sae_dict["local"]], counts[layer][sae_dict["downstream"]])
+    print("n values, similar ce")
+    for layer, sae_dict in const_ce_pairs.items():
+        print(layer, counts[layer][sae_dict["local"]], counts[layer][sae_dict["downstream"]])
