@@ -1,3 +1,4 @@
+"""Analysis of PCA dir 0 in layer 10"""
 # %%
 from pathlib import Path
 
@@ -13,7 +14,6 @@ from e2e_sae.log import logger
 from e2e_sae.scripts.analysis.activation_analysis import Acts, get_acts, pca
 from e2e_sae.scripts.analysis.geometric_analysis import (
     EmbedInfo,
-    create_subplot_hists,
     get_alive_dict_elements,
 )
 from e2e_sae.scripts.analysis.plot_settings import SIMILAR_CE_RUNS, STYLE_MAP
@@ -23,30 +23,26 @@ local_run_id = SIMILAR_CE_RUNS[10]["local"]
 downstream_run_id = SIMILAR_CE_RUNS[10]["downstream"]
 
 analysis_dir = Path(__file__).parent
-
 umap_data_dir = Path(analysis_dir / "out/umap")
-umap_file = umap_data_dir / "constant_CE/downstream_local_umap_blocks.10.hook_resid_pre.pt"
-
-info = EmbedInfo(**torch.load(umap_file))
-
-
-api = wandb.Api()
-local_acts = get_acts(api.run(f"sparsify/gpt2/{local_run_id}"))
-downstream_acts = get_acts(api.run(f"sparsify/gpt2/{downstream_run_id}"))
-
 out_dir = analysis_dir / "out/pca_dir_0"
 
-# %%
+umap_file = umap_data_dir / "constant_CE/downstream_local_umap_blocks.10.hook_resid_pre.pt"
+umap_info = EmbedInfo(**torch.load(umap_file))
 
+api = wandb.Api()
+
+local_acts = get_acts(api.run(f"sparsify/gpt2/{local_run_id}"))
 local_dictionary = get_alive_dict_elements(api, "gpt2", local_run_id)
-local_embeds = info.embedding[info.alive_elements_per_dict[0] :, :]
+local_embeds = umap_info.embedding[umap_info.alive_elements_per_dict[0] :, :]
 
+downstream_acts = get_acts(api.run(f"sparsify/gpt2/{downstream_run_id}"))
 downstream_dictionary = get_alive_dict_elements(api, "gpt2", downstream_run_id)
-downstream_embeds = info.embedding[: info.alive_elements_per_dict[0]]
+downstream_embeds = umap_info.embedding[: umap_info.alive_elements_per_dict[0]]
 
 pca_dirs = pca(local_acts.orig.flatten(0, 1), n_dims=None).T
 
 outlier_pos_0_dir = normalize(local_acts.orig[:, 0, :].mean(0), p=2, dim=0)
+print(cosine_similarity(pca_dirs[0], outlier_pos_0_dir).item())
 
 # %%
 ######## UMAP IN DIR PLOT ########
@@ -165,23 +161,8 @@ axs[1].set_xlabel("Activation in PCA direction 0", x=-0.025, horizontalalignment
 plt.savefig(out_dir / "activation_hist.png", dpi=300, bbox_inches="tight")
 plt.savefig(out_dir / "activation_hist.svg", bbox_inches="tight")
 
-
 # %%
-dict_dirs_in_outlier = downstream_dictionary.alive_dict_elements.T @ outlier_pos_0_dir
-plt.hist(dict_dirs_in_outlier, bins=100)
-
-# %%
-create_subplot_hists(
-    [
-        local_dictionary.alive_dict_elements.T @ outlier_pos_0_dir,
-        downstream_dictionary.alive_dict_elements.T @ outlier_pos_0_dir,
-    ],
-    titles=["local", "downstream"],
-    colors=[STYLE_MAP["local"]["color"], STYLE_MAP["downstream"]["color"]],
-    xlim=(-0.5, 0.5),
-    xlabel="Cosine similarity of dictionary elements with the Pos0 Direction",
-)
-# %%
+######## INPUT-OUTPUT CORRELATION IN PCA DIR 0 ########
 
 
 def corr_in_dir(
@@ -213,8 +194,8 @@ print(
     ).statistic,  # type: ignore[reportAttributeAccessIssue]
 )
 
-
 # %%
+######## INPUT-OUTPUT CORRELATION IN PCA DIRS PLOT ########
 
 xs = range(25)
 corrs = {
@@ -223,18 +204,14 @@ corrs = {
         corr_in_dir(downstream_acts, pca_dirs[i], include_pos0=False) for i in range(50)
     ],
 }
-# %%
-xlim = 25
-plt.plot(xs[:xlim], corrs["local"][:xlim], **STYLE_MAP["local"])  # type: ignore[reportArgumentType]
-plt.plot(xs[:xlim], corrs["downstream"][:xlim], **STYLE_MAP["downstream"])  # type: ignore[reportArgumentType]
+
+plt.plot(xs, corrs["local"], **STYLE_MAP["local"])  # type: ignore[reportArgumentType]
+plt.plot(xs, corrs["downstream"], **STYLE_MAP["downstream"])  # type: ignore[reportArgumentType]
 plt.ylabel("input-output correlation")
 plt.xlabel("PCA direction")
-# plt.xticks(xs)
 plt.legend(loc="lower right", title="SAE type")
 plt.ylim(0, 1)
 plt.gcf().set_size_inches(4, 3)
 plt.xlim(-1, None)
 plt.savefig(out_dir / "input_output_corr.png", dpi=300, bbox_inches="tight")
 plt.savefig(out_dir / "input_output_corr.svg", bbox_inches="tight")
-
-# %%
