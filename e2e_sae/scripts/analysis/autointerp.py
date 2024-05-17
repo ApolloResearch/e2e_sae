@@ -534,7 +534,7 @@ def pair_violin_plot(df_stats: pd.DataFrame, pairs: dict[int, dict[str, str]], o
     axs[0].set_ylabel("Auto-intepretability score")
 
     plt.tight_layout()
-    plt.savefig(out_file, bbox_inches="tight")
+    plt.savefig(out_file, dpi=400, bbox_inches="tight")
     print(f"Saved to {out_file}")
 
 

@@ -185,7 +185,7 @@ def plot_seed_comparison(
 
     plt.tight_layout()
     out_file = out_dir / "seed_comparison.png"
-    plt.savefig(out_file)
+    plt.savefig(out_file, dpi=400)
     plt.savefig(out_file.with_suffix(".svg"))
     plt.close()
     logger.info(f"Saved to {out_file}")

@@ -369,7 +369,7 @@ def plot_max_cosine_similarity(
     plt.xlabel("Max Cosine Similarity")
     plt.ylabel("Frequency")
     plt.title(title)
-    plt.savefig(outfile)
+    plt.savefig(outfile, dpi=400)
     plt.close()
 
 
@@ -468,7 +468,7 @@ def plot_cosine_similarity_heatmap(
     plt.ylabel(labels[0])
     plt.title(f"Cosine Similarity Heatmap of Alive Dictionary Elements in {sae_pos}")
     plt.tight_layout()
-    plt.savefig(f"cosine_sim_heatmap_{sae_pos}_{labels[0]}_{labels[1]}.png")
+    plt.savefig(f"cosine_sim_heatmap_{sae_pos}_{labels[0]}_{labels[1]}.png", dpi=400)
 
 
 def compute_umap_embedding(
@@ -614,7 +614,7 @@ def plot_umap(
                     va="center",
                 )
     plt.tight_layout()
-    plt.savefig(out_file, dpi=300, bbox_inches="tight")
+    plt.savefig(out_file, dpi=400, bbox_inches="tight")
     plt.savefig(out_file.with_suffix(".svg"), bbox_inches="tight")
     logger.info(f"Saved UMAP plot to {out_file}")
 
@@ -932,7 +932,7 @@ def create_subplot_hists_short(
     if suptitle is not None:
         fig.suptitle(suptitle, fontweight="bold")
     if out_file:
-        plt.savefig(out_file)
+        plt.savefig(out_file, dpi=500)
         plt.savefig(out_file.with_suffix(".svg"))
         logger.info(f"Saved plot to {out_file}")
 
@@ -994,7 +994,7 @@ def create_within_sae_similarity_plots(api: wandb.Api, project: str, from_file: 
             f"Within SAE Similarities (Similar {similar_run_var.upper()})", fontweight="bold"
         )
         out_file = out_dir / f"within_sae_similarities_{similar_run_var}_all_layers.png"
-        plt.savefig(out_file)
+        plt.savefig(out_file, dpi=500)
         plt.savefig(out_file.with_suffix(".svg"))
         logger.info(f"Saved plot to {out_file}")
 
@@ -1208,7 +1208,7 @@ def create_cross_type_similarity_plots(
             ],
         )
     out_file = out_dir / "cross_type_similarities_all_layers.png"
-    plt.savefig(out_file)
+    plt.savefig(out_file, dpi=500)
     plt.savefig(out_file.with_suffix(".svg"))
     logger.info(f"Saved plot to {out_file}")
 

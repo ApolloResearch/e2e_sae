@@ -110,7 +110,7 @@ def plot_per_layer_metric(
 
     plt.tight_layout()
     if out_file is not None:
-        plt.savefig(out_file)
+        plt.savefig(out_file, dpi=400)
         logger.info(f"Saved to {out_file}")
         if save_svg:
             plt.savefig(Path(out_file).with_suffix(".svg"))
@@ -259,7 +259,7 @@ def plot_facet(
 
     if out_file is not None:
         Path(out_file).parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(out_file)
+        plt.savefig(out_file, dpi=400)
         logger.info(f"Saved to {out_file}")
         if save_svg:
             plt.savefig(Path(out_file).with_suffix(".svg"))
