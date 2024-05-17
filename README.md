@@ -8,7 +8,7 @@ training types:
 - local (i.e. vanilla SAEs): Loss function includes sparsity and MSE at the SAE layer
 - Any combination of the above.
 
-See [TODO: add paper] which argues for training SAEs e2e rather than locally. All SAEs presented in the paper can be found at https://wandb.ai/sparsify/gpt2 and can be loaded using this library.
+See our [paper](https://publications.apolloresearch.ai/end_to_end_sparse_dictionary_learning) which argues for training SAEs e2e rather than locally. All SAEs presented in the paper can be found at https://wandb.ai/sparsify/gpt2 and can be loaded using this library.
 
 ## Usage
 ### Installation
@@ -41,8 +41,9 @@ model = SAETransformer.from_wandb("<entity/project/run_id>")
 # or, if stored locally
 model = SAETransformer.from_local_path("/path/to/checkpoint/dir") 
 ```
-All runs in the [TODO: Add e2e paper]() can be loaded this way (e.g.
-[sparsify/gpt2/tvj2owza](https://wandb.ai/sparsify/gpt2/runs/tvj2owza)).
+All runs in our
+[paper](https://publications.apolloresearch.ai/end_to_end_sparse_dictionary_learning)
+can be loaded this way (e.g.[sparsify/gpt2/tvj2owza](https://wandb.ai/sparsify/gpt2/runs/tvj2owza)).
 
 
 This will instantiate a `SAETransformer` class, which contains a TransformerLens model with SAEs
@@ -53,8 +54,9 @@ The dictionary elements of an SAE can be accessed via `SAE.dict_elements`. This 
 the decoder elements to have norm 1.
 
 ### Analysis
-To reproduce all of the analysis in the [TODO: Add e2e paper](), use the scripts in
-`e2e_sae/scripts/analysis/`.
+To reproduce all of the analysis in our
+[paper](https://publications.apolloresearch.ai/end_to_end_sparse_dictionary_learning) use the
+scripts in `e2e_sae/scripts/analysis/`.
 
 ## Contributing
 Developer dependencies are installed with `make install-dev`, which will also install pre-commit
