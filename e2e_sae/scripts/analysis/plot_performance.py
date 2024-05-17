@@ -10,7 +10,6 @@ import pandas as pd
 import seaborn as sns
 import wandb
 
-from e2e_sae.analysis import create_run_df, get_df_gpt2
 from e2e_sae.log import logger
 from e2e_sae.plotting import plot_facet, plot_per_layer_metric
 from e2e_sae.scripts.analysis.plot_settings import (
@@ -18,6 +17,7 @@ from e2e_sae.scripts.analysis.plot_settings import (
     SIMILAR_RUN_INFO,
     STYLE_MAP,
 )
+from e2e_sae.scripts.analysis.utils import create_run_df, get_df_gpt2
 
 
 def format_two_axes(axs: Sequence[plt.Axes], better_labels: bool = True) -> None:
