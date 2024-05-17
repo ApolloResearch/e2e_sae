@@ -20,8 +20,10 @@ dependencies = [
     "zstandard~=0.22.0",
     "matplotlib~=3.5.3",
     "seaborn~=0.13.2",
+    "umap-learn~=0.5.6",
     "tenacity~=8.2.3",
     "statsmodels~=0.14.2",
+    "automated-interpretability~=0.0.3"
 ]
 
 [project.urls]
@@ -30,7 +32,7 @@ repository = "https://github.com/ApolloResearch/e2e_sae"
 [project.optional-dependencies]
 dev = [
     "ruff~=0.1.14",
-    "pyright~=1.1.360",
+    "pyright~=1.1.362",
     "pre-commit~=3.6.0",
 ]
 
@@ -73,9 +75,6 @@ known-third-party = ["wandb"]
 
 [tool.pyright]
 include = ["e2e_sae", "tests"]
-exclude = [
-    "e2e_sae/scripts/autointerp.py",  # neuron_explainer package not yet on pypi
-]
 
 strictListInference = true
 strictDictionaryInference = true

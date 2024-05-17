@@ -41,7 +41,7 @@ model = SAETransformer.from_wandb("<entity/project/run_id>")
 # or, if stored locally
 model = SAETransformer.from_local_path("/path/to/checkpoint/dir") 
 ```
-Note that all runs in the [TODO: Add e2e paper]() can be loaded this way (e.g.
+All runs in the [TODO: Add e2e paper]() can be loaded this way (e.g.
 [sparsify/gpt2/tvj2owza](https://wandb.ai/sparsify/gpt2/runs/tvj2owza)).
 
 
@@ -49,12 +49,12 @@ This will instantiate a `SAETransformer` class, which contains a TransformerLens
 attached. To do a forward pass without SAEs, use the `forward_raw` method, to do a forward pass with
 SAEs, use the `forward` method (or simply call the SAETansformer instance).
 
+The dictionary elements of an SAE can be accessed via `SAE.dict_elements`. This is will normalize
+the decoder elements to have norm 1.
 
-### Autointerpretability
-To run autointerpretability on SAEs uploaded to Neuronpedia, use the script
-`e2e_sae/scripts/autointerp.py`. Note that this will require you to first install Johnny Lin's fork
-of OpenAI's `neuron_explainer` package with `pip install
-git+https://github.com/hijohnnylin/automated-interpretability.git`.
+### Analysis
+To reproduce all of the analysis in the [TODO: Add e2e paper](), use the scripts in
+`e2e_sae/scripts/analysis/`.
 
 ## Contributing
 Developer dependencies are installed with `make install-dev`, which will also install pre-commit

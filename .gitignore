@@ -5,6 +5,9 @@ neuronpedia_outputs/
 wandb/
 .data/
 .checkpoints/
+.DS_Store
+**/.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

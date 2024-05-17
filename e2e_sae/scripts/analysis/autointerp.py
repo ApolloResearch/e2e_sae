@@ -1,7 +1,4 @@
-"""Run and analyze autointerp for SAEs.
-
-NOTE: Running this script currently requires installing Johnny Lin's fork of OpenAI's
-neuron_explainer (`pip install git+https://github.com/hijohnnylin/automated-interpretability.git`).
+"""Run and analyze autointerpretations for SAEs stored in Neuronpedia.
 
 This script requires the following environment variables:
 - OPENAI_API_KEY: OpenAI API key.
@@ -636,3 +633,11 @@ if __name__ == "__main__":
     compute_p_values(df, const_l0_pairs)
     print("\nSAME CE")
     compute_p_values(df, const_ce_pairs)
+
+    counts = df.groupby(["layer", "sae"]).feature.count()
+    print("n values, similar l0")
+    for layer, sae_dict in const_l0_pairs.items():
+        print(layer, counts[layer][sae_dict["local"]], counts[layer][sae_dict["downstream"]])
+    print("n values, similar ce")
+    for layer, sae_dict in const_ce_pairs.items():
+        print(layer, counts[layer][sae_dict["local"]], counts[layer][sae_dict["downstream"]])
