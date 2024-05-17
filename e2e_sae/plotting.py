@@ -48,7 +48,7 @@ def plot_per_layer_metric(
     """
     metric_names = {
         "explained_var": "Explained Variance",
-        "explained_var_ln": "Layernormed Explained Variance",
+        "explained_var_ln": "Explained Variance\nof Normalized Activations",
         "recon_loss": "Reconstruction MSE",
     }
     metric_name = metric_names.get(metric, metric)
@@ -63,7 +63,7 @@ def plot_per_layer_metric(
         )
         legend_label_cols_and_precision = None
     else:
-        fig, axs = plt.subplots(n_sae_layers, 1, figsize=(6, 4 * n_sae_layers))
+        fig, axs = plt.subplots(n_sae_layers, 1, figsize=(5, 3.5 * n_sae_layers))
         axs = np.atleast_1d(axs)
 
     def plot_metric(
