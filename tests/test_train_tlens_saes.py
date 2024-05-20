@@ -53,7 +53,7 @@ def test_train_tiny_gpt():
             logits_kl=LogitsKLLoss(coeff=1.0),
         ),
         train_data=DatasetConfig(
-            dataset_name="apollo-research/Skylion007-openwebtext-tokenizer-gpt2",
+            dataset_name="ANONYMIZED/Skylion007-openwebtext-tokenizer-gpt2",
             is_tokenized=True,
             tokenizer_name="gpt2",
             streaming=True,
@@ -61,7 +61,7 @@ def test_train_tiny_gpt():
             n_ctx=1024,
         ),
         eval_data=DatasetConfig(
-            dataset_name="apollo-research/Skylion007-openwebtext-tokenizer-gpt2",
+            dataset_name="ANONYMIZED/Skylion007-openwebtext-tokenizer-gpt2",
             is_tokenized=True,
             tokenizer_name="gpt2",
             streaming=True,

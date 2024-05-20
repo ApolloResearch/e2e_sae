@@ -32,14 +32,14 @@ loss:
   logits_kl:
     coeff: 1.0
 train_data:
-  dataset_name: apollo-research/monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b
+  dataset_name: ANONYMIZED/monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b
   is_tokenized: true
   tokenizer_name: EleutherAI/gpt-neox-20B
   streaming: true
   split: train
   n_ctx: 2048
 eval_data:
-  dataset_name: apollo-research/monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b
+  dataset_name: ANONYMIZED/monology-pile-uncopyrighted-tokenizer-EleutherAI-gpt-neox-20b
   is_tokenized: true
   tokenizer_name: EleutherAI/gpt-neox-20B
   streaming: true

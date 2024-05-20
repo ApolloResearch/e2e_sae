@@ -223,7 +223,7 @@ def create_run_df(
 
 def get_df_gpt2() -> pd.DataFrame:
     api = wandb.Api()
-    project = "sparsify/gpt2"
+    project = "ANONYMIZED/gpt2"
     runs = api.runs(project)
 
     d_resid = 768

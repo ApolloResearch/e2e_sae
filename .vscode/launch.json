@@ -9,7 +9,8 @@
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/e2e_sae/scripts/train_tlens_saes/run_train_tlens_saes.py",
-            "args": "${workspaceFolder}/e2e_sae/scripts/train_tlens_saes/gpt2_e2e.yaml",
+            // "args": "${workspaceFolder}/e2e_sae/scripts/train_tlens_saes/gpt2_e2e.yaml",
+            "args": "${workspaceFolder}/e2e_sae/scripts/train_tlens_saes/gpt2_local.yaml",
             "console": "integratedTerminal",
             "justMyCode": true,
             "env": {
@@ -44,7 +45,7 @@
             "name": "train tinystories-1M local sae",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/e2e_sae/scripts/train_tlens_saes/run_train_tlens_saes_local.py",
+            "program": "${workspaceFolder}/e2e_sae/scripts/train_tlens_saes/run_train_tlens_saes.py",
             "args": "${workspaceFolder}/e2e_sae/scripts/train_tlens_saes/tinystories_1M_local.yaml",
             "console": "integratedTerminal",
             "justMyCode": true,

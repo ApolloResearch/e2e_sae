@@ -217,7 +217,7 @@ class DatasetToPreprocess:
     data_files: list[str] | None = None
     """Data files to download from the source dataset."""
 
-    hugging_face_username: str = "apollo-research"
+    hugging_face_username: str = "ANONYMIZED"
     """HF username for the upload."""
 
     private: bool = False
@@ -337,25 +337,25 @@ if __name__ == "__main__":
             # Paper says gpt-neo tokenizer, and e.g. EleutherAI/gpt-neo-125M uses the same tokenizer
             # as gpt2. They also suggest using gpt2 in (https://github.com/EleutherAI/gpt-neo).
             tokenizer_name="gpt2",
-            hugging_face_username="apollo-research",
+            hugging_face_username="ANONYMIZED",
             context_size=512,
         ),
         DatasetToPreprocess(
             source_path="Skylion007/openwebtext",
             tokenizer_name="gpt2",
-            hugging_face_username="apollo-research",
+            hugging_face_username="ANONYMIZED",
             context_size=1024,
         ),
         DatasetToPreprocess(
             source_path="Skylion007/openwebtext",
             tokenizer_name="EleutherAI/gpt-neox-20b",
-            hugging_face_username="apollo-research",
+            hugging_face_username="ANONYMIZED",
             context_size=2048,
         ),
         DatasetToPreprocess(
             source_path="monology/pile-uncopyrighted",
             tokenizer_name="gpt2",
-            hugging_face_username="apollo-research",
+            hugging_face_username="ANONYMIZED",
             context_size=1024,
             # Get the first few (each file is 11GB so this should be enough for a large dataset)
             data_files=[
@@ -369,7 +369,7 @@ if __name__ == "__main__":
         DatasetToPreprocess(
             source_path="monology/pile-uncopyrighted",
             tokenizer_name="EleutherAI/gpt-neox-20b",
-            hugging_face_username="apollo-research",
+            hugging_face_username="ANONYMIZED",
             private=False,
             context_size=2048,
             data_files=[

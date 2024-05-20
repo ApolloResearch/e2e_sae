@@ -40,7 +40,7 @@ parameters:
   train_data:
     parameters:
       dataset_name:
-        values: [apollo-research/Skylion007-openwebtext-tokenizer-gpt2]
+        values: [ANONYMIZED/Skylion007-openwebtext-tokenizer-gpt2]
       is_tokenized:
         values: [true]
       tokenizer_name:
@@ -54,7 +54,7 @@ parameters:
   eval_data:
     parameters:
       dataset_name:
-        values: [apollo-research/Skylion007-openwebtext-tokenizer-gpt2]
+        values: [ANONYMIZED/Skylion007-openwebtext-tokenizer-gpt2]
       is_tokenized:
         values: [true]
       tokenizer_name:

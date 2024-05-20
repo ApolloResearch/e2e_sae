@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.urls]
-repository = "https://github.com/ApolloResearch/e2e_sae"
+repository = "https://github.com/ANONYMIZED/"
 
 [project.optional-dependencies]
 dev = [

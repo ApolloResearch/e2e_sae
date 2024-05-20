@@ -8,12 +8,12 @@ training types:
 - local (i.e. vanilla SAEs): Loss function includes sparsity and MSE at the SAE layer
 - Any combination of the above.
 
-See our [paper](https://publications.apolloresearch.ai/end_to_end_sparse_dictionary_learning) which argues for training SAEs e2e rather than locally. All SAEs presented in the paper can be found at https://wandb.ai/sparsify/gpt2 and can be loaded using this library.
+See our [paper](https://publications.ANONYMIZEDend_to_end_sparse_dictionary_learning) which argues for training SAEs e2e rather than locally. All SAEs presented in the paper can be found at https://wandb.ai/ANONYMIZED/gpt2 and can be loaded using this library.
 
 ## Usage
 ### Installation
 ```bash
-pip install e2e_sae
+pip install ANONYMIZED
 ```
 
 ### Train SAEs on any [TransformerLens](https://github.com/neelnanda-io/TransformerLens) model
@@ -42,8 +42,8 @@ model = SAETransformer.from_wandb("<entity/project/run_id>")
 model = SAETransformer.from_local_path("/path/to/checkpoint/dir") 
 ```
 All runs in our
-[paper](https://publications.apolloresearch.ai/end_to_end_sparse_dictionary_learning)
-can be loaded this way (e.g.[sparsify/gpt2/tvj2owza](https://wandb.ai/sparsify/gpt2/runs/tvj2owza)).
+[paper](https://ANONYMIZEDend_to_end_sparse_dictionary_learning)
+can be loaded this way (e.g.[ANONYMIZED/gpt2/tvj2owza](https://wandb.ai/ANONYMIZED/gpt2/runs/ANONYMIZED)).
 
 
 This will instantiate a `SAETransformer` class, which contains a TransformerLens model with SAEs
@@ -55,7 +55,7 @@ the decoder elements to have norm 1.
 
 ### Analysis
 To reproduce all of the analysis in our
-[paper](https://publications.apolloresearch.ai/end_to_end_sparse_dictionary_learning) use the
+[paper](https://dANONYMIZEDend_to_end_sparse_dictionary_learning) use the
 scripts in `e2e_sae/scripts/analysis/`.
 
 ## Contributing
@@ -75,7 +75,4 @@ make test  # Run tests that aren't marked `slow`
 make test-all  # Run all tests
 ```
 
-This library is maintained by [Dan Braun](https://danbraunai.github.io/).
-
-Join the [Open Source Mechanistic Interpretability Slack](https://join.slack.com/t/opensourcemechanistic/shared_invite/zt-2hk7rcm8g-IIuaxpte_1GHp5joc~1kww)
-to chat about this library and other projects in the space!
+This library is maintained by ANONYMIZED

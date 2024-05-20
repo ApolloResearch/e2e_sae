@@ -62,7 +62,7 @@ def get_kl_diff_permuting_dir(
 
 def get_batch():
     dataset_config = DatasetConfig(
-        dataset_name="apollo-research/Skylion007-openwebtext-tokenizer-gpt2",
+        dataset_name="ANONYMIZED/Skylion007-openwebtext-tokenizer-gpt2",
         is_tokenized=True,
         tokenizer_name="gpt2",
         streaming=True,
@@ -79,7 +79,7 @@ def get_batch():
 def get_pca_dirs():
     api = wandb.Api()
     local_run_id = SIMILAR_CE_RUNS[10]["local"]
-    run = api.run(f"sparsify/gpt2/{local_run_id}")
+    run = api.run(f"ANONYMIZED/gpt2/{local_run_id}")
     acts = get_acts(run)
     return pca(acts.orig.flatten(0, 1), n_dims=None).T
 

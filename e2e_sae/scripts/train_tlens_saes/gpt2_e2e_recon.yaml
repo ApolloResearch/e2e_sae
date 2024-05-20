@@ -44,15 +44,15 @@ loss:
   logits_kl:
     coeff: 0.5  # Multiplies the KL divergence between the logits of the SAE model and original model
 train_data:
-  # See https://huggingface.co/apollo-research for other pre-tokenized datasets
-  dataset_name: apollo-research/Skylion007-openwebtext-tokenizer-gpt2
+  # See https://huggingface.co/ANONYMIZED for other pre-tokenized datasets
+  dataset_name: ANONYMIZED/Skylion007-openwebtext-tokenizer-gpt2
   is_tokenized: true
   tokenizer_name: gpt2
   streaming: true
   split: train
   n_ctx: 1024
 eval_data:  # By default this will use a different seed to the training data, but can be set with `seed`
-  dataset_name: apollo-research/Skylion007-openwebtext-tokenizer-gpt2
+  dataset_name: ANONYMIZED/Skylion007-openwebtext-tokenizer-gpt2
   is_tokenized: true
   tokenizer_name: gpt2
   streaming: true

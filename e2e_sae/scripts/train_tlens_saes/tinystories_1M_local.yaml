@@ -8,7 +8,8 @@ tlens_model_path: null
 
 n_samples: 400_000  # 918604 samples of 512 tokens
 save_every_n_samples: null
-eval_every_n_samples: 40_000
+# eval_every_n_samples: 40_000
+eval_every_n_samples: null
 eval_n_samples: 500
 log_every_n_grad_steps: 20
 collect_act_frequency_every_n_samples: 40_000
@@ -31,19 +32,21 @@ loss:
     coeff: 1.0
   logits_kl: null
 train_data:
-  dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
-  is_tokenized: true
+  # dataset_name: ANONYMIZED/roneneldan-TinyStories-tokenizer-gpt2
+  dataset_name: roneneldan/TinyStories
+  is_tokenized: false
+  # is_tokenized: true
   tokenizer_name: gpt2
-  streaming: true
-  split: train
-  n_ctx: 512
-eval_data:
-  dataset_name: apollo-research/roneneldan-TinyStories-tokenizer-gpt2
-  is_tokenized: true
-  tokenizer_name: gpt2
-  streaming: true
+  streaming: false
   split: validation
   n_ctx: 512
+eval_data: null
+  # dataset_name: ANONYMIZED/roneneldan-TinyStories-tokenizer-gpt2
+  # is_tokenized: true
+  # tokenizer_name: gpt2
+  # streaming: true
+  # split: validation
+  # n_ctx: 512
 saes:
   retrain_saes: false
   pretrained_sae_paths: null

@@ -740,7 +740,6 @@ def create_umap_plots(
         dict_2_embeds = embed_info.embedding[len(dict_1_indices) :]
 
         # Create a csv file with columns: RunType, EmbeddingIndex, X, Y.
-        # Useful for neuronpedia to upload to their website
         with open(embed_file.with_suffix(".csv"), "w") as f:
             f.write("RunType,EmbeddingIndex,X,Y\n")
             for i in range(len(embed_info.embedding)):

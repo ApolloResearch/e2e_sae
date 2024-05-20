@@ -693,7 +693,7 @@ def gpt2_plots():
 
 def get_tinystories_1m_df() -> pd.DataFrame:
     api = wandb.Api()
-    project = "sparsify/tinystories-1m-2"
+    project = "ANONYMIZED/tinystories-1m-2"
     runs = api.runs(project)
 
     d_resid = 64

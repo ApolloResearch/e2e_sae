@@ -31,11 +31,11 @@ umap_info = EmbedInfo(**torch.load(umap_file))
 
 api = wandb.Api()
 
-local_acts = get_acts(api.run(f"sparsify/gpt2/{local_run_id}"))
+local_acts = get_acts(api.run(f"ANONYMIZED/gpt2/{local_run_id}"))
 local_dictionary = get_alive_dict_elements(api, "gpt2", local_run_id)
 local_embeds = umap_info.embedding[umap_info.alive_elements_per_dict[0] :, :]
 
-downstream_acts = get_acts(api.run(f"sparsify/gpt2/{downstream_run_id}"))
+downstream_acts = get_acts(api.run(f"ANONYMIZED/gpt2/{downstream_run_id}"))
 downstream_dictionary = get_alive_dict_elements(api, "gpt2", downstream_run_id)
 downstream_embeds = umap_info.embedding[: umap_info.alive_elements_per_dict[0]]
 

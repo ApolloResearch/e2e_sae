@@ -201,7 +201,7 @@ ActsDict = dict[tuple[int, str], Acts]
 
 def get_acts_from_layer_type(layer: int, run_type: str, n_batches: int = 1):
     run_id = SIMILAR_CE_RUNS[layer][run_type]
-    run = wandb.Api().run(f"sparsify/gpt2/{run_id}")
+    run = wandb.Api().run(f"ANONYMIZED/gpt2/{run_id}")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     return get_acts(run, batch_size=5, batches=n_batches, device=device)
 
