@@ -1,9 +1,3 @@
-# Disclosure Level - Private
-
-# Persons/Groups with access
-
-- Apollo Research staff
-- Benjamin Wright
-- Jordan Taylor
+# Disclosure Level - Public
 
 See Privacy Levels [here](https://www.apolloresearch.ai/blog/security)
