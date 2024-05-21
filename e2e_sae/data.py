@@ -117,7 +117,7 @@ def tokenize_and_concatenate(
             tokens = np.concatenate([prefix, tokens], axis=1)
         return {"input_ids": tokens}
 
-    if not isinstance(dataset, IterableDataset):
+    if isinstance(dataset, IterableDataset):
         tokenized_dataset = dataset.map(
             tokenize_function, batched=True, remove_columns=[column_name]
         )
