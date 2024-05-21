@@ -33,18 +33,17 @@ loss:
   logits_kl: null  # Multiplies the KL divergence between the logits of the SAE model and original model
 train_data:
   # See https://huggingface.co/ANONYMIZED for other pre-tokenized datasets
-  dataset_name: ANONYMIZED/Skylion007-openwebtext-tokenizer-gpt2
-  # dataset_name: Skylion007/openwebtext
-  # is_tokenized: true
-  is_tokenized: true
+  # dataset_name: ANONYMIZED/Skylion007-openwebtext-tokenizer-gpt2
+  dataset_name: Skylion007/openwebtext 
+  is_tokenized: false
   tokenizer_name: gpt2
-  streaming: false
+  streaming: true
   split: train
   n_ctx: 1024
 eval_data:  # By default this will use a different seed to the training data, but can be set with `seed`
+  # See https://huggingface.co/ANONYMIZED for other pre-tokenized datasets
   # dataset_name: ANONYMIZED/Skylion007-openwebtext-tokenizer-gpt2
-  dataset_name: Skylion007/openwebtext
-  # is_tokenized: true
+  dataset_name: Skylion007/openwebtext 
   is_tokenized: false
   tokenizer_name: gpt2
   streaming: true
