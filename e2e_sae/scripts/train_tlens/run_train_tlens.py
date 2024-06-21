@@ -112,6 +112,7 @@ def train(config: Config, model: HookedTransformer, device: torch.device) -> Non
             tokens: Int[Tensor, "batch pos"] = batch["tokens"].to(device=device)
             loss = model(tokens, return_type="loss")
 
+            loss = loss / n_gradient_accumulation_steps
             loss.backward()
 
             if (step + 1) % n_gradient_accumulation_steps == 0:
