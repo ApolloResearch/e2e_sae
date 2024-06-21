@@ -435,6 +435,7 @@ def train(
             is_log_step=is_log_step,
         )
 
+        loss = loss / n_gradient_accumulation_steps
         loss.backward()
 
         if is_grad_step:
