@@ -42,6 +42,9 @@ from scipy.stats import bootstrap
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 from tqdm import tqdm
 
+# Disable the following pyright checks due to issues with neuron_explainer's FastDataclass
+# pyright: reportCallIssue=false, reportAttributeAccessIssue=false
+
 load_dotenv()  # Required before importing UncalibratedNeuronSimulator
 NEURONPEDIA_DOMAIN = "https://neuronpedia.org"
 POSITIVE_INF_REPLACEMENT = 9999
