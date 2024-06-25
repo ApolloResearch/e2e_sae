@@ -868,7 +868,7 @@ def create_subplot_hists(
     """
     fig = fig or plt.figure(figsize=figsize, layout="constrained")
     axs = fig.subplots(len(sim_list), 1, sharex=True, gridspec_kw={"hspace": 0.1})
-    axs = np.atleast_1d(axs)
+    axs = np.atleast_1d(axs)  # type: ignore
     colors = colors or [None for _ in sim_list]
     for ax, sims, title, color in zip(axs, sim_list, titles, colors, strict=True):
         ax.hist(sims.flatten().detach().numpy(), range=xlim, bins=bins, color=color, alpha=alpha)
@@ -908,7 +908,7 @@ def create_subplot_hists_short(
     fig = fig or plt.figure(figsize=figsize)
     axs = fig.subplots(len(sim_list), 1, sharex=True)
     plt.subplots_adjust(left=left_pad, top=0.95, bottom=(0.5 / figsize[1]), hspace=0.2, right=0.95)
-    axs = np.atleast_1d(axs)
+    axs = np.atleast_1d(axs)  # type: ignore
     colors = colors or [None for _ in sim_list]
     for ax, sims, title, color in zip(axs, sim_list, titles, colors, strict=True):
         ax.hist(sims.flatten().detach().numpy(), bins=bins, color=color, alpha=alpha, density=True)

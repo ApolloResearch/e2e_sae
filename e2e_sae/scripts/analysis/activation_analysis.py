@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from typing import cast
 
 import torch
 import torch.nn.functional as F
@@ -144,8 +143,8 @@ def get_acts(
 
 def norm_scatterplot(
     acts: Acts,
-    xlim: tuple[int | None, int | None] = (0, None),
-    ylim: tuple[int | None, int | None] = (0, None),
+    xlim: tuple[float | None, float | None] = (0, None),
+    ylim: tuple[float | None, float | None] = (0, None),
     inset_extent: int = 150,
     out_file: Path | None = None,
     inset_pos: tuple[float, float, float, float] = (0.2, 0.2, 0.6, 0.7),
@@ -157,10 +156,10 @@ def norm_scatterplot(
     recon_norms = torch.norm(acts.recon.flatten(0, 1), dim=-1)
 
     plt.subplots(figsize=figsize)
-    ax = cast(plt.Axes, plt.gca())
+    ax = plt.gca()
     ax.scatter(orig_norm, recon_norms, alpha=scatter_alphas[0], s=3, c="k")
-    ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
+    ax.set_xlim(xlim)  # type: ignore
+    ax.set_ylim(ylim)  # type: ignore
     ax.set_aspect("equal")
     if xlim[1] is not None:
         ax.set_xticks(range(0, xlim[1] + 1, 1000))  # type: ignore[reportCallIssue]
@@ -178,6 +177,7 @@ def norm_scatterplot(
     axins.plot([0, inset_extent], [0, inset_extent], "k--", alpha=1, lw=0.8)
     axins.set_aspect("equal")
     if main_plot_diag_line:
+        assert xlim[1] is not None
         ax.plot([0, xlim[1]], [0, xlim[1]], "k--", alpha=0.5, lw=0.8)
 
     ax.indicate_inset_zoom(axins, edgecolor="black")
