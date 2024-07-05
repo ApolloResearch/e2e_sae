@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 import tqdm
@@ -253,6 +254,7 @@ def pos_dir_plot(acts: Acts, out_file: Path | None = None):
     seqpos_arr = torch.arange(acts.orig.shape[1]).expand((len(acts), -1))
 
     fig, axs = plt.subplots(3, 1, figsize=(6, 4), sharex=True)
+    axs = np.atleast_1d(axs)  # type: ignore
     for dir_idx, ax in zip(range(1, 4), axs, strict=True):
         ax.plot(
             seqpos_arr.flatten(),

@@ -64,7 +64,7 @@ def plot_per_layer_metric(
         legend_label_cols_and_precision = None
     else:
         fig, axs = plt.subplots(n_sae_layers, 1, figsize=(5, 3.5 * n_sae_layers))
-        axs = np.atleast_1d(axs)
+    axs = np.atleast_1d(axs)  # type: ignore
 
     def plot_metric(
         ax: plt.Axes,
@@ -184,7 +184,7 @@ def plot_facet(
     fig_width = 4 * num_axes
     fig = plt.figure(figsize=(fig_width, 4 * len(facet_vals)), constrained_layout=True)
     subfigs = fig.subfigures(len(facet_vals))
-    subfigs = np.atleast_1d(subfigs)
+    subfigs = np.atleast_1d(subfigs)  # type: ignore
 
     # Get all unique line values from the entire DataFrame
     all_line_vals = df[line_by].unique()

@@ -1,8 +1,10 @@
 """Analysis of PCA dir 0 in layer 10"""
+
 # %%
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import wandb
 from einops import repeat
@@ -54,6 +56,7 @@ def umaps_in_dir(
     outfile: Path | None = None,
 ):
     fig, axs = plt.subplots(1, 2, sharex=True, sharey=True, figsize=(10, 5), layout="constrained")
+    axs = np.atleast_1d(axs)  # type: ignore
     local_sims = cosine_similarity(local_dictionary.alive_dict_elements.T, dir, dim=-1)
     downstream_sims = cosine_similarity(downstream_dictionary.alive_dict_elements.T, dir, dim=-1)
 
@@ -91,6 +94,7 @@ umaps_in_dir(pca_dirs[0], outfile=out_dir / "umap_pos0_dir.png", vabs=0.5)
 ######## ACTIVATION HISTOGRAM ########
 
 fig, axs = plt.subplots(1, 2, figsize=(7, 2), sharey=True)
+axs = np.atleast_1d(axs)  # type: ignore
 fig.subplots_adjust(wspace=0.05)  # adjust space between axes
 
 acts_in_dir = local_acts.orig @ pca_dirs[0]

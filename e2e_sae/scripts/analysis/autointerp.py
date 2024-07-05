@@ -6,6 +6,7 @@ This script requires the following environment variables:
 These can be set in .env in the root of the repository (see .env.example).
 
 """
+
 import asyncio
 import glob
 import json
@@ -490,6 +491,7 @@ def get_autointerp_results_df(out_dir: Path):
 
 def pair_violin_plot(df_stats: pd.DataFrame, pairs: dict[int, dict[str, str]], out_file: Path):
     fig, axs = plt.subplots(1, 3, sharey=True, figsize=(7, 3.5))
+    axs = np.atleast_1d(axs)  # type: ignore
 
     for ax, layer in zip(axs, pairs.keys(), strict=True):
         sae_ids = [pairs[layer]["local"], pairs[layer]["downstream"]]
