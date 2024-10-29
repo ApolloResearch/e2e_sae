@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from typing import Any, Literal, NamedTuple, Self
 
 import matplotlib.pyplot as plt
+import requests
 import torch
+from fire import Fire
 from tqdm import tqdm
 from transformer_lens import HookedTransformer
 
@@ -17,6 +19,20 @@ from e2e_sae.settings import REPO_ROOT
 OUT_DIR = REPO_ROOT / "e2e_sae/scripts/analysis" / "out/faithfulness"
 DATA_FOLDER = REPO_ROOT / "e2e_sae/scripts/analysis" / "data"
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+def download_data():
+    DATA_FOLDER.mkdir(parents=True, exist_ok=True)
+    for dataset_name in ["rc", "simple", "nounpp", "within_rc"]:
+        file_name = f"{dataset_name}_train.json"
+        url = f"https://raw.githubusercontent.com/saprmarks/feature-circuits/main/data/{file_name}"
+        out_path = DATA_FOLDER / file_name
+
+        if not out_path.exists():
+            print(f"Downloading {url} to {out_path}")
+            response = requests.get(url)
+            response.raise_for_status()
+            out_path.write_text(response.text)
 
 
 def get_tokenizer():
@@ -140,6 +156,11 @@ def abl_only_mask(idxs: list[int]):
     return mask
 
 
+@functools.lru_cache
+def get_model(run_id: str):
+    return SAETransformer.from_wandb(f"gpt2/{run_id}").to(device)
+
+
 @dataclass
 class Experiment:
     run_id: str
@@ -148,8 +169,7 @@ class Experiment:
     batch_size: int = 1_000
 
     def __post_init__(self):
-        self.model = SAETransformer.from_wandb(f"gpt2/{self.run_id}")
-        self.model.to(device)
+        self.model = get_model(self.run_id)
         self.batch_slices = batch_slices(len(self.dataset), self.batch_size)
         self.sae_acts = self.get_sae_acts()
         self.mean_acts = {
@@ -274,21 +294,6 @@ class Experiment:
 
 
 # %%
-# def run(n_train: int = 1_000, layer: int = 6, sae_type: str = "local", data_set: str = "rc"):
-#     print("Running experiment", locals())
-#     run_id = SIMILAR_CE_RUNS[layer][sae_type]
-#     sae_pos = f"blocks.{layer}.hook_resid_pre"
-#     train_data = Dataset.load(data_set, "train")[:n_train]
-#     experiment = Experiment(run_id, sae_pos, train_data)
-#     print(f"None ablated: {experiment.ablate_none_score:.2f}")
-#     print(f"All ablated: {experiment.ablate_all_score:.2f}")
-#     experiment.m_one_at_a_time
-
-# if __name__ == "__main__":
-#     Fire(run)
-
-
-# %%
 def get_experiment(
     layer: int = 6, sae_type: str = "local", data_set: str = "rc", sim_metric: str = "l0"
 ):
@@ -301,212 +306,145 @@ def get_experiment(
     return Experiment(run_id, sae_pos, train_data)
 
 
-def cache_one_at_a_time(layer: int = 6, sae_type: str = "local", data_set: str = "rc"):
-    exp = get_experiment(layer, sae_type, data_set)
-    exp.m_one_at_a_time
+def run_and_cache_all(layer: int | None = 6):
+    """For each combination we run the experiment and cache the one-at-a-time ablation results"""
+    layers = [2, 6, 10] if layer is None else [layer]
+    exps = [
+        get_experiment(layer, sae_type, data_set)
+        for layer in layers
+        for sae_type in ["local", "downstream", "e2e"]
+        for data_set in ["rc", "simple", "nounpp", "within_rc"]
+    ]
+    for exp in tqdm(exps, desc="R   unning experiments"):
+        _ = exp.m_one_at_a_time
 
 
-for sae_type in ["local", "downstream", "e2e"]:
-    for data_set in ["rc", "simple", "nounpp", "within_rc"]:
-        print(sae_type, data_set)
-        cache_one_at_a_time(6, sae_type, data_set)
+def compute_overall_faithfulness():
+    experiment_scores_by_id = {}  # run_id -> data_set -> scores
+
+    for layer in [2, 6, 10]:
+        for sae_type in ["local", "downstream", "e2e"]:
+            for data_set in ["rc", "simple", "nounpp", "within_rc"]:
+                for sim_metric in ["l0", "ce"]:
+                    print(f"Computing {layer=} {sae_type=} {data_set=} {sim_metric=}")
+                    exp = get_experiment(layer, sae_type, data_set, sim_metric)
+                    if exp.run_id not in experiment_scores_by_id:
+                        experiment_scores_by_id[exp.run_id] = {}
+                    # some run ids are used for both CE and L0 and thus we can avoid recomputing
+                    if data_set not in experiment_scores_by_id[exp.run_id]:
+                        experiment_scores_by_id[exp.run_id][data_set] = {
+                            "orig_model": exp.orig_model_score,
+                            "ablate_sae_err": exp.ablate_sae_err_score,
+                            "ablate_all": exp.ablate_all_score,
+                        }
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    with open(OUT_DIR / "experiment_scores_by_id.json", "w") as f:
+        json.dump(experiment_scores_by_id, f)
 
 
-# local_exp = get_experiment(6, "local", "simple")
-# downstream_exp = get_experiment(6, "downstream", "simple")
-# e2e_exp = get_experiment(6, "e2e", "within_rc")
+def print_tables():
+    with open(OUT_DIR / "experiment_scores_by_id.json") as f:
+        experiment_scores_by_id = json.load(f)
+
+    for metric in ["L0", "CE"]:
+        for layer in [2, 6, 10]:
+            print(f"Layer {layer} - similar {metric}")
+            print("sae_type".rjust(10), "  simple  ", "nounpp  ", "rc      ", "within_rc")
+            for sae_type in ["local", "e2e", "downstream"]:
+                id_dict = SIMILAR_L0_RUNS if metric == "L0" else SIMILAR_CE_RUNS
+                run_id = id_dict[layer][sae_type]
+                print(f"{sae_type.rjust(10)}", end="   ")
+                for data_set in ["simple", "nounpp", "rc", "within_rc"]:
+                    scores = experiment_scores_by_id[run_id][data_set]
+                    faithfulness = scores["ablate_sae_err"] / scores["orig_model"]
+                    print(f"{faithfulness:.1%}".ljust(8), end=" ")
+                print("")
+            print("")
+        print("\n\n")
 
 
-# %%
-# local_orig = local_exp.get_orig_model_scores()
-# local_abl_sae_err = local_exp.run_ablation(abl_only_mask([]))
-# plt.scatter(local_orig.detach(), local_abl_sae_err, c="orange", s=2)
+def compute_faithfulness_curve(name_prefix: str = "", layer: int = 6):
+    xs = list(range(100))
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = OUT_DIR / f"{name_prefix}faithfulness.json"
 
-# downstream_orig = downstream_exp.get_orig_model_scores()
-# downstream_abl_sae_err = downstream_exp.run_ablation(abl_only_mask([]))
-# plt.scatter(downstream_orig.detach(), downstream_abl_sae_err, c="blue", s=2)
+    # Initialize empty faithfulness dict if file doesn't exist
+    if not out_path.exists():
+        faithfulness = {}
+    else:
+        with open(out_path) as f:
+            faithfulness = json.load(f)
 
-# plt.plot([0, 8], [0, 8], c="k")
-
-
-# # %%
-# def get_rms(orig: torch.Tensor, ablated: torch.Tensor) -> float:
-#     return torch.sqrt(((orig - ablated) ** 2).mean()).item()
-
-
-# print("Local", get_rms(local_orig, local_abl_sae_err))
-# print("Downstream", get_rms(downstream_orig, downstream_abl_sae_err))
-
-
-# # %%
-
-# xs = list(range(100)) + list(range(100, 500, 5))
-
-
-# def progressively_ablate_rms(experiment: Experiment) -> float:
-#     rms = []
-#     orig_scores = experiment.get_orig_model_scores().detach()
-#     for x in tqdm(xs):
-#         ablated = experiment.run_ablation(abl_all_but_mask(experiment.sorted_active_saes()[:x]))
-#         rms.append(get_rms(orig_scores, ablated))
-#     return rms
-
-
-# local_rms = progressively_ablate_rms(local_exp)
-# downstream_rms = progressively_ablate_rms(downstream_exp)
-
-# # %%
-# plt.plot(xs, local_rms, label="Local", color="orange")
-# plt.plot(xs, downstream_rms, label="Downstream", color="blue")
-
-
-# # %%
-
-
-# # %%
-
-
-# # experiments = {
-# #     (sae_type, data_set): get_experiment(sae_type, data_set)
-# #     for sae_type in ["local", "downstream", "e2e"]
-# #     for data_set in ["rc", "simple", "nounpp", "within_rc"]
-# # }
-
-# # # %%
-# # experiments_sim_ce_l6 = experiments
-
-
-# # # %%
-
-
-# # experiments_sim_ce_l2 = {
-# #     (sae_type, data_set): get_experiment(2, sae_type, data_set)
-# #     for sae_type in ["local", "downstream", "e2e"]
-# #     for data_set in ["rc", "simple", "nounpp", "within_rc"]
-# # }
-# # %%
-
-# datasets = {sn: Dataset.load(sn, "train")[:1_000] for sn in ["rc", "simple", "nounpp", "within_rc"]}
-
-# experiment_scores_by_id_data = {}
-
-
-# def get_scores(experiment: Experiment):
-#     return {
-#         "orig_model": experiment.orig_model_score,
-#         "ablate_sae_err": experiment.ablate_sae_err_score,
-#         "ablate_all": experiment.ablate_all_score,
-#     }
-
-
-# for layer in [2, 6, 10]:
-#     sae_pos = f"blocks.{layer}.hook_resid_pre"
-
-#     for sae_type in ["local", "downstream", "e2e"]:
-#         sim_ce_run = SIMILAR_CE_RUNS[layer][sae_type]
-#         sim_l0_run = SIMILAR_L0_RUNS[layer][sae_type]
-#         for data_set in ["rc", "simple", "nounpp", "within_rc"]:
-#             if (sim_ce_run, data_set) not in experiment_scores_by_id_data:
-#                 experiment_scores_by_id_data[(sim_ce_run, data_set)] = get_scores(
-#                     Experiment(sim_ce_run, sae_pos, datasets[data_set])
-#                 )
-#             if (sim_l0_run, data_set) not in experiment_scores_by_id_data:
-#                 experiment_scores_by_id_data[(sim_l0_run, data_set)] = get_scores(
-#                     Experiment(sim_l0_run, sae_pos, datasets[data_set])
-#                 )
-
-
-# # %%
-# experiment_scores_by_id = {}
-# for (run_id, data_set), scores in experiment_scores_by_id_data.items():
-#     experiment_scores_by_id[run_id] = experiment_scores_by_id.get(run_id, {})
-#     experiment_scores_by_id[run_id][data_set] = scores
-
-
-# with open(OUT_DIR / "experiment_scores_by_id.json", "w") as f:
-#     json.dump(experiment_scores_by_id, f)
-
-
-# # %%
-# for layer in [2, 6, 10]:
-#     print(f"Layer {layer} - similar L0")
-#     print("sae_type".rjust(10), "  simple  ", "nounpp  ", "rc      ", "within_rc")
-#     for sae_type in ["local", "downstream", "e2e"]:
-#         scores = experiment_scores_by_id[SIMILAR_L0_RUNS[layer][sae_type]]
-#         print(f"{sae_type.rjust(10)}", end="   ")
-#         for data_set in ["simple", "nounpp", "rc", "within_rc"]:
-#             faithfulness = scores[data_set]["ablate_sae_err"] / scores[data_set]["orig_model"]
-#             print(f"{faithfulness:.1%}".ljust(8), end=" ")
-#         print("")
-#     print("")
-
-# # %%
-
-# print("Layer 2 - similar CE")
-# print("sae_type".rjust(10), "  simple  ", "nounpp  ", "rc      ", "within_rc")
-# for sae_type in ["local", "downstream", "e2e"]:
-#     print(f"{sae_type.rjust(10)}", end="   ")
-#     for data_set in ["simple", "nounpp", "rc", "within_rc"]:
-#         experiment = experiments_sim_ce_l2[(sae_type, data_set)]
-#         faithfulness = experiment.ablate_sae_err_score / experiment.orig_model_score
-#         print(f"{faithfulness:.1%}".ljust(8), end=" ")
-#     print("")
-# print("")
-
-# # %%
-
-# sae_type -> data_set -> Experiment
-ExperimentDict = dict[str, dict[str, Experiment]]
-
-
-def compute_and_save_faithfulness(exp_dict: ExperimentDict, name_prefix: str = ""):
-    xs = list(range(100)) + list(range(100, 500, 5))
-    faithfulness = {
-        sae_type: {
-            data_set: {"n_kept": xs, "faithfulness": exp.get_m_curve(xs, faithful=True)}
-            for data_set, exp in data_dict.items()
+    def compute_one(layer: int, sae_type: str, data_set: str):
+        print(f"Computing curve {sae_type} {data_set} for layer {layer}")
+        exp = get_experiment(layer, sae_type, data_set, sim_metric="l0")
+        return {
+            "n_kept": xs,
+            "faithfulness": exp.get_m_curve(xs, faithful=True),
         }
-        for sae_type, data_dict in exp_dict.items()
-    }
-    with open(OUT_DIR / f"{name_prefix}faithfulness.json", "w") as f:
-        json.dump(faithfulness, f)
+
+    for sae_type in ["local", "downstream", "e2e"]:
+        if sae_type not in faithfulness:
+            faithfulness[sae_type] = {}
+
+        for data_set in ["simple", "nounpp", "rc", "within_rc"]:
+            if data_set not in faithfulness[sae_type]:
+                faithfulness[sae_type][data_set] = compute_one(layer, sae_type, data_set)
+                # Save after each computation
+                with open(out_path, "w") as f:
+                    json.dump(faithfulness, f)
 
 
-# %%
-with open(OUT_DIR / "faithfulness.json") as f:
-    faithfulness_to_save = json.load(f)
-    faithfulness = {
-        (d["sae_type"], d["data_set"]): (d["n_kept"], d["faithfulness"])
-        for d in faithfulness_to_save
-    }
+def plot_faithfulness_curve():
+    with open(OUT_DIR / "faithfulness.json") as f:
+        faithfulness = json.load(f)
 
-
-# %%
-
-
-def plot_faithfulness_curve(exp_dict: dict[str, dict[str, Experiment]]):
     fig, axs = plt.subplots(2, 2, figsize=(8, 6), sharey=True, sharex=True)
 
     for ax, dataset_shortname in zip(
         axs.flat, ["simple", "nounpp", "rc", "within_rc"], strict=True
     ):
-        ax.set_title(dataset_shortname)
-        for sae_type in ["local", "downstream", "e2e"]:
-            xs, ys = faithfulness[(sae_type, dataset_shortname)]
-            ax.plot(xs, ys, color=STYLE_MAP[sae_type]["color"], label=sae_type)
+        for sae_type in ["local", "e2e", "downstream"]:
+            xs = faithfulness[sae_type][dataset_shortname]["n_kept"]
+            ys = faithfulness[sae_type][dataset_shortname]["faithfulness"]
+            style = STYLE_MAP[sae_type]
+            ax.plot(xs, ys, color=style["color"], label=style["label"])
 
         ax.axhline(1, color="black", linestyle="--", alpha=0.3)
 
-    plt.xlim(0, 200)
-    plt.ylim(0.3, 1.1)
+    plt.xlim(0, 100)
+    plt.ylim(0, 1.2)
     # plt.xscale("log")
 
-    axs[0, 0].set_ylabel("Faithfulness")
-    axs[1, 0].set_ylabel("Faithfulness")
-    axs[1, 0].set_xlabel("Number of SAEs features preserved")
-    axs[1, 1].set_xlabel("Number of SAEs features preserved")
+    axs[0, 0].set_title("Simple")
+    axs[0, 1].set_title("Across Participial Phrases")
+    axs[1, 0].set_title("Across Relative Clause")
+    axs[1, 1].set_title("Within Relative Clause")
+
+    fig.supxlabel("Number of SAE features preserved")
+    fig.supylabel("Faithfulness")
+    axs[1, 1].legend(loc="lower right")
+
     plt.tight_layout()
-    plt.legend()
+
+    plt.savefig(OUT_DIR / "faithfulness.png", dpi=300)
+    print(f"Saved to {OUT_DIR / 'faithfulness.png'}")
 
 
-# %%
+def compute():
+    print("Saving experiment scores by id")
+    compute_overall_faithfulness()
+    print("Computing faithfulness")
+    compute_faithfulness_curve()
+
+
+if __name__ == "__main__":
+    Fire(
+        {
+            "download_data": download_data,
+            "compute": compute,
+            "tables": print_tables,
+            "plot": plot_faithfulness_curve,
+        }
+    )
